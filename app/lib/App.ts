@@ -10,8 +10,8 @@ export class App {
   spaceRadius: number;
   planetGroup: PlanetGroup;
   landScape: LandScape;
-  stageWidth: number;
-  stageHeight: number;
+  stageWidth: number = 0 ;
+  stageHeight: number = 0 ;
 
   constructor() {
     this.canvas = document.createElement("canvas");
