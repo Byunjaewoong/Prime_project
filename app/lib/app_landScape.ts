@@ -5,7 +5,7 @@ export class LandScape {
   density: number;
   size: number;
   starLux: number;
-  radianDiv: number;
+  radianDiv: number = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
