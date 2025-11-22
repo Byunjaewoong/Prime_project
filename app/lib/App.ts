@@ -94,7 +94,7 @@ export class App {
 
                 if (planet.genSun) {
                     // 태양 전체 코어는 항상 그림
-                    this.landScape.genSunCore(this.sunx, this.suny, 100);
+                    this.landScape.genSunCore(this.sunx, this.suny);
 
                     // genLighting 조건 적용
                     for (let j = 0; j < this.planetGroup.array.length; j++) {
