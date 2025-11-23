@@ -256,10 +256,10 @@ export class Planet {
   windowX: number;
   windowY: number;
 
-  seedVector: Vec3;
-  axisOrbit: Vec3;
-  OrbitStack: Vec3[];
-  OrbitStep: number;
+  seedVector!: Vec3;
+  axisOrbit!: Vec3;
+  OrbitStack!: Vec3[];
+  OrbitStep!: number;
   counter: number;
   renderingPixel: number = 1;
 
