@@ -29,6 +29,7 @@ export default function DonutPage() {
 
   // 🔺 Δ 모드 (회전/빛 자동 변화)
   const [deltaMode, setDeltaMode] = useState(false);
+  const lightTweenFrameRef = useRef<number | null>(null);
 
   // 🎨 글자 색 모드
   const [paintMode, setPaintMode] = useState(false);
@@ -89,138 +90,103 @@ export default function DonutPage() {
     setDeltaMode((prev) => !prev);
   };
 
-  // Δ 모드 애니메이션 (경계에서 튕기기 + 속도 한 번만 설정)
-    useEffect(() => {
-    // Δ 끌 때: 루프/타이머 정리
-    if (!deltaMode) {
-        if (deltaFrameRef.current !== null) {
-        cancelAnimationFrame(deltaFrameRef.current);
-        deltaFrameRef.current = null;
-        }
-        lastTimeRef.current = null;
-        return;
+// 🔺 Δ 모드: 회전은 2초마다 랜덤, 빛은 4초 동안 서서히 바뀜
+useEffect(() => {
+  if (!donutApp) return;
+
+  // Δ OFF → 모든 타이머/애니메이션 정리
+  if (!deltaMode) {
+    if (lightTweenFrameRef.current !== null) {
+      cancelAnimationFrame(lightTweenFrameRef.current);
+      lightTweenFrameRef.current = null;
+    }
+    return;
+  }
+
+  const rand = (min: number, max: number) =>
+    Math.random() * (max - min) + min;
+  const randSigned = (minAbs: number, maxAbs: number) =>
+    (Math.random() < 0.5 ? -1 : 1) * rand(minAbs, maxAbs);
+
+  // ✅ 1) 회전: 2초마다 각도 방향 바꿔줌
+  const rotationTimerId = window.setInterval(() => {
+    const nextRotX = randSigned(0.4, 1.0);
+    const nextRotY = randSigned(0.4, 1.0);
+    const nextRotZ = randSigned(0.3, 0.9);
+
+    setRotX(nextRotX);
+    setRotY(nextRotY);
+    setRotZ(nextRotZ);
+
+    donutApp.updateConfig({
+      rotX: nextRotX,
+      rotY: nextRotY,
+      rotZ: nextRotZ,
+    } as any);
+  }, 2000); // 2초마다
+
+  // ✅ 2) 빛: 4초 동안 서서히 target 방향으로 보간
+  const makeRandomLightDir = () => {
+    let x = randSigned(0.25, 1.0);
+    let y = randSigned(0.25, 1.0);
+    let z = randSigned(0.25, 1.0);
+    const len = Math.sqrt(x * x + y * y + z * z);
+    if (len < 1e-3) {
+      x = 0.0;
+      y = -1.0;
+      z = 0.0;
+    } else {
+      x /= len;
+      y /= len;
+      z /= len;
+    }
+    return { x, y, z };
+  };
+
+  // 시작값은 현재 lightX/Y/Z 기준
+  let start = { x: lightX, y: lightY, z: lightZ };
+  let target = makeRandomLightDir();
+  let startTime = performance.now();
+  const DURATION = 4000; // 4초
+
+  const step = (now: number) => {
+    const t = Math.min(1, (now - startTime) / DURATION);
+
+    const curX = start.x + (target.x - start.x) * t;
+    const curY = start.y + (target.y - start.y) * t;
+    const curZ = start.z + (target.z - start.z) * t;
+
+    setLightX(curX);
+    setLightY(curY);
+    setLightZ(curZ);
+
+    donutApp.updateConfig({
+      lightX: curX,
+      lightY: curY,
+      lightZ: curZ,
+    } as any);
+
+    // 4초 경과 → 새 타겟으로 다시 4초간 보간
+    if (t >= 1) {
+      start = { x: curX, y: curY, z: curZ };
+      target = makeRandomLightDir();
+      startTime = now;
     }
 
-    // 🔹 Δ 켤 때마다 "한 번만" 랜덤 속도 설정
-    const rand = (min: number, max: number) =>
-        Math.random() * (max - min) + min;
-    const randSigned = (minAbs: number, maxAbs: number) =>
-        (Math.random() < 0.5 ? -1 : 1) * rand(minAbs, maxAbs);
+    lightTweenFrameRef.current = requestAnimationFrame(step);
+  };
 
-    deltaVelRef.current = {
-        // 회전 방향 변화 속도
-        rotX: randSigned(0.3, 0.8),
-        rotY: randSigned(0.3, 0.8),
-        rotZ: randSigned(0.2, 0.6),
-        // 빛 방향 변화 속도
-        lightX: randSigned(0.15, 0.4),
-        lightY: randSigned(0.15, 0.4),
-        lightZ: randSigned(0.15, 0.4),
-    };
+  lightTweenFrameRef.current = requestAnimationFrame(step);
 
-    const loop = (time: number) => {
-        if (!lastTimeRef.current) {
-        lastTimeRef.current = time;
-        }
-        const dt = (time - lastTimeRef.current) / 1000; // 초 단위
-        lastTimeRef.current = time;
-
-        const v = deltaVelRef.current;
-
-        // 🔹 공통: -1 ~ 1 범위에서 튕기기
-        const stepWithBounce = (
-        prev: number,
-        key: keyof typeof v,
-        min: number,
-        max: number
-        ) => {
-        let vel = v[key];
-        let next = prev + vel * dt;
-
-        // 범위를 벗어나면 튕기도록 반사
-        if (next > max) {
-            const over = next - max;
-            next = max - over;
-            vel = -vel;
-        } else if (next < min) {
-            const over = min - next;
-            next = min + over;
-            vel = -vel;
-        }
-
-        // velocity 업데이트
-        deltaVelRef.current = {
-            ...deltaVelRef.current,
-            [key]: vel,
-        };
-
-        return next;
-        };
-
-        let nextRotX = 0;
-        let nextRotY = 0;
-        let nextRotZ = 0;
-        let nextLightX = 0;
-        let nextLightY = 0;
-        let nextLightZ = 0;
-
-        // 🔄 회전 방향 (rotX/Y/Z)
-        setRotX((prev) => {
-        const nv = clamp(stepWithBounce(prev, "rotX", -1, 1), -1, 1);
-        nextRotX = nv;
-        return nv;
-        });
-        setRotY((prev) => {
-        const nv = clamp(stepWithBounce(prev, "rotY", -1, 1), -1, 1);
-        nextRotY = nv;
-        return nv;
-        });
-        setRotZ((prev) => {
-        const nv = clamp(stepWithBounce(prev, "rotZ", -1, 1), -1, 1);
-        nextRotZ = nv;
-        return nv;
-        });
-
-        // 💡 빛 방향 (lightX/Y/Z)
-        setLightX((prev) => {
-        const nv = clamp(stepWithBounce(prev, "lightX", -1, 1), -1, 1);
-        nextLightX = nv;
-        return nv;
-        });
-        setLightY((prev) => {
-        const nv = clamp(stepWithBounce(prev, "lightY", -1, 1), -1, 1);
-        nextLightY = nv;
-        return nv;
-        });
-        setLightZ((prev) => {
-        const nv = clamp(stepWithBounce(prev, "lightZ", -1, 1), -1, 1);
-        nextLightZ = nv;
-        return nv;
-        });
-
-        // 🔁 코어 도넛에 반영 (회전/빛 방향만)
-        updateDonut({
-        rotX: nextRotX,
-        rotY: nextRotY,
-        rotZ: nextRotZ,
-        lightX: nextLightX,
-        lightY: nextLightY,
-        lightZ: nextLightZ,
-        });
-
-        deltaFrameRef.current = requestAnimationFrame(loop);
-    };
-
-    deltaFrameRef.current = requestAnimationFrame(loop);
-
-    return () => {
-        if (deltaFrameRef.current !== null) {
-        cancelAnimationFrame(deltaFrameRef.current);
-        deltaFrameRef.current = null;
-        }
-        lastTimeRef.current = null;
-    };
-    }, [deltaMode]); // 🔴 여기! deltaMode만 의존
+  // cleanup
+  return () => {
+    window.clearInterval(rotationTimerId);
+    if (lightTweenFrameRef.current !== null) {
+      cancelAnimationFrame(lightTweenFrameRef.current);
+      lightTweenFrameRef.current = null;
+    }
+  };
+}, [deltaMode, donutApp]);
 
 
   // 🎨 페인트 버튼 클릭 핸들러
