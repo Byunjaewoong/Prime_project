@@ -9,23 +9,32 @@ export class LandScape {
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
-    this.ctx = this.canvas.getContext("2d")!;
+
+    const ctx = this.canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("2D canvas context를 가져올 수 없습니다.");
+    }
+    this.ctx = ctx;
+
     this.stargroup = [];
     this.density = 0.002;
     this.size = 1;
     this.starLux = 255;
+
     this.getStar();
   }
 
   getStar() {
+    this.stargroup = []; // 여러 번 호출돼도 중복 안 쌓이게 초기화
+
     for (let i = 0; i < this.canvas.width; i++) {
       for (let j = 0; j < this.canvas.height; j++) {
         if (Math.random() < this.density) {
           this.stargroup.push([
-            i / this.canvas.width,
-            j / this.canvas.height,
-            this.size * Math.random(),
-            this.starLux * Math.random(),
+            i / this.canvas.width,     // x (정규화)
+            j / this.canvas.height,    // y (정규화)
+            this.size * Math.random(), // 반지름
+            this.starLux * Math.random(), // 밝기
           ]);
         }
       }
@@ -34,12 +43,14 @@ export class LandScape {
 
   genStar() {
     for (let i = 0; i < this.stargroup.length; i++) {
-      this.ctx.fillStyle = `rgb(${this.stargroup[i][3]},${this.stargroup[i][3]},${this.stargroup[i][3]})`;
+      const [nx, ny, r, lux] = this.stargroup[i];
+
+      this.ctx.fillStyle = `rgb(${lux},${lux},${lux})`;
       this.ctx.beginPath();
       this.ctx.arc(
-        this.stargroup[i][0] * this.canvas.width,
-        this.stargroup[i][1] * this.canvas.height,
-        this.stargroup[i][2],
+        nx * this.canvas.width,
+        ny * this.canvas.height,
+        r,
         0,
         2 * Math.PI
       );
@@ -56,6 +67,7 @@ export class LandScape {
     const core = this.ctx.createRadialGradient(sunX, sunY, 30, sunX, sunY, 150);
     core.addColorStop(0, "rgba(255,255,255,1)");
     core.addColorStop(1, "rgba(5,5,5,0)");
+
     this.ctx.fillStyle = core;
     this.ctx.beginPath();
     this.ctx.arc(sunX, sunY, 150, 0, 2 * Math.PI);
@@ -64,12 +76,15 @@ export class LandScape {
 
   genLighting(sunX: number, sunY: number, lightRadius: number) {
     this.radianDiv = 90;
+
     for (let i = 0; i < this.radianDiv; i++) {
       if (Math.random() < 0.03) {
         const lightbuffer = lightRadius * Math.random();
         const luxbuffer = 255;
-        const lightEndX = lightbuffer * Math.cos((2 * Math.PI / this.radianDiv) * i) + sunX;
-        const lightEndY = lightbuffer * Math.sin((2 * Math.PI / this.radianDiv) * i) + sunY;
+
+        const angle = (2 * Math.PI / this.radianDiv) * i;
+        const lightEndX = lightbuffer * Math.cos(angle) + sunX;
+        const lightEndY = lightbuffer * Math.sin(angle) + sunY;
 
         this.ctx.beginPath();
         this.ctx.moveTo(sunX, sunY);

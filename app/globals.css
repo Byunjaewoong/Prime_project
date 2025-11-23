@@ -1,26 +1,195 @@
-@import "tailwindcss";
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+.full-canvas-page {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* 캔버스가 페이지 전체를 덮도록 */
+.orbit-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* body 기본값 정리 */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  background: black;
+}
+
+/* 왼쪽 슬라이드 패널은 그대로 */
+.orbit-side-panel {
+  position: fixed;
+  top: 50%;
+  left: 0;
+  transform: translate(-100%, -50%);
+  padding: 12px 16px;
+  border-radius: 0 12px 12px 0;
+  background: rgba(15, 23, 42, 0.9);
+  color: #e5e7eb;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 1000;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform 0.25s ease-out,
+    opacity 0.25s ease-out;
+}
+
+.orbit-side-panel--visible {
+  transform: translate(0, -50%);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.orbit-side-panel__button {
+  display: inline-block;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.8);
+  background: rgba(15, 23, 42, 0.95);
+  color: #e5e7eb;
+  font-size: 0.9rem;
+  text-decoration: none;
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.orbit-side-panel__button:hover {
+  background: rgba(30, 64, 175, 1);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.9);
+}
+
+.orbit-side-panel__hint {
+  margin: 0;
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+
+/* ===========================
+   오른쪽 아래 플로팅 메뉴
+   =========================== */
+
+.orbit-fab {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none; /* 기본은 자식 버튼에서만 클릭되도록 */
+}
+
+/* 펼쳐지는 액션 버튼들 컨테이너 */
+.orbit-fab__actions {
+  display: flex;
+  flex-direction: row-reverse; /* 메인 버튼 오른쪽, 액션은 왼쪽으로 펼쳐지게 */
+  gap: 8px;
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(12px);
+  overflow: hidden;
+  pointer-events: none;
+  transition:
+    max-width 0.28s ease-out,
+    opacity 0.25s ease-out,
+    transform 0.25s ease-out;
+}
+
+.orbit-fab__actions--open {
+  max-width: 260px; /* 버튼 4개 정도 들어갈 너비 */
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+/* 공통: 작은 동그란 액션 버튼 – 거의 투명하게 */
+.orbit-fab__action {
+  pointer-events: auto;
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.015);       /* 거의 안 보이게 */
+  border: 1px solid rgba(255, 255, 255, 0.04);  /* 윤곽만 살짝 */
+  color: rgba(255, 255, 255, 0.22);             /* 흐린 아이콘/글자 */
+  font-size: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(3px);
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease,
+    border-color 0.3s ease,
+    background 0.3s ease,
+    color 0.3s ease;
+}
+
+.orbit-fab__action:hover {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.20);
+  color: rgba(255, 255, 255, 0.85);
+  transform: translateY(-1px);
+  box-shadow: 0 0 14px rgba(0, 0, 0, 0.55);
+}
+
+/* 메인 M 버튼 – 이것도 거의 투명하게 */
+.orbit-fab__main {
+  pointer-events: auto;
+  width: 50px;
+  height: 50px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.015);       /* 기본은 아주 옅게 */
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.22);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(3px);
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease,
+    border-color 0.3s ease,
+    background 0.3s ease,
+    color 0.3s ease;
+}
+
+/* 주변 캔버스 색이랑 어울리게, hover 때만 살짝 드러남 */
+.orbit-fab__main:hover {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.20);
+  color: rgba(255, 255, 255, 0.85);
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 0 14px rgba(0, 0, 0, 0.55);
+}
+
+/* 메뉴 열렸을 때 M 버튼 살짝 강조 */
+.orbit-fab__main--active {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: rgba(255, 255, 255, 0.90);
+  transform: translateY(-1px) scale(1.02);
 }
