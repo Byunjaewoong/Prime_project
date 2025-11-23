@@ -37,11 +37,11 @@ export class Donut {
   asciiWidthYp: number;
   asciiIndex: string[];
 
-  asciiScreenArr: number[][][]; // [x][y][2]
+  asciiScreenArr!: number[][][]; // [x][y][2]
 
-  xaxisMatrix: number[][];
-  yaxisMatrix: number[][];
-  zaxisMatrix: number[][];
+  xaxisMatrix!: number[][];
+  yaxisMatrix!: number[][];
+  zaxisMatrix!: number[][];
 
   // 🔦 light direction
   lightX: number;
