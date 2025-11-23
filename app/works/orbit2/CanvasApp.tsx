@@ -1,8 +1,8 @@
-// app/components/CanvasApp.tsx
+// app/works/orbit2/CanvasApp.tsx
 "use client";
 
 import { useEffect, useRef } from "react";
-import { App } from "../lib/App";
+import { App } from "./core/App";
 
 export default function CanvasApp() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -16,7 +16,7 @@ export default function CanvasApp() {
     appRef.current = app;
 
     return () => {
-      if (appRef.current && typeof appRef.current.destroy === "function") {
+      if (appRef.current) {
         appRef.current.destroy();
       }
       appRef.current = null;

@@ -16,20 +16,20 @@ export default function HomePage() {
       }}
     >
       <h1 style={{ fontSize: "2rem", marginBottom: 8 }}>My Playground</h1>
-      <p style={{ opacity: 0.8, marginBottom: 24 }}>
+      {/* <p style={{ opacity: 0.8, marginBottom: 24 }}>
         Next.js + TypeScript 기반 개인 작업물 모음입니다.
-      </p>
+      </p> */}
 
-      <h2 style={{ fontSize: "1.4rem", marginBottom: 12 }}>작업물</h2>
+      <h2 style={{ fontSize: "1.4rem", marginBottom: 12 }}>Works</h2>
       <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
         <li style={{ marginBottom: 8 }}>
-          <Link href="/works/orbit">작업물 A – 캔버스 우주</Link>
+          <Link href="/works/orbit">Geocentrism</Link>
         </li>
         <li style={{ marginBottom: 8 }}>
-          <Link href="/works/orbit2">작업물 B</Link>
+          <Link href="/works/orbit2">Heliocentrism</Link>
         </li>
         <li style={{ marginBottom: 8 }}>
-          <Link href="/works/c">작업물 C</Link>
+          <Link href="/works/donut">ASCII Donut</Link>
         </li>
         <li style={{ marginBottom: 8 }}>
           <Link href="/works/d">작업물 D</Link>

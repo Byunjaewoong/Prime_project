@@ -3,7 +3,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import CanvasApp from "@/app/components/CanvasApp";
+import CanvasApp from "@/app/works/orbit/CanvasApp";
+import { Home } from "lucide-react";
 
 export default function WorkOrbitPage() {
   const [showPanel, setShowPanel] = useState(false);
@@ -65,7 +66,7 @@ export default function WorkOrbitPage() {
             className="orbit-fab__action"
             aria-label="메인으로 돌아가기"
           >
-            🏠
+            <Home size={20} strokeWidth={2} />
           </Link>
           {/* 2~4는 나중에 기능 채우면 됨 */}
           <button
