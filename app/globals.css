@@ -1,3 +1,7 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR&family=Noto+Serif+KR&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC&family=Noto+Serif+SC&display=swap');
+
+
 /* ===========================
    1. 레이아웃 / 기본 설정
    =========================== */
@@ -250,3 +254,97 @@ body {
 .orbit-panel-section input[type="range"] {
   width: 150px;
 }
+
+/* Donut 첫 섹션: 폰트 + 사이즈 묶음 레이아웃 */
+.orbit-panel-section--donut {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+/* 왼쪽 폰트 설정 컬럼 */
+.orbit-font-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 70px;
+}
+
+.orbit-font-label {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  font-size: 0.7rem;
+  color: #e5e7eb;
+  opacity: 0.85;
+}
+
+.orbit-font-slider {
+  width: 80px;
+}
+
+.orbit-font-value {
+  font-size: 0.7rem;
+  text-align: center;
+  opacity: 0.8;
+}
+
+/* 오른쪽 기존 슬라이더 묶음 */
+.orbit-panel-section-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Δ / 🎨 / 🎲 공통 버튼 스타일 */
+.orbit-fab__delta-button {
+  margin-top: 4px;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(15, 23, 42, 0.8);
+  color: rgba(248, 250, 252, 0.9);
+  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(6px);
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    color 0.2s ease;
+}
+
+.orbit-fab__delta-button:hover {
+  background: rgba(30, 64, 175, 0.9);
+  border-color: rgba(191, 219, 254, 0.9);
+  color: #f9fafb;
+  transform: translateY(-1px) scale(1.03);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.9);
+}
+
+/* on 상태 */
+.orbit-fab__delta-button--active {
+  background: rgba(59, 130, 246, 0.9);
+  border-color: rgba(191, 219, 254, 1);
+  color: #f9fafb;
+  box-shadow: 0 0 14px rgba(59, 130, 246, 0.95);
+}
+
+/* 서브 타입 (paint / dice)는 필요하면 별도 조정 가능 */
+.paint-button {
+  /* 필요하면 색 감 살짝 바꾸기 */
+}
+
+.dice-button {
+  /* 필요하면 다른 느낌으로 튜닝 */
+}
+
+

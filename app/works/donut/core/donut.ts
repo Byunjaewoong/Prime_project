@@ -1,6 +1,19 @@
 // app/works/donut/core/donut.ts
 import { Calculate } from "./tool";
 
+// 🔤 여러 문자셋 프리셋 (어두움 → 밝음 순서로 배치)
+const ASCII_PRESETS = {
+  latin: [" ", ".", ",", "-", "~", ":", ";", "=", "!", "*", "#", "$", "@"],
+  hangul: [" ", "*", "ㄴ", "ㄷ", "ㄹ", "ㅁ", "ㅂ", "ㅅ", "ㅇ", "ㅈ", "ㅊ", "ㅋ", "ㅎ"],
+  hanja: [" ", ".", "二", "三", "口", "日", "田", "月", "波", "在", "雄", "邊", "龍"],
+  arabic: [" ", "·", "،", "ـ", "ب", "ج", "س", "م", "ن", "هـ", "و", "ي", "الل"],
+  math: [" ", ".", "·", "+", "-", "×", "≈", "∼", "≃", "≡", "∞", "∫", "∑"],
+  latin_inverse: ["@", "$", "#", "*", "!", "=", ";", ":", "~", "-", ",", ".", " "],
+  latin_void: [".", " ", ",", "-", "~", ":", ";", "=", "!", "*", "#", "$", "@"],
+} as const;
+
+type AsciiPresetKey = keyof typeof ASCII_PRESETS;
+
 export class Donut {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
@@ -53,6 +66,12 @@ export class Donut {
   private colorSeed = 0;
   private colorMap: Record<string, string> = {};
 
+  // 🔤 폰트 패밀리
+  private fontFamily =
+    'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  // 🔤 문자셋 키
+  private asciiPresetKey: AsciiPresetKey = "latin";
+
   constructor(
     mode: number,
     fontsize: number,
@@ -95,7 +114,7 @@ export class Donut {
     this.yAngle = yAngle;
     this.zAngle = zAngle;
 
-    // 기본 빛 방향 (원래 하드코딩 값)
+    // 기본 빛 방향
     const base = 1 / Math.sqrt(3);
     this.lightX = -base;
     this.lightY = -base;
@@ -103,27 +122,15 @@ export class Donut {
 
     this.mode = mode;
 
-    // ASCII 관련
+    // 문자셋 기본값: latin
+    this.asciiPresetKey = "latin";
+    this.asciiIndex = ASCII_PRESETS[this.asciiPresetKey];
+
+    // ASCII 화면 크기
     this.asciiWidth = Math.round(this.stageWidth / this.fontsize);
     this.asciiHeight = Math.round(this.stageHeight / this.fontsize);
     this.asciiWidthXp = Math.round(this.xp / this.fontsize);
     this.asciiWidthYp = Math.round(this.yp / this.fontsize);
-
-    this.asciiIndex = [
-      " ",
-      ".",
-      ",",
-      "-",
-      "~",
-      ":",
-      ";",
-      "=",
-      "!",
-      "*",
-      "#",
-      "$",
-      "@",
-    ];
 
     this.calDonut();
   }
@@ -144,10 +151,12 @@ export class Donut {
   setColorMode(on: boolean, seed: number) {
     this.colorMode = on;
     this.colorSeed = seed;
+    if (on) this.buildColorPalette();
+  }
 
-    if (!on) return;
-
-    this.buildColorPalette();
+  setColorSeed(seed: number) {
+    this.colorSeed = seed;
+    if (this.colorMode) this.buildColorPalette();
   }
 
   // 🎨 문자 → 색 팔레트 한 번만 만들기
@@ -162,7 +171,7 @@ export class Donut {
         continue;
       }
 
-      const h = rng() * 360;     // 0 ~ 360
+      const h = rng() * 360; // 0 ~ 360
       const s = 70 + rng() * 30; // 70 ~ 100 %
       const l = 45 + rng() * 10; // 45 ~ 55 %
 
@@ -397,7 +406,7 @@ export class Donut {
     fontsize: number,
     color?: string
   ) {
-    this.ctx.font = `${fontsize}px serif`;
+    this.ctx.font = `${fontsize}px ${this.fontFamily}`;
     this.ctx.fillStyle = color ?? `rgba(255,255,255,1)`;
     this.ctx.fillText(lumicode, x, y);
   }
@@ -411,6 +420,43 @@ export class Donut {
   setProjectionParams(k1: number, k2: number) {
     this.k1 = k1;
     this.k2 = k2;
+  }
+
+  setFontSize(fs: number) {
+    const fontsize = Math.max(4, fs);
+
+    this.fontsize = fontsize;
+
+    this.asciiWidth = Math.round(this.stageWidth / this.fontsize);
+    this.asciiHeight = Math.round(this.stageHeight / this.fontsize);
+    this.asciiWidthXp = Math.round(this.xp / this.fontsize);
+    this.asciiWidthYp = Math.round(this.yp / this.fontsize);
+
+    // z-buffer 초기화만 다시 (지오메트리는 그대로)
+    this.asciiScreenArr = new Array(this.asciiWidth);
+    for (let i = 0; i < this.asciiWidth; i++) {
+      this.asciiScreenArr[i] = new Array(this.asciiHeight);
+      for (let j = 0; j < this.asciiHeight; j++) {
+        this.asciiScreenArr[i][j] = [-1, 0];
+      }
+    }
+  }
+
+  // 🔤 문자셋 프리셋 변경 (latin / hangul / hanja / arabic / math)
+  setCharsetPreset(key: AsciiPresetKey) {
+    if (!ASCII_PRESETS[key]) return;
+    this.asciiPresetKey = key;
+    this.asciiIndex = ASCII_PRESETS[key];
+
+    // 색 모드 켜져 있으면 팔레트 다시 생성
+    if (this.colorMode) {
+      this.buildColorPalette();
+    }
+  }
+
+  // 🆕 폰트 패밀리 변경
+  setFontFamily(fontFamily: string) {
+    this.fontFamily = fontFamily;
   }
 }
 

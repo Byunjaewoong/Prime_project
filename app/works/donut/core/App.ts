@@ -1,6 +1,20 @@
 // app/works/donut/core/App.ts
 import { Donut } from "./donut";
 
+const FONT_FAMILIES: Record<string, string> = {
+  gothic: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  serif: '"Times New Roman", "Nanum Myeongjo", serif',
+  mono: '"JetBrains Mono", "DM Mono", monospace',
+  hangulSans: '"Pretendard Variable", "Noto Sans KR", system-ui, sans-serif',
+  hangulSerif: '"Nanum Myeongjo", "Noto Serif KR", serif',
+  arabic: '"Amiri", "Scheherazade New", serif',
+  math: '"STIX Two Math", "Latin Modern Math", "Times New Roman", serif',
+};
+
+function getFontFamily(key: string) {
+  return FONT_FAMILIES[key] ?? FONT_FAMILIES["gothic"];
+}
+
 type DonutConfig = {
   size: number;     // 0 ~ 1
   distance: number; // 0 ~ 1
@@ -15,6 +29,13 @@ type DonutConfig = {
   // 🎨 글자 컬러 모드 + 시드
   colorMode: boolean;
   colorSeed: number;
+
+  // 🆕 폰트 + 문자셋 키
+  fontKey: string;      // "gothic" | "serif" | "mono" | "hangulSans" ...
+  charsetKey: string;   // "latin" | "hangul" | "hanja" | "arabic" | "math"
+
+  // 🅰 폰트 크기
+  fontSize: number;      // px
 };
 
 export class App {
@@ -58,6 +79,11 @@ export class App {
 
     colorMode: false,
     colorSeed: 0,
+
+    fontKey: "gothic",
+    charsetKey: "latin",
+
+    fontSize: 8,
   };
 
   lightX: number;
@@ -90,7 +116,7 @@ export class App {
     this.zAngle = (-2 * Math.PI) / 700;
 
     this.mode = 0;
-    this.fontSize = 8;
+    this.fontSize = this.config.fontSize;
 
     this.lightX = this.config.lightX;
     this.lightY = this.config.lightY;
@@ -209,6 +235,9 @@ export class App {
 
     if (this.stageWidth === 0 || this.stageHeight === 0) return;
 
+    // 최신 fontSize로 동기화
+    this.fontSize = this.config.fontSize;
+
     this.donut = new Donut(
       this.mode,
       this.fontSize,
@@ -232,6 +261,11 @@ export class App {
     this.donut.setLightDirection(this.lightX, this.lightY, this.lightZ);
     // 🎨 현재 config 기준으로 색 모드 세팅
     this.donut.setColorMode(this.config.colorMode, this.config.colorSeed);
+
+    // 폰트/문자셋도 적용
+    this.donut.setFontSize(this.config.fontSize);
+    this.donut.setFontFamily(getFontFamily(this.config.fontKey));
+    this.donut.setCharsetPreset(this.config.charsetKey as any);
   }
 
   resize() {
@@ -274,6 +308,10 @@ export class App {
     const colorChanged =
       partial.colorMode !== undefined || partial.colorSeed !== undefined;
 
+    const fontSizeChanged = partial.fontSize !== undefined;
+    const fontKeyChanged = partial.fontKey !== undefined;
+    const charsetKeyChanged = partial.charsetKey !== undefined;
+
     this.applyConfigToParameters();
 
     if (!this.donut) {
@@ -295,6 +333,18 @@ export class App {
 
     if (colorChanged) {
       this.donut.setColorMode(this.config.colorMode, this.config.colorSeed);
+    }
+
+    if (fontSizeChanged) {
+      this.donut.setFontSize(this.config.fontSize);
+    }
+
+    if (fontKeyChanged) {
+      this.donut.setFontFamily(getFontFamily(this.config.fontKey));
+    }
+
+    if (charsetKeyChanged) {
+      this.donut.setCharsetPreset(this.config.charsetKey as any);
     }
 
     if (sizeChanged) {

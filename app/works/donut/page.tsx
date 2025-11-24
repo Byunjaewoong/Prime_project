@@ -12,6 +12,11 @@ export default function DonutPage() {
   const [fabOpen, setFabOpen] = useState(false);
   const [donutApp, setDonutApp] = useState<DonutCoreApp | null>(null);
 
+  // 🔤 폰트 크기 (로그 스케일 느낌)
+  const FONT_VALUES = [6, 8, 10, 12, 20, 30, 50, 100, 200, 400, 800];
+  const [fontIndex, setFontIndex] = useState(2); // 0:6,1:8,2:10 ...
+  const fontSize = FONT_VALUES[fontIndex];
+
   // 🔧 도넛 크기 / 거리 / 속도
   const [size, setSize] = useState(0.5);
   const [distance, setDistance] = useState(0.5);
@@ -35,6 +40,20 @@ export default function DonutPage() {
   const [paintMode, setPaintMode] = useState(false);
   const [paintSeed, setPaintSeed] = useState(0);
 
+  // 폰트 + 문자셋 프리셋 (fontKey / charsetKey → core로 전달)
+  const FONT_CHARSET_PRESETS = [
+    { fontKey: "gothic", charsetKey: "latin_inverse" },
+    { fontKey: "serif",  charsetKey: "latin" },
+    { fontKey: "mono",  charsetKey: "latin_void" },
+    // { fontKey: "hangulSans",  charsetKey: "hangul" },
+    { fontKey: "hangulSerif",  charsetKey: "hangul" },
+    // 🔥 한자용 CJK 폰트
+    { fontKey: "cjkSans",  charsetKey: "hanja" },
+    // { fontKey: "cjkSerif",  charsetKey: "hanja" },
+    { fontKey: "math",  charsetKey: "math" },
+    { fontKey: "arabic",  charsetKey: "arabic" },
+  ];
+
   const deltaVelRef = useRef({
     rotX: 0,
     rotY: 0,
@@ -43,7 +62,7 @@ export default function DonutPage() {
     lightY: 0,
     lightZ: 0,
   });
-  const deltaFrameRef = useRef<number | null>(null);
+  const deltaFrameRef = useRef<number | null>(null); // 현재는 안 쓰지만 남겨둠
   const lastTimeRef = useRef<number | null>(null);
 
   // 왼쪽 슬라이드 패널 (마우스 왼쪽 벽 근처)
@@ -66,19 +85,24 @@ export default function DonutPage() {
   const toggleFab = () => setFabOpen((prev) => !prev);
 
   // 🔧 코어에 상태 전달
-  const updateDonut = (patch: Partial<{
-    size: number;
-    distance: number;
-    speed: number;
-    rotX: number;
-    rotY: number;
-    rotZ: number;
-    lightX: number;
-    lightY: number;
-    lightZ: number;
-    colorMode: boolean;
-    colorSeed: number;
-  }>) => {
+  const updateDonut = (
+    patch: Partial<{
+      size: number;
+      distance: number;
+      speed: number;
+      rotX: number;
+      rotY: number;
+      rotZ: number;
+      lightX: number;
+      lightY: number;
+      lightZ: number;
+      colorMode: boolean;
+      colorSeed: number;
+      fontSize: number;
+      fontKey: string;
+      charsetKey: string;
+    }>
+  ) => {
     donutApp?.updateConfig(patch as any);
   };
 
@@ -90,104 +114,103 @@ export default function DonutPage() {
     setDeltaMode((prev) => !prev);
   };
 
-// 🔺 Δ 모드: 회전은 2초마다 랜덤, 빛은 4초 동안 서서히 바뀜
-useEffect(() => {
-  if (!donutApp) return;
+  // 🔺 Δ 모드: 회전은 2초마다 랜덤, 빛은 4초 동안 서서히 바뀜
+  useEffect(() => {
+    if (!donutApp) return;
 
-  // Δ OFF → 모든 타이머/애니메이션 정리
-  if (!deltaMode) {
-    if (lightTweenFrameRef.current !== null) {
-      cancelAnimationFrame(lightTweenFrameRef.current);
-      lightTweenFrameRef.current = null;
+    // Δ OFF → 모든 타이머/애니메이션 정리
+    if (!deltaMode) {
+      if (lightTweenFrameRef.current !== null) {
+        cancelAnimationFrame(lightTweenFrameRef.current);
+        lightTweenFrameRef.current = null;
+      }
+      return;
     }
-    return;
-  }
 
-  const rand = (min: number, max: number) =>
-    Math.random() * (max - min) + min;
-  const randSigned = (minAbs: number, maxAbs: number) =>
-    (Math.random() < 0.5 ? -1 : 1) * rand(minAbs, maxAbs);
+    const rand = (min: number, max: number) =>
+      Math.random() * (max - min) + min;
+    const randSigned = (minAbs: number, maxAbs: number) =>
+      (Math.random() < 0.5 ? -1 : 1) * rand(minAbs, maxAbs);
 
-  // ✅ 1) 회전: 2초마다 각도 방향 바꿔줌
-  const rotationTimerId = window.setInterval(() => {
-    const nextRotX = randSigned(0.4, 1.0);
-    const nextRotY = randSigned(0.4, 1.0);
-    const nextRotZ = randSigned(0.3, 0.9);
+    // ✅ 1) 회전: 2초마다 각도 방향 바꿔줌
+    const rotationTimerId = window.setInterval(() => {
+      const nextRotX = randSigned(0.4, 1.0);
+      const nextRotY = randSigned(0.4, 1.0);
+      const nextRotZ = randSigned(0.3, 0.9);
 
-    setRotX(nextRotX);
-    setRotY(nextRotY);
-    setRotZ(nextRotZ);
+      setRotX(nextRotX);
+      setRotY(nextRotY);
+      setRotZ(nextRotZ);
 
-    donutApp.updateConfig({
-      rotX: nextRotX,
-      rotY: nextRotY,
-      rotZ: nextRotZ,
-    } as any);
-  }, 2000); // 2초마다
+      donutApp.updateConfig({
+        rotX: nextRotX,
+        rotY: nextRotY,
+        rotZ: nextRotZ,
+      } as any);
+    }, 2000); // 2초마다
 
-  // ✅ 2) 빛: 4초 동안 서서히 target 방향으로 보간
-  const makeRandomLightDir = () => {
-    let x = randSigned(0.25, 1.0);
-    let y = randSigned(0.25, 1.0);
-    let z = randSigned(0.25, 1.0);
-    const len = Math.sqrt(x * x + y * y + z * z);
-    if (len < 1e-3) {
-      x = 0.0;
-      y = -1.0;
-      z = 0.0;
-    } else {
-      x /= len;
-      y /= len;
-      z /= len;
-    }
-    return { x, y, z };
-  };
+    // ✅ 2) 빛: 4초 동안 서서히 target 방향으로 보간
+    const makeRandomLightDir = () => {
+      let x = randSigned(0.25, 1.0);
+      let y = randSigned(0.25, 1.0);
+      let z = randSigned(0.25, 1.0);
+      const len = Math.sqrt(x * x + y * y + z * z);
+      if (len < 1e-3) {
+        x = 0.0;
+        y = -1.0;
+        z = 0.0;
+      } else {
+        x /= len;
+        y /= len;
+        z /= len;
+      }
+      return { x, y, z };
+    };
 
-  // 시작값은 현재 lightX/Y/Z 기준
-  let start = { x: lightX, y: lightY, z: lightZ };
-  let target = makeRandomLightDir();
-  let startTime = performance.now();
-  const DURATION = 4000; // 4초
+    // 시작값은 현재 lightX/Y/Z 기준
+    let start = { x: lightX, y: lightY, z: lightZ };
+    let target = makeRandomLightDir();
+    let startTime = performance.now();
+    const DURATION = 4000; // 4초
 
-  const step = (now: number) => {
-    const t = Math.min(1, (now - startTime) / DURATION);
+    const step = (now: number) => {
+      const t = Math.min(1, (now - startTime) / DURATION);
 
-    const curX = start.x + (target.x - start.x) * t;
-    const curY = start.y + (target.y - start.y) * t;
-    const curZ = start.z + (target.z - start.z) * t;
+      const curX = start.x + (target.x - start.x) * t;
+      const curY = start.y + (target.y - start.y) * t;
+      const curZ = start.z + (target.z - start.z) * t;
 
-    setLightX(curX);
-    setLightY(curY);
-    setLightZ(curZ);
+      setLightX(curX);
+      setLightY(curY);
+      setLightZ(curZ);
 
-    donutApp.updateConfig({
-      lightX: curX,
-      lightY: curY,
-      lightZ: curZ,
-    } as any);
+      donutApp.updateConfig({
+        lightX: curX,
+        lightY: curY,
+        lightZ: curZ,
+      } as any);
 
-    // 4초 경과 → 새 타겟으로 다시 4초간 보간
-    if (t >= 1) {
-      start = { x: curX, y: curY, z: curZ };
-      target = makeRandomLightDir();
-      startTime = now;
-    }
+      // 4초 경과 → 새 타겟으로 다시 4초간 보간
+      if (t >= 1) {
+        start = { x: curX, y: curY, z: curZ };
+        target = makeRandomLightDir();
+        startTime = now;
+      }
+
+      lightTweenFrameRef.current = requestAnimationFrame(step);
+    };
 
     lightTweenFrameRef.current = requestAnimationFrame(step);
-  };
 
-  lightTweenFrameRef.current = requestAnimationFrame(step);
-
-  // cleanup
-  return () => {
-    window.clearInterval(rotationTimerId);
-    if (lightTweenFrameRef.current !== null) {
-      cancelAnimationFrame(lightTweenFrameRef.current);
-      lightTweenFrameRef.current = null;
-    }
-  };
-}, [deltaMode, donutApp]);
-
+    // cleanup
+    return () => {
+      window.clearInterval(rotationTimerId);
+      if (lightTweenFrameRef.current !== null) {
+        cancelAnimationFrame(lightTweenFrameRef.current);
+        lightTweenFrameRef.current = null;
+      }
+    };
+  }, [deltaMode, donutApp]);
 
   // 🎨 페인트 버튼 클릭 핸들러
   const togglePaint = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -203,6 +226,33 @@ useEffect(() => {
       colorMode: nextMode,
       colorSeed: nextSeed,
     });
+  };
+
+  // 🔤 fontSize 슬라이더 변경
+  const handleFontSizeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const idx = parseInt(e.target.value, 10);
+    const clamped = Math.min(FONT_VALUES.length - 1, Math.max(0, idx));
+    setFontIndex(clamped);
+
+    const fs = FONT_VALUES[clamped];
+    updateDonut({ fontSize: fs });
+  };
+
+  // 🎲 폰트 + 문자셋 랜덤 버튼
+  const handleFontRandom = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+
+    const pick =
+      FONT_CHARSET_PRESETS[
+        Math.floor(Math.random() * FONT_CHARSET_PRESETS.length)
+      ];
+
+  // 🔹 폰트 / 문자셋만 변경
+  // 🔹 fontSize / fontIndex는 건드리지 않음
+    updateDonut({
+      fontKey: pick.fontKey,
+      charsetKey: pick.charsetKey,
+    });;
   };
 
   return (
@@ -248,54 +298,83 @@ useEffect(() => {
               onMouseDown={(e) => e.stopPropagation()}
             >
               <div className="orbit-panel-container">
-                {/* 1. Donut Size / Distance / Speed */}
-                <div className="orbit-panel-section">
-                  <h4>Donut Size / Distance / Speed</h4>
-                  <label>
-                    size
-                    <input
-                      type="range"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={size}
-                      onChange={(e) => {
-                        const v = parseFloat(e.target.value);
-                        setSize(v);
-                        updateDonut({ size: v });
-                      }}
-                    />
-                  </label>
-                  <label>
-                    distance
-                    <input
-                      type="range"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={distance}
-                      onChange={(e) => {
-                        const v = parseFloat(e.target.value);
-                        setDistance(v);
-                        updateDonut({ distance: v });
-                      }}
-                    />
-                  </label>
-                  <label>
-                    speed
-                    <input
-                      type="range"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={speed}
-                      onChange={(e) => {
-                        const v = parseFloat(e.target.value);
-                        setSpeed(v);
-                        updateDonut({ speed: v });
-                      }}
-                    />
-                  </label>
+                {/* 1. Donut Size / Distance / Speed + font 컬럼 */}
+                <div className="orbit-panel-section orbit-panel-section--donut">
+                  {/* 🔤 왼쪽: fontSize + 🎲 */}
+                  <div className="orbit-font-column">
+                    <label className="orbit-font-label">
+                      font
+                      <input
+                        className="orbit-font-slider"
+                        type="range"
+                        min={0}
+                        max={FONT_VALUES.length - 1}
+                        step={1}
+                        value={fontIndex}
+                        onChange={handleFontSizeChange}
+                      />
+                      <span className="orbit-font-value">{fontSize}px</span>
+                    </label>
+
+                    <button
+                      type="button"
+                      className="orbit-fab__delta-button dice-button"
+                      onClick={handleFontRandom}
+                      aria-label="폰트 / 문자셋 랜덤 변경"
+                    >
+                      🎲
+                    </button>
+                  </div>
+
+                  {/* 오른쪽: 기존 size / distance / speed */}
+                  <div className="orbit-panel-section-main">
+                    <h4>Donut Size / Distance / Speed</h4>
+                    <label>
+                      size
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={size}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value);
+                          setSize(v);
+                          updateDonut({ size: v });
+                        }}
+                      />
+                    </label>
+                    <label>
+                      distance
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={distance}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value);
+                          setDistance(v);
+                          updateDonut({ distance: v });
+                        }}
+                      />
+                    </label>
+                    <label>
+                      speed
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={speed}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value);
+                          setSpeed(v);
+                          updateDonut({ speed: v });
+                        }}
+                      />
+                    </label>
+                  </div>
                 </div>
 
                 {/* 2. Rotation */}
