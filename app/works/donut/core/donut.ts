@@ -124,7 +124,7 @@ export class Donut {
 
     // 문자셋 기본값: latin
     this.asciiPresetKey = "latin";
-    this.asciiIndex = ASCII_PRESETS[this.asciiPresetKey];
+    this.asciiIndex = [...ASCII_PRESETS[this.asciiPresetKey]]
 
     // ASCII 화면 크기
     this.asciiWidth = Math.round(this.stageWidth / this.fontsize);
@@ -446,7 +446,7 @@ export class Donut {
   setCharsetPreset(key: AsciiPresetKey) {
     if (!ASCII_PRESETS[key]) return;
     this.asciiPresetKey = key;
-    this.asciiIndex = ASCII_PRESETS[key];
+    this.asciiIndex = [...ASCII_PRESETS[key]];
 
     // 색 모드 켜져 있으면 팔레트 다시 생성
     if (this.colorMode) {
