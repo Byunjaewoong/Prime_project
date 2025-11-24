@@ -37,7 +37,7 @@ export class Donut {
   asciiWidthYp: number;
   asciiIndex: string[];
 
-  asciiScreenArr!: number[][][]; // [x][y][2]
+  asciiScreenArr: number[][][] = []; // [x][y][2]
 
   xaxisMatrix!: number[][];
   yaxisMatrix!: number[][];
@@ -49,9 +49,9 @@ export class Donut {
   lightZ: number;
 
   // 🎨 글자 컬러 모드 관련
-  colorMode: boolean;
-  colorSeed: number;
-  glyphColorMap: Record<string, string> = {};
+  private colorMode = false;
+  private colorSeed = 0;
+  private colorMap: Record<string, string> = {};
 
   constructor(
     mode: number,
@@ -70,9 +70,7 @@ export class Donut {
     anglestep2: number,
     xAngle: number,
     yAngle: number,
-    zAngle: number,
-    colorMode: boolean,
-    colorSeed: number
+    zAngle: number
   ) {
     this.canvas = canvas;
     this.ctx = this.canvas.getContext("2d") as CanvasRenderingContext2D;
@@ -127,11 +125,6 @@ export class Donut {
       "@",
     ];
 
-    // 🎨 초기 컬러 모드 설정
-    this.colorMode = colorMode;
-    this.colorSeed = colorSeed;
-    this.buildGlyphColorMap();
-
     this.calDonut();
   }
 
@@ -147,40 +140,37 @@ export class Donut {
     this.lightZ = z / len;
   }
 
-  // 🎨 색 모드 on/off
-  setColorMode(mode: boolean) {
-    this.colorMode = mode;
-  }
-
-  // 🎨 seed를 바꾸면 색 조합을 다시 만든다
-  setColorSeed(seed: number) {
+  // 🎨 색 모드 on/off + 팔레트 재생성
+  setColorMode(on: boolean, seed: number) {
+    this.colorMode = on;
     this.colorSeed = seed;
-    this.buildGlyphColorMap();
+
+    if (!on) return;
+
+    this.buildColorPalette();
   }
 
-  // 🎨 글자 → 색 매핑을 만든다 (같은 글자는 같은 색)
-  private buildGlyphColorMap() {
-    this.glyphColorMap = {};
+  // 🎨 문자 → 색 팔레트 한 번만 만들기
+  private buildColorPalette() {
+    const rng = mulberry32(this.colorSeed);
+    const map: Record<string, string> = {};
 
-    // seed를 쓰고 싶다면 여기서 pseudo-random 구현할 수 있지만,
-    // 지금은 버튼 누를 때마다 Math.random()으로 새로 섞는 방식으로 충분.
     for (const ch of this.asciiIndex) {
       if (ch === " ") {
-        // 공백은 색 없음 (어두운 쪽에 맡김)
-        this.glyphColorMap[ch] = "rgba(0,0,0,0)";
+        // 공백은 안 보이게
+        map[ch] = "rgba(0,0,0,0)";
         continue;
       }
 
-      // 밝은 문자일수록 살짝 더 밝게 (index 기반)
-      const idx = this.asciiIndex.indexOf(ch);
-      const brightnessBase = 140 + idx * 6; // 대충 140~220 사이
+      const h = rng() * 360;     // 0 ~ 360
+      const s = 70 + rng() * 30; // 70 ~ 100 %
+      const l = 45 + rng() * 10; // 45 ~ 55 %
 
-      const r = Math.min(255, brightnessBase + Math.floor(Math.random() * 40));
-      const g = Math.min(255, brightnessBase + Math.floor(Math.random() * 40));
-      const b = Math.min(255, brightnessBase + Math.floor(Math.random() * 40));
-
-      this.glyphColorMap[ch] = `rgba(${r},${g},${b},1)`;
+      const { r, g, b } = hslToRgb(h / 360, s / 100, l / 100);
+      map[ch] = `rgb(${r},${g},${b})`;
     }
+
+    this.colorMap = map;
   }
 
   calDonut() {
@@ -387,7 +377,12 @@ export class Donut {
 
         const ch = this.asciiIndex[num] ?? " ";
 
-        this.filltext(xscreen, yscreen, ch, this.fontsize);
+        // 🎨 컬러 모드면 팔레트에서 색 꺼내기, 아니면 흰색
+        const color = this.colorMode
+          ? this.colorMap[ch] || "rgb(255,255,255)"
+          : "rgb(255,255,255)";
+
+        this.filltext(xscreen, yscreen, ch, this.fontsize, color);
 
         this.asciiScreenArr[i][j][0] = -1;
         this.asciiScreenArr[i][j][1] = 0;
@@ -395,55 +390,17 @@ export class Donut {
     }
   }
 
-//   filltext(x: number, y: number, lumicode: string, fontsize: number) {
-//     this.ctx.font = `${fontsize}px serif`;
-
-//     if (this.colorMode && lumicode.trim() !== "") {
-//       // 같은 글자는 같은 색
-//       const c =
-//         this.glyphColorMap[lumicode] ??
-//         "rgba(220,220,220,1)";
-//       this.ctx.fillStyle = c;
-//     } else {
-//       const colorindex = 255;
-//       this.ctx.fillStyle = `rgba(${colorindex},${colorindex},${colorindex},1)`;
-//     }
-
-//     this.ctx.fillText(lumicode, x, y);
-//   }
-
-// donut.ts 안
-    filltext(x: number, y: number, lumicode: string, fontsize: number) {
+  filltext(
+    x: number,
+    y: number,
+    lumicode: string,
+    fontsize: number,
+    color?: string
+  ) {
     this.ctx.font = `${fontsize}px serif`;
-
-    if (this.colorMode) {
-        // 글자 + seed → 항상 같은 색이 나오도록 해시
-        const idx = this.asciiIndex.indexOf(lumicode);
-        const base = this.colorSeed || 0;
-
-        const hash = (idx * 97 + base) % 360;
-
-        // 🔥 강렬하게: 채도 100%, 명도 55~65%
-        const hue = hash;              // 0~360
-        const saturation = 50;        // 쨍하게
-        const lightness = 70;          // 너무 밝지 않게
-
-        const color = `hsl(${hue} ${saturation}% ${lightness}%)`;
-
-        this.ctx.fillStyle = color;
-
-        // 살짝 네온 느낌 주고 싶으면 shadow 추가
-        this.ctx.shadowColor = color;
-        this.ctx.shadowBlur = 1;
-    } else {
-        // 기본 흰색 모드
-        this.ctx.fillStyle = `rgba(255,255,255,1)`;
-        this.ctx.shadowBlur = 0;
-    }
-
+    this.ctx.fillStyle = color ?? `rgba(255,255,255,1)`;
     this.ctx.fillText(lumicode, x, y);
-    }
-
+  }
 
   setRotationAngles(xAngle: number, yAngle: number, zAngle: number) {
     this.xAngle = xAngle;
@@ -455,4 +412,46 @@ export class Donut {
     this.k1 = k1;
     this.k2 = k2;
   }
+}
+
+// 🎲 deterministic RNG
+function mulberry32(seed: number) {
+  let t = seed >>> 0;
+  return function () {
+    t += 0x6d2b79f5;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// 🎨 HSL(0~1) → RGB(0~255)
+function hslToRgb(h: number, s: number, l: number) {
+  let r: number, g: number, b: number;
+
+  if (s === 0) {
+    r = g = b = l; // achromatic
+  } else {
+    const hue2rgb = (p: number, q: number, t: number) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+
+    r = hue2rgb(p, q, h + 1 / 3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1 / 3);
+  }
+
+  return {
+    r: Math.round(r * 255),
+    g: Math.round(g * 255),
+    b: Math.round(b * 255),
+  };
 }

@@ -77,9 +77,8 @@ export class App {
     // 원본 기준 초기 값
     this.L2donut = 10;
     this.magfactor = 600;
-    // this.resolutionCircle = 144;
-    // this.resolutionTube = 288;
 
+    // 해상도 (조절해서 성능 튜닝)
     this.resolutionCircle = 72;
     this.resolutionTube = 144;
 
@@ -91,7 +90,6 @@ export class App {
     this.zAngle = (-2 * Math.PI) / 700;
 
     this.mode = 0;
-    // this.fontSize = 8;
     this.fontSize = 8;
 
     this.lightX = this.config.lightX;
@@ -139,71 +137,72 @@ export class App {
   }
 
   private applyConfigToParameters() {
-  const {
-    size,
-    distance,
-    speed,
-    rotX,
-    rotY,
-    rotZ,
-    lightX,
-    lightY,
-    lightZ,
-  } = this.config;
+    const {
+      size,
+      distance,
+      speed,
+      rotX,
+      rotY,
+      rotZ,
+      lightX,
+      lightY,
+      lightZ,
+    } = this.config;
 
-  const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
-  const sizeNorm = clamp01(size);
-  const distNorm = clamp01(distance);
-  const speedNorm = clamp01(speed);
+    const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+    const sizeNorm = clamp01(size);
+    const distNorm = clamp01(distance);
+    const speedNorm = clamp01(speed);
 
-  // ----- 회전 방향 벡터 정규화 -----
-  const clampAxis = (v: number) => Math.max(-1, Math.min(1, v));
-  let vx = clampAxis(rotX);
-  let vy = clampAxis(rotY);
-  let vz = clampAxis(rotZ);
+    // ----- 회전 방향 벡터 정규화 -----
+    const clampAxis = (v: number) => Math.max(-1, Math.min(1, v));
+    let vx = clampAxis(rotX);
+    let vy = clampAxis(rotY);
+    let vz = clampAxis(rotZ);
 
-  let lenDir = Math.sqrt(vx * vx + vy * vy + vz * vz);
-  if (lenDir < 1e-3) {
-    // 방향 벡터 길이가 너무 작으면 기본 방향 하나 줌 (멈추지 않게)
-    vx = 1;
-    vy = 0;
-    vz = 0;
-    lenDir = 1;
+    let lenDir = Math.sqrt(vx * vx + vy * vy + vz * vz);
+    if (lenDir < 1e-3) {
+      // 완전 0 근처면 기본 방향 하나 줘서 안 멈추게
+      vx = 1;
+      vy = 0;
+      vz = 0;
+      lenDir = 1;
+    }
+    const dirX = vx / lenDir;
+    const dirY = vy / lenDir;
+    const dirZ = vz / lenDir;
+    // --------------------------------
+
+    // 크기 (도넛 반지름)
+    this.donutinternalSize = 1.5 + sizeNorm * 1.5; // 1.5 ~ 3.0
+    this.donutOuterSize = 3 + sizeNorm * 3.0;      // 3 ~ 6
+
+    // 거리감
+    this.L2donut = 8 + distNorm * 22;              // 8 ~ 30
+    this.magfactor = 400 + (1 - distNorm) * 400;   // 400 ~ 800 (가까울수록 크게)
+
+    // 속도 (크기만 speed로 결정)
+    const speedFactor = 0.3 + speedNorm * 2.0;
+
+    const baseX = (-2 * Math.PI) / 350;
+    const baseY = (2 * Math.PI) / 150;
+    const baseZ = (-2 * Math.PI) / 700;
+
+    // 방향은 dirX/Y/Z, 크기는 base*speedFactor
+    this.xAngle = baseX * speedFactor * dirX;
+    this.yAngle = baseY * speedFactor * dirY;
+    this.zAngle = baseZ * speedFactor * dirZ;
+
+    // 빛 방향도 기존처럼 정규화
+    const lenLight = Math.sqrt(
+      lightX * lightX + lightY * lightY + lightZ * lightZ
+    );
+    if (lenLight > 1e-3) {
+      this.lightX = lightX / lenLight;
+      this.lightY = lightY / lenLight;
+      this.lightZ = lightZ / lenLight;
+    }
   }
-  const dirX = vx / lenDir;
-  const dirY = vy / lenDir;
-  const dirZ = vz / lenDir;
-  // --------------------------------
-
-  // 크기 (도넛 반지름)
-  this.donutinternalSize = 1.5 + sizeNorm * 1.5; // 0.5 ~ 2.0
-  this.donutOuterSize = 3 + sizeNorm * 3.0;    // 1.5 ~ 4.5
-
-  // 거리감
-  this.L2donut = 8 + distNorm * 22;              // 8 ~ 30
-  this.magfactor = 400 + (1 - distNorm) * 400;   // 400 ~ 800
-
-  // 속도 (크기만 speed로 결정)
-  const speedFactor = 0.3 + speedNorm * 2.0;
-
-  const baseX = (-2 * Math.PI) / 350;
-  const baseY = (2 * Math.PI) / 150;
-  const baseZ = (-2 * Math.PI) / 700;
-
-  // 👉 방향은 dirX/Y/Z, 크기는 base*speedFactor
-  this.xAngle = baseX * speedFactor * dirX;
-  this.yAngle = baseY * speedFactor * dirY;
-  this.zAngle = baseZ * speedFactor * dirZ;
-
-  // 빛 방향도 기존처럼 정규화
-  const lenLight = Math.sqrt(lightX * lightX + lightY * lightY + lightZ * lightZ);
-  if (lenLight > 1e-3) {
-    this.lightX = lightX / lenLight;
-    this.lightY = lightY / lenLight;
-    this.lightZ = lightZ / lenLight;
-  }
-  }
-
 
   private rebuildDonut() {
     this.applyConfigToParameters();
@@ -227,12 +226,12 @@ export class App {
       this.resolutionTube,
       this.xAngle,
       this.yAngle,
-      this.zAngle,
-      this.config.colorMode,
-      this.config.colorSeed
+      this.zAngle
     );
 
     this.donut.setLightDirection(this.lightX, this.lightY, this.lightZ);
+    // 🎨 현재 config 기준으로 색 모드 세팅
+    this.donut.setColorMode(this.config.colorMode, this.config.colorSeed);
   }
 
   resize() {
@@ -272,9 +271,8 @@ export class App {
       partial.lightX !== undefined ||
       partial.lightY !== undefined ||
       partial.lightZ !== undefined;
-
-    const colorModeChanged = partial.colorMode !== undefined;
-    const colorSeedChanged = partial.colorSeed !== undefined;
+    const colorChanged =
+      partial.colorMode !== undefined || partial.colorSeed !== undefined;
 
     this.applyConfigToParameters();
 
@@ -295,12 +293,8 @@ export class App {
       this.donut.setLightDirection(this.lightX, this.lightY, this.lightZ);
     }
 
-    if (colorModeChanged) {
-      this.donut.setColorMode(this.config.colorMode);
-    }
-
-    if (colorSeedChanged) {
-      this.donut.setColorSeed(this.config.colorSeed);
+    if (colorChanged) {
+      this.donut.setColorMode(this.config.colorMode, this.config.colorSeed);
     }
 
     if (sizeChanged) {
