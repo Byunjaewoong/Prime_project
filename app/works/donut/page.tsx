@@ -40,25 +40,6 @@ export default function DonutPage() {
   const [paintMode, setPaintMode] = useState(false);
   const [paintSeed, setPaintSeed] = useState(0);
 
-  // 폰트 + 문자셋 프리셋 (fontKey / charsetKey → core로 전달)
-  const FONT_CHARSET_PRESETS = [
-    { fontKey: "gothic", charsetKey: "latin_inverse" },
-    { fontKey: "serif",  charsetKey: "latin" },
-    { fontKey: "mono",  charsetKey: "latin_void" },
-    { fontKey: "mono",  charsetKey: "latin_void_2" },
-    { fontKey: "hangulSans",  charsetKey: "hangul_void" },
-    { fontKey: "hangulSerif",  charsetKey: "hangul" },
-    // 🔥 한자용 CJK 폰트
-    { fontKey: "cjkSans",  charsetKey: "hanja" },
-    // { fontKey: "cjkSerif",  charsetKey: "hanja" },
-    { fontKey: "math",  charsetKey: "math" },
-    { fontKey: "arabic",  charsetKey: "arabic" },
-    { fontKey: "gothic", charsetKey: "DNA" },
-    { fontKey: "serif", charsetKey: "DNA_2" },
-    { fontKey: "mono", charsetKey: "DNA_3" },
-    { fontKey: "gothic", charsetKey: "DNA_4" },
-  ];
-
   const deltaVelRef = useRef({
     rotX: 0,
     rotY: 0,
@@ -67,7 +48,7 @@ export default function DonutPage() {
     lightY: 0,
     lightZ: 0,
   });
-  const deltaFrameRef = useRef<number | null>(null); // 현재는 안 쓰지만 남겨둠
+  const deltaFrameRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number | null>(null);
 
   // 왼쪽 슬라이드 패널 (마우스 왼쪽 벽 근처)
@@ -106,6 +87,7 @@ export default function DonutPage() {
       fontSize: number;
       fontKey: string;
       charsetKey: string;
+      mode: number;
     }>
   ) => {
     donutApp?.updateConfig(patch as any);
@@ -123,7 +105,6 @@ export default function DonutPage() {
   useEffect(() => {
     if (!donutApp) return;
 
-    // Δ OFF → 모든 타이머/애니메이션 정리
     if (!deltaMode) {
       if (lightTweenFrameRef.current !== null) {
         cancelAnimationFrame(lightTweenFrameRef.current);
@@ -137,7 +118,7 @@ export default function DonutPage() {
     const randSigned = (minAbs: number, maxAbs: number) =>
       (Math.random() < 0.5 ? -1 : 1) * rand(minAbs, maxAbs);
 
-    // ✅ 1) 회전: 2초마다 각도 방향 바꿔줌
+    // 1) 회전: 2초마다 각도 방향 바꾸기
     const rotationTimerId = window.setInterval(() => {
       const nextRotX = randSigned(0.4, 1.0);
       const nextRotY = randSigned(0.4, 1.0);
@@ -152,9 +133,9 @@ export default function DonutPage() {
         rotY: nextRotY,
         rotZ: nextRotZ,
       } as any);
-    }, 2000); // 2초마다
+    }, 2000);
 
-    // ✅ 2) 빛: 4초 동안 서서히 target 방향으로 보간
+    // 2) 빛: 4초 동안 보간
     const makeRandomLightDir = () => {
       let x = randSigned(0.25, 1.0);
       let y = randSigned(0.25, 1.0);
@@ -172,11 +153,10 @@ export default function DonutPage() {
       return { x, y, z };
     };
 
-    // 시작값은 현재 lightX/Y/Z 기준
     let start = { x: lightX, y: lightY, z: lightZ };
     let target = makeRandomLightDir();
     let startTime = performance.now();
-    const DURATION = 4000; // 4초
+    const DURATION = 4000;
 
     const step = (now: number) => {
       const t = Math.min(1, (now - startTime) / DURATION);
@@ -195,7 +175,6 @@ export default function DonutPage() {
         lightZ: curZ,
       } as any);
 
-      // 4초 경과 → 새 타겟으로 다시 4초간 보간
       if (t >= 1) {
         start = { x: curX, y: curY, z: curZ };
         target = makeRandomLightDir();
@@ -207,7 +186,6 @@ export default function DonutPage() {
 
     lightTweenFrameRef.current = requestAnimationFrame(step);
 
-    // cleanup
     return () => {
       window.clearInterval(rotationTimerId);
       if (lightTweenFrameRef.current !== null) {
@@ -219,10 +197,10 @@ export default function DonutPage() {
 
   // 🎨 페인트 버튼 클릭 핸들러
   const togglePaint = (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.stopPropagation(); // 캔버스 클릭 이벤트 막기
+    e.stopPropagation();
 
     const nextMode = !paintMode;
-    const nextSeed = Date.now(); // 매번 다른 시드
+    const nextSeed = Date.now();
 
     setPaintMode(nextMode);
     setPaintSeed(nextSeed);
@@ -243,21 +221,10 @@ export default function DonutPage() {
     updateDonut({ fontSize: fs });
   };
 
-  // 🎲 폰트 + 문자셋 랜덤 버튼
+  // 🎲 폰트 + 문자셋 + 모드 랜덤 버튼 (색은 그대로)
   const handleFontRandom = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
-
-    const pick =
-      FONT_CHARSET_PRESETS[
-        Math.floor(Math.random() * FONT_CHARSET_PRESETS.length)
-      ];
-
-  // 🔹 폰트 / 문자셋만 변경
-  // 🔹 fontSize / fontIndex는 건드리지 않음
-    updateDonut({
-      fontKey: pick.fontKey,
-      charsetKey: pick.charsetKey,
-    });;
+    donutApp?.randomizeVisualStyle({ withPaint: false });
   };
 
   return (
@@ -325,7 +292,7 @@ export default function DonutPage() {
                       type="button"
                       className="orbit-fab__delta-button dice-button"
                       onClick={handleFontRandom}
-                      aria-label="폰트 / 문자셋 랜덤 변경"
+                      aria-label="폰트 / 문자셋 / 모드 랜덤 변경"
                     >
                       🎲
                     </button>

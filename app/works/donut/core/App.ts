@@ -30,6 +30,23 @@ function getFontFamily(key: string) {
   return FONT_FAMILIES[key] ?? FONT_FAMILIES["gothic"];
 }
 
+// 🎲 폰트 + 문자셋 랜덤 프리셋
+const FONT_CHARSET_PRESETS: { fontKey: string; charsetKey: string }[] = [
+  { fontKey: "gothic", charsetKey: "latin_inverse" },
+  { fontKey: "serif", charsetKey: "latin" },
+  { fontKey: "mono", charsetKey: "latin_void" },
+  { fontKey: "mono", charsetKey: "latin_void_2" },
+  { fontKey: "hangulSans", charsetKey: "hangul_void" },
+  { fontKey: "hangulSerif", charsetKey: "hangul" },
+  { fontKey: "cjkSans", charsetKey: "hanja" },
+  { fontKey: "math", charsetKey: "math" },
+  { fontKey: "arabic", charsetKey: "arabic" },
+  { fontKey: "gothic", charsetKey: "DNA" },
+  { fontKey: "serif", charsetKey: "DNA_2" },
+  { fontKey: "mono", charsetKey: "DNA_3" },
+  { fontKey: "gothic", charsetKey: "DNA_4" },
+];
+
 type DonutConfig = {
   size: number; // 0 ~ 1
   distance: number; // 0 ~ 1
@@ -47,10 +64,13 @@ type DonutConfig = {
 
   // 🆕 폰트 + 문자셋 키
   fontKey: string; // "gothic" | "serif" | "mono" | "hangulSans" | ...
-  charsetKey: string; // "latin" | "hangul" | "hanja" | "arabic" | "math"
+  charsetKey: string; // "latin" | "hangul" | "hanja" | "arabic" | "math" | ...
 
   // 🅰 폰트 크기 (px)
   fontSize: number;
+
+  // 🌀 도넛 모드 (0: dot, 1: ascii)
+  mode: number;
 };
 
 export class App {
@@ -99,6 +119,8 @@ export class App {
     charsetKey: "latin",
 
     fontSize: 12,
+
+    mode: 1,
   };
 
   lightX: number;
@@ -130,7 +152,7 @@ export class App {
     this.yAngle = (2 * Math.PI) / 150;
     this.zAngle = (-2 * Math.PI) / 700;
 
-    this.mode = 0;
+    this.mode = this.config.mode;
     this.fontSize = this.config.fontSize;
 
     this.lightX = this.config.lightX;
@@ -141,7 +163,7 @@ export class App {
     window.addEventListener("resize", this.resizeHandler, false);
     this.resize();
 
-    // 클릭 시 모드 토글 (UI 위 클릭은 무시)
+    // ⬇⬇ 클릭 시: 폰트/문자셋/모드/색 전부 랜덤화 (dice + paint 효과)
     this.clickHandler = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
 
@@ -164,10 +186,8 @@ export class App {
         return;
       }
 
-      this.mode = this.mode === 0 ? 1 : 0;
-      if (this.donut) {
-        this.donut.setMode(this.mode);
-      }
+      // 🎲 + 🎨 한 번에
+      this.randomizeVisualStyle({ withPaint: true });
     };
     window.addEventListener("click", this.clickHandler);
 
@@ -203,7 +223,6 @@ export class App {
 
     let lenDir = Math.sqrt(vx * vx + vy * vy + vz * vz);
     if (lenDir < 1e-3) {
-      // 완전 0 근처면 기본 방향 하나 줘서 안 멈추게
       vx = 1;
       vy = 0;
       vz = 0;
@@ -212,7 +231,6 @@ export class App {
     const dirX = vx / lenDir;
     const dirY = vy / lenDir;
     const dirZ = vz / lenDir;
-    // --------------------------------
 
     // 크기 (도넛 반지름)
     this.donutinternalSize = 1.5 + sizeNorm * 1.5; // 1.5 ~ 3.0
@@ -220,21 +238,20 @@ export class App {
 
     // 거리감
     this.L2donut = 8 + distNorm * 22; // 8 ~ 30
-    this.magfactor = 400 + (1 - distNorm) * 400; // 400 ~ 800 (가까울수록 크게)
+    this.magfactor = 400 + (1 - distNorm) * 400; // 400 ~ 800
 
-    // 속도 (크기만 speed로 결정)
+    // 속도
     const speedFactor = 0.3 + speedNorm * 2.0;
 
     const baseX = (-2 * Math.PI) / 350;
     const baseY = (2 * Math.PI) / 150;
     const baseZ = (-2 * Math.PI) / 700;
 
-    // 방향은 dirX/Y/Z, 크기는 base*speedFactor
     this.xAngle = baseX * speedFactor * dirX;
     this.yAngle = baseY * speedFactor * dirY;
     this.zAngle = baseZ * speedFactor * dirZ;
 
-    // 빛 방향도 기존처럼 정규화
+    // 빛 방향 정규화
     const lenLight = Math.sqrt(
       lightX * lightX + lightY * lightY + lightZ * lightZ
     );
@@ -250,8 +267,8 @@ export class App {
 
     if (this.stageWidth === 0 || this.stageHeight === 0) return;
 
-    // 최신 fontSize로 동기화
     this.fontSize = this.config.fontSize;
+    this.mode = this.config.mode;
 
     this.donut = new Donut(
       this.mode,
@@ -274,7 +291,6 @@ export class App {
     );
 
     this.donut.setLightDirection(this.lightX, this.lightY, this.lightZ);
-    // 🎨 현재 config 기준으로 색 모드 세팅
     this.donut.setColorMode(this.config.colorMode, this.config.colorSeed);
 
     // 폰트/문자셋 적용
@@ -326,6 +342,7 @@ export class App {
     const fontSizeChanged = partial.fontSize !== undefined;
     const fontKeyChanged = partial.fontKey !== undefined;
     const charsetChanged = partial.charsetKey !== undefined;
+    const modeChanged = partial.mode !== undefined;
 
     this.applyConfigToParameters();
 
@@ -362,10 +379,39 @@ export class App {
       this.donut.setCharsetPreset(this.config.charsetKey as any);
     }
 
+    if (modeChanged) {
+      this.mode = this.config.mode;
+      this.donut.setMode(this.mode);
+    }
+
     if (sizeChanged) {
-      // 크기는 지오메트리 자체가 바뀌어서 다시 구축
       this.rebuildDonut();
     }
+  }
+
+  // 🎲 외부에서 호출할 수 있는 랜덤 스타일 함수
+  //   withPaint = true면 색 모드 + 팔레트까지 같이 랜덤
+  public randomizeVisualStyle(options?: { withPaint?: boolean }) {
+    const withPaint = options?.withPaint ?? false;
+
+    const pick =
+      FONT_CHARSET_PRESETS[
+        Math.floor(Math.random() * FONT_CHARSET_PRESETS.length)
+      ];
+
+    const nextMode = Math.random() < (1/FONT_CHARSET_PRESETS.length) ? 0 : 1;
+    const patch: Partial<DonutConfig> = {
+      fontKey: pick.fontKey,
+      charsetKey: pick.charsetKey,
+      mode: nextMode,
+    };
+
+    if (withPaint) {
+      patch.colorMode = true;
+      patch.colorSeed = Date.now();
+    }
+
+    this.updateConfig(patch);
   }
 
   destroy() {
