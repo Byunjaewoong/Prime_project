@@ -1,14 +1,29 @@
 // app/works/donut/core/App.ts
 import { Donut } from "./donut";
 
+// 🔤 폰트 패밀리 매핑 (key → CSS font-family 문자열)
 const FONT_FAMILIES: Record<string, string> = {
-  gothic: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  gothic:
+    'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   serif: '"Times New Roman", "Nanum Myeongjo", serif',
   mono: '"JetBrains Mono", "DM Mono", monospace',
-  hangulSans: '"Pretendard Variable", "Noto Sans KR", system-ui, sans-serif',
+
+  // 한글 산세리프
+  hangulSans:
+    '"Noto Sans KR", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  // 한글 명조
   hangulSerif: '"Nanum Myeongjo", "Noto Serif KR", serif',
-  arabic: '"Amiri", "Scheherazade New", serif',
+
+  // 한글+한자 포함 CJK 계열
+  cjkSans:
+    '"Noto Sans CJK KR", "Noto Sans KR", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  cjkSerif:
+    '"Noto Serif CJK KR", "Noto Serif KR", "Nanum Myeongjo", serif',
+
+  // 수식·기호용
   math: '"STIX Two Math", "Latin Modern Math", "Times New Roman", serif',
+  // 아랍어용
+  arabic: '"Amiri", "Scheherazade New", serif',
 };
 
 function getFontFamily(key: string) {
@@ -16,13 +31,13 @@ function getFontFamily(key: string) {
 }
 
 type DonutConfig = {
-  size: number;     // 0 ~ 1
+  size: number; // 0 ~ 1
   distance: number; // 0 ~ 1
-  speed: number;    // 0 ~ 1
-  rotX: number;     // -1 ~ 1
+  speed: number; // 0 ~ 1
+  rotX: number; // -1 ~ 1
   rotY: number;
   rotZ: number;
-  lightX: number;   // -1 ~ 1
+  lightX: number; // -1 ~ 1
   lightY: number;
   lightZ: number;
 
@@ -31,11 +46,11 @@ type DonutConfig = {
   colorSeed: number;
 
   // 🆕 폰트 + 문자셋 키
-  fontKey: string;      // "gothic" | "serif" | "mono" | "hangulSans" ...
-  charsetKey: string;   // "latin" | "hangul" | "hanja" | "arabic" | "math"
+  fontKey: string; // "gothic" | "serif" | "mono" | "hangulSans" | ...
+  charsetKey: string; // "latin" | "hangul" | "hanja" | "arabic" | "math"
 
-  // 🅰 폰트 크기
-  fontSize: number;      // px
+  // 🅰 폰트 크기 (px)
+  fontSize: number;
 };
 
 export class App {
@@ -83,7 +98,7 @@ export class App {
     fontKey: "gothic",
     charsetKey: "latin",
 
-    fontSize: 8,
+    fontSize: 12,
   };
 
   lightX: number;
@@ -201,11 +216,11 @@ export class App {
 
     // 크기 (도넛 반지름)
     this.donutinternalSize = 1.5 + sizeNorm * 1.5; // 1.5 ~ 3.0
-    this.donutOuterSize = 3 + sizeNorm * 3.0;      // 3 ~ 6
+    this.donutOuterSize = 3 + sizeNorm * 3.0; // 3 ~ 6
 
     // 거리감
-    this.L2donut = 8 + distNorm * 22;              // 8 ~ 30
-    this.magfactor = 400 + (1 - distNorm) * 400;   // 400 ~ 800 (가까울수록 크게)
+    this.L2donut = 8 + distNorm * 22; // 8 ~ 30
+    this.magfactor = 400 + (1 - distNorm) * 400; // 400 ~ 800 (가까울수록 크게)
 
     // 속도 (크기만 speed로 결정)
     const speedFactor = 0.3 + speedNorm * 2.0;
@@ -262,7 +277,7 @@ export class App {
     // 🎨 현재 config 기준으로 색 모드 세팅
     this.donut.setColorMode(this.config.colorMode, this.config.colorSeed);
 
-    // 폰트/문자셋도 적용
+    // 폰트/문자셋 적용
     this.donut.setFontSize(this.config.fontSize);
     this.donut.setFontFamily(getFontFamily(this.config.fontKey));
     this.donut.setCharsetPreset(this.config.charsetKey as any);
@@ -310,7 +325,7 @@ export class App {
 
     const fontSizeChanged = partial.fontSize !== undefined;
     const fontKeyChanged = partial.fontKey !== undefined;
-    const charsetKeyChanged = partial.charsetKey !== undefined;
+    const charsetChanged = partial.charsetKey !== undefined;
 
     this.applyConfigToParameters();
 
@@ -343,7 +358,7 @@ export class App {
       this.donut.setFontFamily(getFontFamily(this.config.fontKey));
     }
 
-    if (charsetKeyChanged) {
+    if (charsetChanged) {
       this.donut.setCharsetPreset(this.config.charsetKey as any);
     }
 

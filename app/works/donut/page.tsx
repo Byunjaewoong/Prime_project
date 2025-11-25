@@ -13,7 +13,7 @@ export default function DonutPage() {
   const [donutApp, setDonutApp] = useState<DonutCoreApp | null>(null);
 
   // 🔤 폰트 크기 (로그 스케일 느낌)
-  const FONT_VALUES = [6, 8, 10, 12, 20, 30, 50, 100, 200, 400, 800];
+  const FONT_VALUES = [6, 8, 10, 12, 15, 20, 30, 50, 80, 120, 400];
   const [fontIndex, setFontIndex] = useState(2); // 0:6,1:8,2:10 ...
   const fontSize = FONT_VALUES[fontIndex];
 
@@ -45,13 +45,18 @@ export default function DonutPage() {
     { fontKey: "gothic", charsetKey: "latin_inverse" },
     { fontKey: "serif",  charsetKey: "latin" },
     { fontKey: "mono",  charsetKey: "latin_void" },
-    // { fontKey: "hangulSans",  charsetKey: "hangul" },
+    { fontKey: "mono",  charsetKey: "latin_void_2" },
+    { fontKey: "hangulSans",  charsetKey: "hangul_void" },
     { fontKey: "hangulSerif",  charsetKey: "hangul" },
     // 🔥 한자용 CJK 폰트
     { fontKey: "cjkSans",  charsetKey: "hanja" },
     // { fontKey: "cjkSerif",  charsetKey: "hanja" },
     { fontKey: "math",  charsetKey: "math" },
     { fontKey: "arabic",  charsetKey: "arabic" },
+    { fontKey: "gothic", charsetKey: "DNA" },
+    { fontKey: "serif", charsetKey: "DNA_2" },
+    { fontKey: "mono", charsetKey: "DNA_3" },
+    { fontKey: "gothic", charsetKey: "DNA_4" },
   ];
 
   const deltaVelRef = useRef({
