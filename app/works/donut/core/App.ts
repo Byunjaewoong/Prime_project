@@ -120,8 +120,8 @@ export class App {
     this.magfactor = 600;
 
     // 해상도 (조절해서 성능 튜닝)
-    this.resolutionCircle = 72;
-    this.resolutionTube = 144;
+    this.resolutionCircle = 100;
+    this.resolutionTube = 200;
 
     this.donutOuterSize = 2;
     this.donutinternalSize = 1;
