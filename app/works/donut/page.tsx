@@ -7,6 +7,24 @@ import { Home } from "lucide-react";
 import CanvasApp from "./CanvasApp";
 import type { App as DonutCoreApp } from "./core/App";
 
+// 🔤 donut.ts 의 ASCII_PRESETS 키들과 동일하게 맞춰줌
+const CHARSET_KEYS = [
+  "latin",
+  "hangul",
+  "hanja",
+  "arabic",
+  "math",
+  "latin_inverse",
+  "latin_void",
+  "latin_void_2",
+  "hangul_void",
+  "DNA",
+  "DNA_2",
+  "DNA_3",
+  "DNA_4",
+] as const;
+type CharsetKey = (typeof CHARSET_KEYS)[number];
+
 export default function DonutPage() {
   const [showPanel, setShowPanel] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
@@ -32,11 +50,11 @@ export default function DonutPage() {
   const [lightY, setLightY] = useState(-1 / Math.sqrt(3));
   const [lightZ, setLightZ] = useState(1 / Math.sqrt(3));
 
-  // 🔺 Δ 모드 (회전/빛 자동 변화)
+  // 🔺 Δ 모드 (회전/빛/문자/색 자동 변화)
   const [deltaMode, setDeltaMode] = useState(false);
   const lightTweenFrameRef = useRef<number | null>(null);
 
-  // 🎨 글자 색 모드
+  // 🎨 글자 색 모드 (UI 상태)
   const [paintMode, setPaintMode] = useState(false);
   const [paintSeed, setPaintSeed] = useState(0);
 
@@ -101,11 +119,13 @@ export default function DonutPage() {
     setDeltaMode((prev) => !prev);
   };
 
-  // 🔺 Δ 모드: 회전은 2초마다 랜덤, 빛은 4초 동안 서서히 바뀜
+  // 🔺 Δ 모드: 회전은 2초마다 랜덤, 빛은 4초 동안 서서히 바뀌고
+  //            6초마다 charset 랜덤, 2초마다 색 팔레트 랜덤
   useEffect(() => {
     if (!donutApp) return;
 
     if (!deltaMode) {
+      // Δ OFF → 모든 타이머/애니메이션 정리
       if (lightTweenFrameRef.current !== null) {
         cancelAnimationFrame(lightTweenFrameRef.current);
         lightTweenFrameRef.current = null;
@@ -186,8 +206,30 @@ export default function DonutPage() {
 
     lightTweenFrameRef.current = requestAnimationFrame(step);
 
+    // 3) 6초마다 ASCII preset 랜덤 변경 (폰트/모드 건드리지 않음)
+    const charsetTimerId = window.setInterval(() => {
+      const key =
+        CHARSET_KEYS[Math.floor(Math.random() * CHARSET_KEYS.length)];
+      donutApp.updateConfig({
+        charsetKey: key as CharsetKey,
+      } as any);
+    }, 500);
+
+    // 4) 2초마다 색상 팔레트 변경 (페인트 버튼 효과)
+    const colorTimerId = window.setInterval(() => {
+      const seed = Date.now();
+      // colorMode 는 항상 true로 유지하면서 팔레트만 갈아끼우기
+      donutApp.updateConfig({
+        colorMode: true,
+        colorSeed: seed,
+      } as any);
+    }, 200);
+
+    // cleanup
     return () => {
       window.clearInterval(rotationTimerId);
+      window.clearInterval(charsetTimerId);
+      window.clearInterval(colorTimerId);
       if (lightTweenFrameRef.current !== null) {
         cancelAnimationFrame(lightTweenFrameRef.current);
         lightTweenFrameRef.current = null;
@@ -461,7 +503,7 @@ export default function DonutPage() {
                   e.stopPropagation();
                   toggleDelta();
                 }}
-                aria-label="랜덤 회전/빛 변화 토글"
+                aria-label="랜덤 회전/빛/문자/색 변화 토글"
               >
                 Δ
               </button>
