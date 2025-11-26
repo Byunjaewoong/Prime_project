@@ -178,8 +178,8 @@ export class Donut {
       }
 
       const h = rng() * 360; // 0 ~ 360
-      const s = 70 + rng() * 30; // 70 ~ 100 %
-      const l = 45 + rng() * 10; // 45 ~ 55 %
+      const s = 50 + rng() * 30; // 70 ~ 100 %
+      const l = 30 + rng() * 10; // 45 ~ 55 %
 
       const { r, g, b } = hslToRgb(h / 360, s / 100, l / 100);
       map[ch] = `rgb(${r},${g},${b})`;
