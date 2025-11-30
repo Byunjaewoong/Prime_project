@@ -418,4 +418,56 @@ body {
   }
 }
 
+/* 🔹 모바일에서 FAB 패널 완전 안전하게 보이게 */
+@media (max-width: 768px) {
+  .orbit-fab__controls {
+    position: fixed;
+    bottom: 80px;
+    right: 16px;
+    left: auto;
+    transform: none;
+
+    max-width: calc(100vw - 32px);
+    width: min(420px, 100vw - 32px);  /* 화면 양쪽 16px 여백 */
+    max-height: 60vh;
+    overflow-y: auto;
+
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: rgba(0, 0, 0, 0.88);
+    box-sizing: border-box;
+
+    /* 혹시 기존 스타일 때문에 밀리는 걸 강제로 덮어쓰기 */
+    right: auto !important;
+    margin: 0 !important;
+  }
+
+  .orbit-panel-container {
+    display: flex;
+    flex-direction: column;   /* 세로 한 줄씩 */
+    gap: 8px;
+  }
+
+  .orbit-panel-section h4 {
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+
+  .orbit-panel-section label {
+    font-size: 11px;
+  }
+
+  .orbit-panel-section input[type="range"] {
+    width: 100%;
+  }
+
+  .orbit-font-label {
+    font-size: 11px;
+  }
+
+  .orbit-font-value {
+    font-size: 11px;
+  }
+}
+
 
