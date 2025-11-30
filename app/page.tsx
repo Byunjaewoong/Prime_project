@@ -32,7 +32,7 @@ export default function HomePage() {
           <Link href="/works/donut">ASCII Donut</Link>
         </li>
         <li style={{ marginBottom: 8 }}>
-          <Link href="/works/d">작업물 D</Link>
+          <Link href="/works/perlin_noise">perlin noise</Link>
         </li>
       </ul>
     </main>
