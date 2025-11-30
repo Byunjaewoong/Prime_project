@@ -417,17 +417,14 @@ body {
     font-size: 11px;
   }
 }
-
 /* 🔹 모바일에서 FAB 패널 완전 안전하게 보이게 */
 @media (max-width: 768px) {
   .orbit-fab__controls {
-    position: fixed;
+    position: fixed;              /* 뷰포트 기준으로 고정 */
     bottom: 80px;
-    right: 16px;
-    left: auto;
-    transform: none;
-
-    max-width: calc(100vw - 32px);
+    left: 50%;
+    transform: translateX(-50%);  /* 가로 가운데 정렬 */
+    
     width: min(420px, 100vw - 32px);  /* 화면 양쪽 16px 여백 */
     max-height: 60vh;
     overflow-y: auto;

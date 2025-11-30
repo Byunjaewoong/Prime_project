@@ -137,6 +137,13 @@ export class App {
 
     this.pixelRatio = 1;
 
+    const isMobile = window.innerWidth < 768;
+
+    if (isMobile) {
+      this.config.size = this.config.size * 0.3;  // 기존의 절반
+      // this.config.distance = this.config.distance * 0.5; // 거리도 줄임
+    }
+
     // 원본 기준 초기 값
     this.L2donut = 10;
     this.magfactor = 600;
