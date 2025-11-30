@@ -347,4 +347,75 @@ body {
   /* 필요하면 다른 느낌으로 튜닝 */
 }
 
+/* 🔹 FAB 패널 기본 스타일 튜닝(PC + 공통) */
+.orbit-fab__controls {
+  position: absolute;
+  right: 80px;
+  bottom: 80px;
+  background: rgba(0, 0, 0, 0.88);
+  border-radius: 16px;
+  padding: 12px 16px;
+  backdrop-filter: blur(10px);
+
+  /* 화면 밖으로 너무 커지지 않게 제한 */
+  max-height: min(70vh, 420px);
+  max-width: min(90vw, 420px);
+  overflow-y: auto;
+
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+}
+
+/* 내부 컨테이너가 가로로 꽉 차지 않도록 */
+.orbit-panel-container {
+  display: flex;
+  gap: 12px;
+}
+
+/* 각 섹션( Donut / Rotation / Light ) 기본 스타일 */
+.orbit-panel-section {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* 🔹 모바일 최적화 */
+@media (max-width: 768px) {
+  .orbit-fab__controls {
+    right: 16px;
+    left: 16px;        /* 양쪽 여백 16px */
+    bottom: 80px;      /* M 버튼 위쪽으로 띄우기 */
+    max-width: none;   /* left/right로 폭 제어 */
+    max-height: 60vh;  /* 세로 60%까지만 쓰고 나머지는 스크롤 */
+    padding: 10px 12px;
+    border-radius: 14px;
+  }
+
+  /* 패널 내용을 세로 한 줄로 배치 */
+  .orbit-panel-container {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .orbit-panel-section h4 {
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+
+  .orbit-panel-section label {
+    font-size: 11px;
+  }
+
+  .orbit-panel-section input[type="range"] {
+    width: 100%;
+  }
+
+  /* 폰트 슬라이더/텍스트도 좀 더 컴팩트하게 */
+  .orbit-font-label {
+    font-size: 11px;
+  }
+
+  .orbit-font-value {
+    font-size: 11px;
+  }
+}
+
 
