@@ -19,6 +19,45 @@ export class App {
   private clickHandler: (e: MouseEvent) => void;
   private animationId: number | null = null;
 
+    // 🌌 새 행성이 기존 행성 + 위성 공전 범위를 침범하는지 체크
+  private canPlacePlanet(candidate: Planet): boolean {
+    const newX = candidate.spaceX;
+    const newY = candidate.spaceY;
+    const newR = candidate.windowRadius;
+    const newOrbitRange =
+      newR * Planet.MAX_SATELLITE_ORBIT_FACTOR;
+    const margin = 10; // 살짝 여유
+
+    for (const obj of this.planetGroup.array) {
+      const p = obj as any;
+      if (p.genSun) continue; // 태양 더미는 무시
+
+      const existing = p as Planet;
+      const exX = existing.spaceX;
+      const exY = existing.spaceY;
+      const exR = existing.windowRadius;
+      const exOrbitRange =
+        exR * Planet.MAX_SATELLITE_ORBIT_FACTOR;
+
+      const dx = newX - exX;
+      const dy = newY - exY;
+      const dist = Math.hypot(dx, dy);
+
+      const minDist =
+        newR + newOrbitRange + exR + exOrbitRange + margin;
+
+      if (dist < minDist) {
+        console.log(
+          "⚠ 새 행성 위치가 기존 행성/위성 궤도와 충돌해서 생성하지 않음"
+        );
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
 
@@ -57,7 +96,6 @@ export class App {
     this.clickHandler = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
 
-      // 🔒 오른쪽 플로팅 메뉴(.orbit-fab)나 왼쪽 패널(.orbit-side-panel) 안에서의 클릭은 무시
       if (
         target &&
         (target.closest(".orbit-fab") || target.closest(".orbit-side-panel"))
@@ -65,7 +103,6 @@ export class App {
         return;
       }
 
-      // (선택) 캔버스 영역 밖 클릭도 무시하고 싶으면 아래 bounds 체크 추가
       const rect = this.canvas.getBoundingClientRect();
       if (
         e.clientX < rect.left ||
@@ -76,7 +113,7 @@ export class App {
         return;
       }
 
-      // 🔥 여기까지 왔으면 "실제 화면(캔버스 쪽)을 클릭한 것"으로 보고 행성 생성
+      // ⭐ 새 행성 생성 (일단 만들어 보고)
       const planet = new Planet(
         this.canvas,
         e,
@@ -88,6 +125,13 @@ export class App {
         this.canvas.height
       );
 
+      // 🌌 기존 행성/위성 궤도와 충돌 체크
+      if (!this.canPlacePlanet(planet)) {
+        return; // 생성 취소
+      }
+
+      // 🌕 충돌 없으면 위성 생성하고 그룹에 추가
+      // planet.createDefaultSatellite();
       planet.logPosition();
       this.planetGroup.pushing(planet);
     };
@@ -155,12 +199,26 @@ export class App {
           }
         }
       } else {
-        planet.renderingPlanet(
+        const p = planet as Planet;
+
+        p.renderingPlanet(
           this.sunx,
           this.suny,
           this.canvas.width,
           this.canvas.height
         );
+
+        // 위성도 렌더링
+        for (const s of p.satellites) {
+          s.updateOrbit();     // 공전
+          s.renderingSatellite(this.sunx, this.suny);
+        }
+
+
+        //         // 위성 렌더
+        // if (p.satellites && p.satellites.length > 0) {
+        //   p.renderSatellites(this.sunx, this.suny);
+        // }
       }
     }
   }
