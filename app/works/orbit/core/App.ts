@@ -125,10 +125,10 @@ export class App {
         this.canvas.height
       );
 
-      // 🌌 기존 행성/위성 궤도와 충돌 체크
-      if (!this.canPlacePlanet(planet)) {
-        return; // 생성 취소
-      }
+      // // 🌌 기존 행성/위성 궤도와 충돌 체크
+      // if (!this.canPlacePlanet(planet)) {
+      //   return; // 생성 취소
+      // }
 
       // 🌕 충돌 없으면 위성 생성하고 그룹에 추가
       // planet.createDefaultSatellite();

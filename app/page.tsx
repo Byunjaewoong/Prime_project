@@ -15,12 +15,10 @@ export default function HomePage() {
           'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
     >
-      <h1 style={{ fontSize: "2rem", marginBottom: 8 }}>My Playground</h1>
-      {/* <p style={{ opacity: 0.8, marginBottom: 24 }}>
-        Next.js + TypeScript 기반 개인 작업물 모음입니다.
-      </p> */}
+      <h1 style={{ fontSize: "2rem", marginBottom: 8 }}>GrimGriGi</h1>
 
-      <h2 style={{ fontSize: "1.4rem", marginBottom: 12 }}>Works</h2>
+
+      <h2 style={{ fontSize: "1.4rem", marginBottom: 12 }}></h2>
       <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
         <li style={{ marginBottom: 8 }}>
           <Link href="/works/orbit">Geocentrism</Link>
@@ -32,7 +30,10 @@ export default function HomePage() {
           <Link href="/works/donut">ASCII Donut</Link>
         </li>
         <li style={{ marginBottom: 8 }}>
-          <Link href="/works/perlin_noise">perlin noise</Link>
+          <Link href="/works/perlin_noise">Perlin noise</Link>
+        </li>
+        <li style={{ marginBottom: 8 }}>
+          <Link href="/works/snow_walk">Snow walk</Link>
         </li>
       </ul>
     </main>
