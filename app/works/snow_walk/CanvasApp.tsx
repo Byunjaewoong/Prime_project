@@ -1,33 +1,41 @@
-// app/works/snow_walk/CanvasApp.tsx
+// app/works/Snow_walk/CanvasApp.tsx
 "use client";
 
 import { useEffect, useRef } from "react";
-import { App } from "./core/App";
+import { App as snow_walkApp } from "./core/App";
 
-export default function CanvasApp() {
+type CanvasAppProps = {
+  // 나중에 컨트롤 하고 싶으면 onReady로 App 인스턴스 받아갈 수 있게
+  onReady?: (app: snow_walkApp | null) => void;
+};
+
+export default function CanvasApp({ onReady }: CanvasAppProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const appRef = useRef<snow_walkApp | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const app = new App(canvas);
+    const app = new snow_walkApp(canvas);
+    appRef.current = app;
+    onReady?.(app);
 
     return () => {
-      app.dispose();
+      app.destroy();
+      appRef.current = null;
+      onReady?.(null);
     };
-  }, []);
+  }, [onReady]);
 
   return (
     <canvas
       ref={canvasRef}
+      className="full-canvas"
       style={{
-        position: "fixed", // ✅ 뷰포트에 직접 고정
-        inset: 0,          // top:0, right:0, bottom:0, left:0
-        width: "100vw",
-        height: "100vh",
         display: "block",
-        background: "#020617",
+        width: "100",
+        height: "100",
       }}
     />
   );

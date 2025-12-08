@@ -1,365 +1,384 @@
 // app/works/snow_walk/core/App.ts
-
-type Snowflake = {
-  x: number;
-  y: number;
-  speedY: number;
-  driftX: number;
-  radius: number;
-};
-
-type Footprint = {
-  x: number;
-  y: number;
-  createdAt: number;
-};
-
-type Person = {
-  x: number;
-  y: number;
-  speed: number;
-  height: number;
-  lastFootX: number;
-  stepToggle: boolean;
-};
-
-type SnowLump = {
-  x: number;
-  y: number;
-  radius: number;
-  squash: number;
-  light: boolean;
-};
+import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 export class App {
   private canvas: HTMLCanvasElement;
-  private ctx: CanvasRenderingContext2D;
-  private dpr: number = 1;
-  private width: number = 0;
-  private height: number = 0;
-
-  private snowflakes: Snowflake[] = [];
-  private footprints: Footprint[] = [];
-  private person: Person | null = null;
-  private lumps: SnowLump[] = [];
-
-  private groundTop: number = 0;
-  private groundBottom: number = 0;
-  private groundHeight: number = 0;
-
-  private lastTime: number = 0;
-  private elapsedSeconds: number = 0;
+  private renderer: THREE.WebGLRenderer;
+  private scene: THREE.Scene;
+  private camera: THREE.PerspectiveCamera;
   private animationId: number | null = null;
+  private clock: THREE.Clock; 
 
-  private handleResizeBound = () => this.handleResize();
+  // Objects
+  private ground: THREE.Mesh | null = null;
+  private playerGroup: THREE.Group | null = null;
+  
+  // Model & Animation
+  private mixer: THREE.AnimationMixer | null = null;
+
+  // Path Logic
+  private curve: THREE.QuadraticBezierCurve3 | null = null;
+  private curveProgress: number = 0;
+  private moveSpeed: number = 0.0001; 
+
+  // Footprints
+  private footprints: THREE.Mesh[] = [];
+  private fadingFootprints: THREE.Mesh[] = [];
+  private lastStepTime: number = 0;
+  private stepInterval: number = 300; 
+  private isLeftFoot: boolean = true; 
+
+  // Settings
+  private time: number = 0;
+  private cameraY: number = 30; // 카메라 높이 저장 (Radius 계산용)
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      throw new Error("2D context not supported");
-    }
-    this.ctx = ctx;
-    this.dpr = window.devicePixelRatio || 1;
+    this.clock = new THREE.Clock();
 
-    this.handleResize();
-    window.addEventListener("resize", this.handleResizeBound);
+    const parent = this.canvas.parentElement;
+    const width = parent ? parent.clientWidth : window.innerWidth;
+    const height = parent ? parent.clientHeight : window.innerHeight;
 
-    this.lastTime = performance.now();
-    this.animationId = requestAnimationFrame(this.loop);
+    // 1. Renderer Setup
+    this.renderer = new THREE.WebGLRenderer({
+      canvas: this.canvas,
+      antialias: true,
+      alpha: true,
+    });
+    this.renderer.setSize(width, height);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    // 2. Scene Setup
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0xffffff);
+    this.scene.fog = new THREE.FogExp2(0xffffff, 0.03);
+
+    // 3. Camera Setup
+    this.camera = new THREE.PerspectiveCamera(
+      45,
+      width / height,
+      0.1,
+      100
+    );
+    
+    this.camera.position.set(0, this.cameraY, 20);
+    this.camera.lookAt(0, 0, 5);
+
+    this.init();
+    this.animate();
+
+    window.addEventListener("resize", this.resize.bind(this));
   }
 
-    private handleResize() {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    if (!w || !h) return;
-
-    this.width = w;
-    this.height = h;
-
-    this.canvas.width = w * this.dpr;
-    this.canvas.height = h * this.dpr;
-    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-
-    this.groundTop = this.height * 0.25;
-    this.groundBottom = this.height * 0.95;
-    this.groundHeight = this.groundBottom - this.groundTop;
-
-    this.generateSnowLumps();
-    this.initSnow();
-    this.resetPerson();
-    }
-
-
-
-  private initSnow() {
-    const count = Math.floor((this.width * this.height) / 8000);
-    this.snowflakes = [];
-    for (let i = 0; i < count; i++) {
-      this.snowflakes.push({
-        x: Math.random() * this.width,
-        y: Math.random() * this.height,
-        speedY: 40 + Math.random() * 80,
-        driftX: -10 + Math.random() * 20,
-        radius: 1 + Math.random() * 1.8,
-      });
-    }
+  private init() {
+    this.addLights();
+    this.addGround();
+    this.addPlayer();
   }
 
-  private generateSnowLumps() {
-    const count = 130;
-    this.lumps = [];
-    for (let i = 0; i < count; i++) {
-      const x = Math.random() * this.width;
-      const y =
-        this.groundTop + Math.random() * (this.groundBottom - this.groundTop);
-      const radius = 18 + Math.random() * 38;
-      const squash = 0.5 + Math.random() * 0.4;
-      const light = Math.random() > 0.5;
-      this.lumps.push({ x, y, radius, squash, light });
-    }
+  private addLights() {
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+    this.scene.add(ambientLight);
+
+    const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    sunLight.position.set(15, 13, -15); 
+    sunLight.castShadow = true;
+
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.camera.near = 0.5;
+    sunLight.shadow.camera.far = 100;
+    
+    const d = 30;
+    sunLight.shadow.camera.left = -d;
+    sunLight.shadow.camera.right = d;
+    sunLight.shadow.camera.top = d;
+    sunLight.shadow.camera.bottom = -d;
+    sunLight.shadow.bias = -0.0005;
+
+    this.scene.add(sunLight);
   }
 
-  private resetPerson() {
-    const y = this.groundTop + this.groundHeight * 0.3;
-    this.person = {
-      x: -80,
-      y,
-      speed: 60, // px/sec
-      height: 50,
-      lastFootX: -80,
-      stepToggle: false,
+  private addGround() {
+    const createBrightSnowTexture = () => {
+      const size = 512;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, size, size);
+
+      for (let i = 0; i < 50000; i++) {
+        const x = Math.random() * size;
+        const y = Math.random() * size;
+        const grey = Math.floor(195);
+        ctx.fillStyle = `rgb(${grey},${grey},${grey})`;
+        ctx.fillRect(x, y, 1, 1);
+      }
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      texture.repeat.set(8, 8);
+      return texture;
     };
+
+    const snowTexture = createBrightSnowTexture();
+
+    const geometry = new THREE.PlaneGeometry(120, 120, 128, 128);
+    const material = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: snowTexture,
+      bumpMap: snowTexture,
+      bumpScale: 0.08,
+      roughness: 0.6,
+      metalness: 0.1,
+    });
+
+    this.ground = new THREE.Mesh(geometry, material);
+    this.ground.rotation.x = -Math.PI / 2;
+    this.ground.receiveShadow = true;
+    this.scene.add(this.ground);
   }
 
-  private loop = (time: number) => {
-    const dt = Math.min((time - this.lastTime) / 1000, 0.1);
-    this.lastTime = time;
-    this.elapsedSeconds += dt;
+  private addPlayer() {
+    this.playerGroup = new THREE.Group();
+    this.scene.add(this.playerGroup);
 
-    this.update(dt);
-    this.render();
+    this.resetPath();
 
-    this.animationId = requestAnimationFrame(this.loop);
-  };
+    const loader = new GLTFLoader();
+    
+    loader.load('/walking_v1.glb', (gltf) => {
+      const model = gltf.scene;
 
-  private update(dt: number) {
-    this.updateSnow(dt);
-    this.updatePerson(dt);
-    this.updateFootprints();
-  }
-
-  private updateSnow(dt: number) {
-    for (const flake of this.snowflakes) {
-      flake.y += flake.speedY * dt;
-      flake.x += flake.driftX * dt;
-
-      if (flake.y > this.height + 10) {
-        flake.y = -10 - Math.random() * 40;
-        flake.x = Math.random() * this.width;
-      }
-      if (flake.x < -20) flake.x = this.width + 20;
-      if (flake.x > this.width + 20) flake.x = -20;
-    }
-  }
-
-  private updatePerson(dt: number) {
-    if (!this.person) return;
-    const p = this.person;
-
-    p.x += p.speed * dt;
-
-    // 발자국 생성
-    const stepDistance = 16;
-    if (p.x - p.lastFootX > stepDistance) {
-      const offsetY = p.stepToggle ? -5 : 5;
-      this.footprints.push({
-        x: p.x,
-        y: p.y + offsetY,
-        createdAt: this.elapsedSeconds,
+      model.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
       });
-      p.lastFootX = p.x;
-      p.stepToggle = !p.stepToggle;
-    }
 
-    // 캔버스 밖으로 나가면 다시 등장
-    if (p.x > this.width + 80) {
-      this.resetPerson();
-    }
-  }
+      model.scale.set(0.6, 0.6, 0.6); 
+      model.position.y = 0; 
+      model.rotation.y = 0; 
 
-  private updateFootprints() {
-    const life = 10; // seconds: 눈이 쌓이면서 사라지는 시간
-    this.footprints = this.footprints.filter(
-      (f) => this.elapsedSeconds - f.createdAt < life
-    );
-  }
+      this.playerGroup?.add(model);
 
-  private renderBackground() {
-    const ctx = this.ctx;
-    const w = this.width;
-    const h = this.height;
-
-    const grad = ctx.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, "#020617");
-    grad.addColorStop(1, "#020012");
-
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, w, h);
-  }
-
-  private renderGround() {
-    const ctx = this.ctx;
-
-    // 기본 눈 색
-    ctx.fillStyle = "#f9fafb";
-    ctx.fillRect(0, this.groundTop, this.width, this.groundHeight);
-
-    // 약간의 퍼린 느낌: 밝고 어두운 패치들
-    for (const lump of this.lumps) {
-      ctx.beginPath();
-      ctx.ellipse(
-        lump.x,
-        lump.y,
-        lump.radius,
-        lump.radius * lump.squash,
-        0,
-        0,
-        Math.PI * 2
-      );
-      if (lump.light) {
-        ctx.fillStyle = "rgba(255,255,255,0.15)";
-      } else {
-        ctx.fillStyle = "rgba(148,163,184,0.18)";
+      this.mixer = new THREE.AnimationMixer(model);
+      const clips = gltf.animations;
+      
+      if (clips.length > 0) {
+        const action = this.mixer.clipAction(clips[0]);
+        action.play();
       }
-      ctx.fill();
-    }
+    }, undefined, (error) => {
+      console.error('An error happened loading the model:', error);
+    });
+  }
 
-    // 약간의 원근감을 위해 위쪽을 살짝 어둡게 그라데이션
-    const g = ctx.createLinearGradient(
-      0,
-      this.groundTop,
-      0,
-      this.groundBottom
+  // ▼▼▼ [신규] 화면 크기에 따른 적절한 Radius 계산 ▼▼▼
+  private calculateRadius(): number {
+    // 카메라 FOV와 높이를 이용해 화면에 보이는 땅의 범위를 대략 계산
+    // tan(fov/2) * height * aspect_ratio 등을 고려해야 하지만,
+    // 간단하게 카메라 높이와 종횡비를 이용한 근사값 사용
+    const aspect = this.camera.aspect;
+    const fovRad = (this.camera.fov * Math.PI) / 180;
+    
+    // 카메라 높이에서 바닥을 볼 때 보이는 세로 절반 길이
+    const visibleHeight = Math.tan(fovRad / 2) * this.cameraY; 
+    // 가로 절반 길이
+    const visibleWidth = visibleHeight * aspect;
+
+    // 화면 대각선 길이보다 조금 더 길게 설정하여 확실히 화면 밖으로 보내기
+    const diagonal = Math.sqrt(visibleWidth * visibleWidth + visibleHeight * visibleHeight);
+    
+    // 여유분(buffer) 추가 (예: 1.2배)
+    return Math.max(25, diagonal * 1.5); 
+  }
+
+  private resetPath() {
+    if (!this.playerGroup) return;
+
+    // [수정] 동적으로 계산된 Radius 사용
+    const radius = this.calculateRadius();
+
+    const startAngle = Math.random() * Math.PI * 2;
+    const startPoint = new THREE.Vector3(
+        Math.cos(startAngle) * radius,
+        0,
+        Math.sin(startAngle) * radius
     );
-    g.addColorStop(0, "rgba(15,23,42,0.12)");
-    g.addColorStop(1, "rgba(15,23,42,0.02)");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, this.groundTop, this.width, this.groundHeight);
-  }
 
-  private renderFootprints() {
-    const ctx = this.ctx;
-    const life = 10;
-
-    for (const f of this.footprints) {
-      const age = this.elapsedSeconds - f.createdAt;
-      const t = Math.max(0, Math.min(1, age / life));
-      const alpha = 1 - t; // 시간이 지날수록 점점 덮여서 사라짐
-
-      ctx.save();
-      ctx.globalAlpha = alpha * 0.9;
-      // 눈이 눌린 느낌 + 아주 살짝 아래 잔디가 비치는 느낌 (쿨한 회청+연두 살짝 섞인 느낌)
-      ctx.fillStyle = "rgba(148, 163, 184, 0.9)";
-      ctx.beginPath();
-      ctx.ellipse(f.x, f.y, 8, 4.5, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
-  }
-
-  private renderPerson() {
-    const ctx = this.ctx;
-    const p = this.person;
-    if (!p) return;
-
-    // 쿼터뷰: 위에서 약간 기울어진 사람 실루엣 정도로만
-    ctx.save();
-
-    // 그림자 (눈 위에 비친 사람 그림자)
-    ctx.globalAlpha = 0.25;
-    ctx.fillStyle = "rgba(15,23,42,0.9)";
-    ctx.beginPath();
-    ctx.ellipse(p.x, p.y + p.height * 0.18, 14, 6, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.globalAlpha = 1;
-
-    // 몸통
-    ctx.fillStyle = "#0f172a";
-    ctx.beginPath();
-    ctx.roundRect(
-      p.x - 6,
-      p.y - p.height * 0.5,
-      12,
-      p.height * 0.6,
-      6
+    const endAngle = startAngle + Math.PI + (Math.random() - 0.5); 
+    const endPoint = new THREE.Vector3(
+        Math.cos(endAngle) * radius,
+        0,
+        Math.sin(endAngle) * radius
     );
-    ctx.fill();
 
-    // 머리
-    ctx.beginPath();
-    ctx.arc(p.x, p.y - p.height * 0.6, 7, 0, Math.PI * 2);
-    ctx.fillStyle = "#e5e7eb";
-    ctx.fill();
+    const controlPoint = new THREE.Vector3(
+        (Math.random() - 0.5) * 30, 
+        0,
+        (Math.random() - 0.5) * 30  
+    );
 
-    // 목도리 느낌
-    ctx.fillStyle = "#38bdf8";
-    ctx.fillRect(p.x - 8, p.y - p.height * 0.45, 16, 5);
+    this.curve = new THREE.QuadraticBezierCurve3(
+        startPoint,
+        controlPoint,
+        endPoint
+    );
 
-    ctx.restore();
+    this.curveProgress = 0.05;
+    
+    const initialPos = this.curve.getPoint(this.curveProgress);
+    this.playerGroup.position.copy(initialPos);
   }
 
-  private renderSnow() {
-    const ctx = this.ctx;
-    ctx.save();
-    for (const flake of this.snowflakes) {
-      ctx.beginPath();
-      ctx.fillStyle = "rgba(248,250,252,0.92)";
-      ctx.arc(flake.x, flake.y, flake.radius, 0, Math.PI * 2);
-      ctx.fill();
+  // ▼▼▼ [신규] 리사이징 시 현재 경로 업데이트 ▼▼▼
+  private updatePathForResize() {
+    if (!this.curve || !this.playerGroup) return;
+
+    // 1. 새로운 화면 크기에 맞는 Radius 계산
+    const newRadius = this.calculateRadius();
+
+    // 2. 기존 곡선의 포인트 가져오기
+    const startPoint = this.curve.v0;
+    const controlPoint = this.curve.v1;
+    const endPoint = this.curve.v2;
+
+    // 3. 끝점(End Point)만 새로운 Radius에 맞춰 연장
+    // (시작점은 이미 지나왔거나 고정되어 있으므로 두는 게 자연스러움)
+    // 원점(0,0,0)에서 현재 끝점 방향으로의 단위 벡터 계산
+    const direction = endPoint.clone().normalize();
+    
+    // 방향은 유지하되, 거리를 새로운 Radius로 변경
+    const newEndPoint = direction.multiplyScalar(newRadius);
+
+    // 4. 곡선 업데이트
+    this.curve = new THREE.QuadraticBezierCurve3(
+        startPoint,
+        controlPoint,
+        newEndPoint
+    );
+    
+    // *주의: 곡선이 길어지면 같은 progress(예: 0.5)라도 위치가 달라집니다.
+    // 하지만 여기서는 자연스럽게 끝점이 멀어지면서 속도가 살짝 빨라지는 효과로
+    // 화면 밖으로 나가는 것을 보장하므로 progress 보정 없이 둡니다.
+  }
+
+  private createFootprint(position: THREE.Vector3, isLeft: boolean) {
+    const geometry = new THREE.CircleGeometry(0.07, 8);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x555555, 
+      transparent: true,
+      opacity: 0.5,
+    });
+    const footprint = new THREE.Mesh(geometry, material);
+
+    footprint.rotation.x = -Math.PI / 2;
+    
+    const offset = isLeft ? -0.15 : 0.15;
+    const offsetVector = new THREE.Vector3(offset, 0, 0); 
+    offsetVector.applyQuaternion(this.playerGroup!.quaternion);
+
+    footprint.position.set(
+      position.x + offsetVector.x,
+      0.01,
+      position.z + offsetVector.z
+    );
+
+    this.scene.add(footprint);
+    this.footprints.push(footprint);
+
+    if (this.footprints.length > 2000) {
+      const old = this.footprints.shift();
+      if (old) {
+        this.fadingFootprints.push(old);
+      }
     }
-    ctx.restore();
   }
 
-  private renderWindowFrame() {
-    const ctx = this.ctx;
-    const w = this.width;
-
-    const frameHeight = this.groundTop * 0.3;
-
-    // 실내/창틀 위쪽 영역
-    ctx.fillStyle = "rgba(15,23,42,0.96)";
-    ctx.fillRect(0, 0, w, frameHeight);
-
-    // 창틀 라인
-    ctx.fillStyle = "rgba(148,163,184,0.7)";
-    ctx.fillRect(0, frameHeight, w, 2);
-
-    // 실내 반사 약간 (유저가 안쪽에서 밖을 내려다보는 느낌)
-    const g = ctx.createLinearGradient(0, 0, 0, frameHeight);
-    g.addColorStop(0, "rgba(15,23,42,0.9)");
-    g.addColorStop(1, "rgba(15,23,42,0.0)");
-
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, frameHeight);
-  }
-
-  private render() {
-    this.ctx.clearRect(0, 0, this.width, this.height);
-
-    this.renderBackground();
-    this.renderGround();
-    this.renderFootprints();
-    this.renderPerson();
-    this.renderSnow();
-    this.renderWindowFrame();
-  }
-
-  dispose() {
-    if (this.animationId !== null) {
-      cancelAnimationFrame(this.animationId);
+  private animate() {
+    this.animationId = requestAnimationFrame(this.animate.bind(this));
+    
+    const delta = this.clock.getDelta();
+    if (this.mixer) {
+      this.mixer.update(delta);
     }
-    window.removeEventListener("resize", this.handleResizeBound);
+
+    this.time += 0.015;
+
+    for (let i = this.fadingFootprints.length - 1; i >= 0; i--) {
+        const fp = this.fadingFootprints[i];
+        const mat = fp.material as THREE.MeshBasicMaterial;
+
+        mat.opacity -= 0.001; 
+
+        if (mat.opacity <= 0) {
+            this.scene.remove(fp);
+            fp.geometry.dispose();
+            mat.dispose();
+            this.fadingFootprints.splice(i, 1);
+        }
+    }
+
+    if (this.playerGroup && this.curve) {
+      this.curveProgress += this.moveSpeed;
+
+      if (this.curveProgress >= 1.0) {
+        this.resetPath(); 
+      } else {
+        const point = this.curve.getPoint(this.curveProgress);
+        this.playerGroup.position.copy(point);
+
+        const lookAtPoint = this.curve.getPoint(Math.min(this.curveProgress + 0.01, 1.0));
+        this.playerGroup.lookAt(lookAtPoint);
+
+        const currentTime = Date.now();
+        if (currentTime - this.lastStepTime > this.stepInterval) {
+          this.createFootprint(this.playerGroup.position, this.isLeftFoot);
+          this.isLeftFoot = !this.isLeftFoot;
+          this.lastStepTime = currentTime;
+        }
+      }
+    }
+    
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  private resize() {
+    const parent = this.canvas.parentElement;
+    let width, height;
+
+    if (parent) {
+        width = parent.clientWidth;
+        height = parent.clientHeight;
+    } else {
+        width = window.innerWidth;
+        height = window.innerHeight;
+    }
+
+    this.camera.aspect = width / height;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(width, height);
+
+    // [수정] 리사이징 시 현재 걷고 있는 경로 업데이트
+    this.updatePathForResize();
+  }
+
+  public destroy() {
+    window.removeEventListener("resize", this.resize.bind(this));
+    if (this.animationId) cancelAnimationFrame(this.animationId);
+    
+    this.renderer.dispose();
+    this.scene.clear();
   }
 }
