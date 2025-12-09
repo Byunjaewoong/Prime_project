@@ -21,6 +21,10 @@ export class App {
   private curve: THREE.QuadraticBezierCurve3 | null = null;
   private curveProgress: number = 0;
   private moveSpeed: number = 0.0001; 
+  
+  // 유효한 경로 범위 (A' ~ B' 구간)
+  private startProgress: number = 0; 
+  private endProgress: number = 1;
 
   // Footprints
   private footprints: THREE.Mesh[] = [];
@@ -29,9 +33,14 @@ export class App {
   private stepInterval: number = 300; 
   private isLeftFoot: boolean = true; 
 
+  // [신규] 클릭 이벤트 관련 상태
+  private isColoredMode: boolean = false; 
+  private defaultColor: THREE.Color = new THREE.Color(0x555555); 
+
   // Settings
   private time: number = 0;
-  private cameraY: number = 30; // 카메라 높이 저장 (Radius 계산용)
+  private frustum: THREE.Frustum = new THREE.Frustum(); 
+  private projScreenMatrix: THREE.Matrix4 = new THREE.Matrix4();
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -55,7 +64,7 @@ export class App {
     // 2. Scene Setup
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0xffffff);
-    this.scene.fog = new THREE.FogExp2(0xffffff, 0.03);
+    this.scene.fog = new THREE.FogExp2(0xffffff, 0.035);
 
     // 3. Camera Setup
     this.camera = new THREE.PerspectiveCamera(
@@ -65,13 +74,16 @@ export class App {
       100
     );
     
-    this.camera.position.set(0, this.cameraY, 20);
+    this.camera.position.set(0, 30, 20);
     this.camera.lookAt(0, 0, 5);
+
 
     this.init();
     this.animate();
 
     window.addEventListener("resize", this.resize.bind(this));
+    // 클릭 이벤트 리스너 등록
+    this.canvas.addEventListener("click", this.toggleColorMode.bind(this));
   }
 
   private init() {
@@ -80,11 +92,34 @@ export class App {
     this.addPlayer();
   }
 
+  // [수정] 클릭 시 색상 및 광택(Shininess) 토글
+  private toggleColorMode() {
+    this.isColoredMode = !this.isColoredMode; 
+
+    const allFootprints = [...this.footprints, ...this.fadingFootprints];
+    
+    allFootprints.forEach(fp => {
+        // PhongMaterial로 캐스팅
+        const mat = fp.material as THREE.MeshPhongMaterial;
+        
+        if (this.isColoredMode) {
+            // 컬러 모드: 랜덤 색상 + 반짝임(100)
+            mat.color.set(fp.userData.randomColor);
+            mat.shininess = 100; 
+        } else {
+            // 기본 모드: 회색 + 무광(0)
+            mat.color.set(this.defaultColor);
+            mat.shininess = 0; 
+        }
+        mat.needsUpdate = true;
+    });
+  }
+
   private addLights() {
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1);
     this.scene.add(ambientLight);
 
-    const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
     sunLight.position.set(15, 13, -15); 
     sunLight.castShadow = true;
 
@@ -184,31 +219,45 @@ export class App {
     });
   }
 
-  // ▼▼▼ [신규] 화면 크기에 따른 적절한 Radius 계산 ▼▼▼
-  private calculateRadius(): number {
-    // 카메라 FOV와 높이를 이용해 화면에 보이는 땅의 범위를 대략 계산
-    // tan(fov/2) * height * aspect_ratio 등을 고려해야 하지만,
-    // 간단하게 카메라 높이와 종횡비를 이용한 근사값 사용
-    const aspect = this.camera.aspect;
-    const fovRad = (this.camera.fov * Math.PI) / 180;
-    
-    // 카메라 높이에서 바닥을 볼 때 보이는 세로 절반 길이
-    const visibleHeight = Math.tan(fovRad / 2) * this.cameraY; 
-    // 가로 절반 길이
-    const visibleWidth = visibleHeight * aspect;
+  private calculateVisibleRange() {
+    if (!this.curve) return;
 
-    // 화면 대각선 길이보다 조금 더 길게 설정하여 확실히 화면 밖으로 보내기
-    const diagonal = Math.sqrt(visibleWidth * visibleWidth + visibleHeight * visibleHeight);
-    
-    // 여유분(buffer) 추가 (예: 1.2배)
-    return Math.max(25, diagonal * 1.5); 
+    this.camera.updateMatrixWorld();
+    this.projScreenMatrix.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+    this.frustum.setFromProjectionMatrix(this.projScreenMatrix);
+
+    const samples = 100;
+    let firstVisible = -1;
+    let lastVisible = -1;
+
+    for (let i = 0; i <= samples; i++) {
+        const t = i / samples;
+        const point = this.curve.getPoint(t);
+        
+        if (this.frustum.containsPoint(point)) {
+            if (firstVisible === -1) firstVisible = t;
+            lastVisible = t;
+        }
+    }
+
+    if (firstVisible === -1) {
+        this.startProgress = 0;
+        this.endProgress = 1;
+    } else {
+        this.startProgress = Math.max(0, firstVisible - 0.05);
+        this.endProgress = Math.min(1, lastVisible + 0.05);
+    }
+
+    // 너무 짧은 경로면 다시 생성
+    if (this.endProgress - this.startProgress < 0.1) {
+        this.resetPath();
+    }
   }
 
   private resetPath() {
     if (!this.playerGroup) return;
 
-    // [수정] 동적으로 계산된 Radius 사용
-    const radius = this.calculateRadius();
+    const radius = 40; 
 
     const startAngle = Math.random() * Math.PI * 2;
     const startPoint = new THREE.Vector3(
@@ -236,52 +285,36 @@ export class App {
         endPoint
     );
 
-    this.curveProgress = 0.05;
-    
+    this.calculateVisibleRange();
+
+    this.curveProgress = this.startProgress;
     const initialPos = this.curve.getPoint(this.curveProgress);
     this.playerGroup.position.copy(initialPos);
   }
 
-  // ▼▼▼ [신규] 리사이징 시 현재 경로 업데이트 ▼▼▼
-  private updatePathForResize() {
-    if (!this.curve || !this.playerGroup) return;
-
-    // 1. 새로운 화면 크기에 맞는 Radius 계산
-    const newRadius = this.calculateRadius();
-
-    // 2. 기존 곡선의 포인트 가져오기
-    const startPoint = this.curve.v0;
-    const controlPoint = this.curve.v1;
-    const endPoint = this.curve.v2;
-
-    // 3. 끝점(End Point)만 새로운 Radius에 맞춰 연장
-    // (시작점은 이미 지나왔거나 고정되어 있으므로 두는 게 자연스러움)
-    // 원점(0,0,0)에서 현재 끝점 방향으로의 단위 벡터 계산
-    const direction = endPoint.clone().normalize();
-    
-    // 방향은 유지하되, 거리를 새로운 Radius로 변경
-    const newEndPoint = direction.multiplyScalar(newRadius);
-
-    // 4. 곡선 업데이트
-    this.curve = new THREE.QuadraticBezierCurve3(
-        startPoint,
-        controlPoint,
-        newEndPoint
-    );
-    
-    // *주의: 곡선이 길어지면 같은 progress(예: 0.5)라도 위치가 달라집니다.
-    // 하지만 여기서는 자연스럽게 끝점이 멀어지면서 속도가 살짝 빨라지는 효과로
-    // 화면 밖으로 나가는 것을 보장하므로 progress 보정 없이 둡니다.
-  }
-
   private createFootprint(position: THREE.Vector3, isLeft: boolean) {
-    const geometry = new THREE.CircleGeometry(0.07, 8);
-    const material = new THREE.MeshBasicMaterial({
-      color: 0x555555, 
+    // [수정] 원을 더 부드럽게 (세그먼트 16)
+    const geometry = new THREE.CircleGeometry(0.07, 16);
+    
+    // 랜덤 색상 생성 (HSL로 선명하게)
+    // const randomColor = new THREE.Color().setHSL(Math.random(), 0.8, 0.6);
+    const randomColor = new THREE.Color().setHSL(Math.random(), Math.random(), Math.random());
+    const initialColor = this.isColoredMode ? randomColor : this.defaultColor;
+
+    // [수정] MeshPhongMaterial 사용하여 반짝임 표현
+    const material = new THREE.MeshPhongMaterial({
+      color: initialColor, 
       transparent: true,
-      opacity: 0.5,
+      opacity: 0.5, // 약간 더 진하게
+      shininess: this.isColoredMode ? 100 : 0, // 모드에 따라 광택 결정
+      specular: 0xffffff, // 흰색 하이라이트
+      flatShading: false,
     });
+
     const footprint = new THREE.Mesh(geometry, material);
+
+    // userData에 랜덤 색상 저장
+    footprint.userData = { randomColor: randomColor };
 
     footprint.rotation.x = -Math.PI / 2;
     
@@ -291,7 +324,7 @@ export class App {
 
     footprint.position.set(
       position.x + offsetVector.x,
-      0.01,
+      0.015, // z-fighting 방지 및 입체감을 위해 약간 띄움
       position.z + offsetVector.z
     );
 
@@ -318,7 +351,8 @@ export class App {
 
     for (let i = this.fadingFootprints.length - 1; i >= 0; i--) {
         const fp = this.fadingFootprints[i];
-        const mat = fp.material as THREE.MeshBasicMaterial;
+        // [수정] 타입 캐스팅 Phong으로 변경
+        const mat = fp.material as THREE.MeshPhongMaterial;
 
         mat.opacity -= 0.001; 
 
@@ -333,7 +367,7 @@ export class App {
     if (this.playerGroup && this.curve) {
       this.curveProgress += this.moveSpeed;
 
-      if (this.curveProgress >= 1.0) {
+      if (this.curveProgress >= this.endProgress) {
         this.resetPath(); 
       } else {
         const point = this.curve.getPoint(this.curveProgress);
@@ -370,12 +404,14 @@ export class App {
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
 
-    // [수정] 리사이징 시 현재 걷고 있는 경로 업데이트
-    this.updatePathForResize();
+    this.calculateVisibleRange();
   }
 
   public destroy() {
     window.removeEventListener("resize", this.resize.bind(this));
+    // 이벤트 리스너 제거
+    this.canvas.removeEventListener("click", this.toggleColorMode.bind(this));
+
     if (this.animationId) cancelAnimationFrame(this.animationId);
     
     this.renderer.dispose();

@@ -73,14 +73,13 @@ export default function SnowWalkPage() {
             >
               <div className="orbit-panel-container">
                 <div className="orbit-panel-section">
-                  <h4>Perlin Noise</h4>
+                  <h4>Snow walker</h4>
                   <p style={{ fontSize: 12, opacity: 0.8 }}>
-                    click the canvas
+                    click function, not yet
                   </p>
                   <ul style={{ fontSize: 11, opacity: 0.75, marginTop: 8 }}>
                     <li>MONO</li>
                     <li>COLORED</li>
-                    <li>CLOSED COLOR</li>
                   </ul>
                 </div>
               </div>
