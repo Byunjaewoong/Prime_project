@@ -27,7 +27,12 @@
 /* body 기본값 정리 */
 body {
   margin: 0;
-  background: black;
+  background: black; 
+}
+
+a:hover {
+  text-decoration: underline;
+  opacity: 0.8;
 }
 
 /* ===========================

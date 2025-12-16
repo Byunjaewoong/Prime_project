@@ -1,11 +1,13 @@
 // app/works/perlin_noise/core/App.ts
 import { Calculate } from "./tool";
 import { Lowestline, Perlin } from "./perlin";
+import { useIsMobile } from "./useIsMobile"; 
 
 export class App {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
   pixelRatio: number;
+  isMobile: boolean;
 
   stageWidth = 0;
   stageHeight = 0;
@@ -25,6 +27,12 @@ export class App {
   private resizeHandler: () => void;
 
   constructor(canvas: HTMLCanvasElement) {
+    this.isMobile = window.innerWidth <= 768;
+    if (this.isMobile) {
+      this.linecount = 5;
+      this.scale = 3;
+      this.speed = 0.006;
+    }
     this.canvas = canvas;
     const ctx = this.canvas.getContext("2d");
     if (!ctx) {
