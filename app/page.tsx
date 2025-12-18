@@ -82,6 +82,13 @@ export default function HomePage() {
               <span>Snow walker</span>
             </Link>
           </li>
+
+          {/* 6.fluid: 다시 오른쪽 (기존 720px -> 55%) */}
+          <li style={{ marginLeft: "15%", width: "fit-content" }}>
+            <Link href="/works/Fluid" style={{ textDecoration: "none", color: "inherit" }}>
+              <span>fluid</span>
+            </Link>
+          </li>
         </ul>
 
         {/* 하단 푸터 영역 */}
