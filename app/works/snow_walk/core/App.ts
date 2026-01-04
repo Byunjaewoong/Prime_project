@@ -62,6 +62,7 @@ export class App {
   private time: number = 0;
   private frustum: THREE.Frustum = new THREE.Frustum();
   private projScreenMatrix: THREE.Matrix4 = new THREE.Matrix4();
+  private clickHandler: (event: MouseEvent) => void;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -98,7 +99,8 @@ export class App {
 
     window.addEventListener("resize", this.resize.bind(this));
     // 클릭 이벤트 리스너 등록
-    this.canvas.addEventListener("click", this.toggleColorMode.bind(this));
+    this.clickHandler = (event: MouseEvent) => this.addTreeOnClick(event);
+    this.canvas.addEventListener("click", this.clickHandler);
   }
 
   private init() {
@@ -109,6 +111,7 @@ export class App {
     this.initFootprintGeometries();
 
     this.addPlayer();
+    // this.addIslandTree();
   }
 
   // [NEW] SVG 파싱 및 왼발/오른발 분리
@@ -151,25 +154,6 @@ export class App {
     rightGeo.rotateX(Math.PI / 2);
     rightGeo.rotateY(Math.PI / 10);    // [요청사항] 180도 회전
     this.rightFootGeometry = rightGeo;
-  }
-
-  private toggleColorMode() {
-    this.isColoredMode = !this.isColoredMode;
-
-    const allFootprints = [...this.footprints, ...this.fadingFootprints];
-
-    allFootprints.forEach((fp) => {
-      const mat = fp.material as THREE.MeshPhongMaterial;
-
-      if (this.isColoredMode) {
-        mat.color.set(fp.userData.randomColor);
-        mat.shininess = 100;
-      } else {
-        mat.color.set(this.defaultColor);
-        mat.shininess = 0;
-      }
-      mat.needsUpdate = true;
-    });
   }
 
   private addLights() {
@@ -279,6 +263,73 @@ export class App {
         console.error("An error happened loading the model:", error);
       }
     );
+  }
+
+  private addIslandTree() {
+    // Frustum Culling 적용: 카메라 시야 안에 위치시키기
+    const direction = new THREE.Vector3();
+    this.camera.getWorldDirection(direction);
+    direction.normalize();
+    const position = this.camera.position.clone().add(direction.multiplyScalar(30)); // 카메라 앞 30단위
+    position.y = 0; // 지면에 배치
+
+    this.addTreeAtPosition(position);
+  }
+
+  private addTreeAtPosition(position: THREE.Vector3) {
+    const loader = new GLTFLoader();
+
+    // 랜덤으로 모델 선택 (반반 확률)
+    const modelName = Math.random() < 0.5 ? "island_tree_01_1k.glb" : "island_tree_02_1k.glb";
+
+    loader.load(
+      `/${modelName}`,
+      (gltf) => {
+        const model = gltf.scene;
+
+        model.traverse((child) => {
+          if ((child as THREE.Mesh).isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
+
+        model.position.copy(position);
+        model.rotation.y = Math.random() * Math.PI * 2; // 랜덤 Y축 회전
+        model.scale.set(1, 1, 1); // 적절한 스케일 설정
+
+        this.scene.add(model);
+      },
+      undefined,
+      (error) => {
+        console.error(`An error happened loading the ${modelName}:`, error);
+      }
+    );
+  }
+
+  private addTreeOnClick(event: MouseEvent) {
+    const rect = this.canvas.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
+
+    const canvasWidth = rect.width;
+    const canvasHeight = rect.height;
+
+    // NDC 좌표로 변환
+    const ndcX = (mouseX / canvasWidth) * 2 - 1;
+    const ndcY = -(mouseY / canvasHeight) * 2 + 1;
+
+    // Raycaster 생성
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), this.camera);
+
+    // Ground 평면 (y=0)
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const intersection = new THREE.Vector3();
+
+    if (raycaster.ray.intersectPlane(plane, intersection)) {
+      this.addTreeAtPosition(intersection);
+    }
   }
 
   private calculateVisibleRange() {
@@ -406,7 +457,7 @@ export class App {
     this.footprints.push(footprint);
 
     // ... (배열 관리 로직 동일) ...
-    if (this.footprints.length > 2000) {
+    if (this.footprints.length > 1000) {
         const old = this.footprints.shift();
         if (old) this.fadingFootprints.push(old);
     }
@@ -477,7 +528,7 @@ export class App {
   public destroy() {
     if (this.animationId) cancelAnimationFrame(this.animationId);
     window.removeEventListener("resize", this.resize.bind(this));
-    this.canvas.removeEventListener("click", this.toggleColorMode.bind(this));
+    this.canvas.removeEventListener("click", this.clickHandler);
     this.renderer.dispose();
   }
 }
