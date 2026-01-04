@@ -522,6 +522,7 @@ export class App {
       this.renderer.setSize(width, height);
       this.camera.aspect = width / height;
       this.camera.updateProjectionMatrix();
+      this.calculateVisibleRange();
     }
   }
 
