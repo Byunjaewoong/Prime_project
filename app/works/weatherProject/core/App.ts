@@ -283,7 +283,7 @@ export class App {
 
 // setupPostProcessing 메서드에서 filmPass 부분만 수정
 
-private setupPostProcessing() {
+  private setupPostProcessing() {
   this.composer = new EffectComposer(this.renderer);
   
   const renderPass = new RenderPass(this.scene, this.camera);
@@ -306,26 +306,41 @@ private setupPostProcessing() {
       uniform float time;
       varying vec2 vUv;
 
+      // 노이즈 함수
+      float random(vec2 st) {
+        return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+      }
+
       void main() {
         vec2 uv = vUv;
         
+        // CRT 왜곡
         vec2 cc = uv - 0.5;
         float dist = dot(cc, cc) * 0.12;
         uv = (uv - 0.5) * (1.0 + dist) + 0.5;
         
         vec4 color = texture2D(tDiffuse, uv);
         
+        // 채도 조정
         float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
         color.rgb = mix(vec3(gray), color.rgb, 0.95);
         
+        // 따뜻한 톤
         color.rgb *= vec3(1.02, 0.98, 0.92);
         
+        // 비네팅
         float vignette = smoothstep(0.85, 0.25, length(uv - 0.5));
         color.rgb *= vignette;
         
+        // 스캔라인
         float scanline = sin(uv.y * 550.0 + time * 6.0) * 0.025;
         color.rgb -= scanline;
         
+        // 필름 그레인 (노이즈)
+        float grain = random(uv * time) * 0.08;
+        color.rgb += grain;
+        
+        // 색수차
         float offset = 0.0012;
         float r = texture2D(tDiffuse, uv + vec2(offset, 0.0)).r;
         float b = texture2D(tDiffuse, uv - vec2(offset, 0.0)).b;
@@ -338,18 +353,9 @@ private setupPostProcessing() {
   };
 
   const vintagePass = new ShaderPass(VintageShader);
+  vintagePass.renderToScreen = true;
   this.composer.addPass(vintagePass);
-
-  // FilmPass 올바른 파라미터: (noiseIntensity, scanlinesIntensity, scanlinesCount, grayscale)
-  const filmPass = new FilmPass(
-    0.2,    // noise intensity
-    0.3,    // scanlines intensity  
-    648,    // scanlines count
-    false   // grayscale
-  );
-  filmPass.renderToScreen = true;
-  this.composer.addPass(filmPass);
-}
+  }
 
   private animate = () => {
     this.animationId = requestAnimationFrame(this.animate);
