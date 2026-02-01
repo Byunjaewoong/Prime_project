@@ -281,7 +281,9 @@ export class App {
     }
   }
 
-  private setupPostProcessing() {
+// setupPostProcessing 메서드에서 filmPass 부분만 수정
+
+private setupPostProcessing() {
   this.composer = new EffectComposer(this.renderer);
   
   const renderPass = new RenderPass(this.scene, this.camera);
@@ -313,22 +315,17 @@ export class App {
         
         vec4 color = texture2D(tDiffuse, uv);
         
-        // 채도 약간만 낮추기
         float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
         color.rgb = mix(vec3(gray), color.rgb, 0.95);
         
-        // 따뜻한 톤
         color.rgb *= vec3(1.02, 0.98, 0.92);
         
-        // 약한 비네팅
         float vignette = smoothstep(0.85, 0.25, length(uv - 0.5));
         color.rgb *= vignette;
         
-        // 약한 스캔라인
         float scanline = sin(uv.y * 550.0 + time * 6.0) * 0.025;
         color.rgb -= scanline;
         
-        // 약한 색수차
         float offset = 0.0012;
         float r = texture2D(tDiffuse, uv + vec2(offset, 0.0)).r;
         float b = texture2D(tDiffuse, uv - vec2(offset, 0.0)).b;
@@ -343,10 +340,16 @@ export class App {
   const vintagePass = new ShaderPass(VintageShader);
   this.composer.addPass(vintagePass);
 
-  const filmPass = new FilmPass(0.2, 0.3);
+  // FilmPass 올바른 파라미터: (noiseIntensity, scanlinesIntensity, scanlinesCount, grayscale)
+  const filmPass = new FilmPass(
+    0.2,    // noise intensity
+    0.3,    // scanlines intensity  
+    648,    // scanlines count
+    false   // grayscale
+  );
   filmPass.renderToScreen = true;
   this.composer.addPass(filmPass);
-  }
+}
 
   private animate = () => {
     this.animationId = requestAnimationFrame(this.animate);
