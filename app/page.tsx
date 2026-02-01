@@ -89,7 +89,16 @@ export default function HomePage() {
               <span>fluid</span>
             </Link>
           </li>
+
+          {/* 6.fluid: 다시 오른쪽 (기존 720px -> 55%) */}
+          <li style={{ marginLeft: "15%", width: "fit-content" }}>
+            <Link href="/works/weatherProject" style={{ textDecoration: "none", color: "inherit" }}>
+              <span>Weather Project</span>
+            </Link>
+          </li>
+
         </ul>
+        
 
         {/* 하단 푸터 영역 */}
         <div style={{ marginTop: "250px", fontSize: "0.85rem", opacity: 0.2 }}>
