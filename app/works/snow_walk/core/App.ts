@@ -37,7 +37,7 @@ export class App {
   // Path Logic
   private curve: THREE.QuadraticBezierCurve3 | null = null;
   private curveProgress: number = 0;
-  private moveSpeed: number = 0.0001;
+  private moveSpeed: number = 0.012; // delta-time 기반 (2× speed)
 
   // 유효한 경로 범위 (A' ~ B' 구간)
   private startProgress: number = 0;
@@ -50,8 +50,8 @@ export class App {
 
   private footprints: THREE.Mesh[] = [];
   private fadingFootprints: THREE.Mesh[] = [];
-  private lastStepTime: number = 0;
-  private stepInterval: number = 300;
+  private lastStepPos = new THREE.Vector3(Infinity, 0, Infinity);
+  private readonly STEP_DIST = 0.3; // 발자국 간 세계 공간 거리 (고정)
   private isLeftFoot: boolean = true;
 
   // [신규] 클릭 이벤트 관련 상태
@@ -63,6 +63,10 @@ export class App {
   private frustum: THREE.Frustum = new THREE.Frustum();
   private projScreenMatrix: THREE.Matrix4 = new THREE.Matrix4();
   private clickHandler: (event: MouseEvent) => void;
+
+  // 백그라운드 로직 루프 (탭 비활성화에도 지속)
+  private logicIntervalId: ReturnType<typeof setInterval> | null = null;
+  private lastLogicTime = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -96,6 +100,7 @@ export class App {
 
     this.init();
     this.animate();
+    this.startLogicLoop();
 
     window.addEventListener("resize", this.resize.bind(this));
     // 클릭 이벤트 리스너 등록
@@ -465,52 +470,66 @@ export class App {
 
 
 
-  private animate() {
-    this.animationId = requestAnimationFrame(this.animate.bind(this));
+  private startLogicLoop() {
+    this.lastLogicTime = performance.now();
+    this.logicIntervalId = setInterval(() => {
+      const now = performance.now();
+      const delta = (now - this.lastLogicTime) / 1000;
+      this.lastLogicTime = now;
+      this.updateLogic(delta);
+    }, 16);
+  }
 
-    const delta = this.clock.getDelta();
-    if (this.mixer) {
-      this.mixer.update(delta);
-    }
+  private updateLogic(delta: number) {
+    if (this.mixer) this.mixer.update(delta);
 
-    this.time += 0.015;
-
+    // 페이드 속도 delta 기반 (0.3/초 = 0.005 * 60fps)
     for (let i = this.fadingFootprints.length - 1; i >= 0; i--) {
       const fp = this.fadingFootprints[i];
       const mat = fp.material as THREE.MeshPhongMaterial;
-      mat.opacity -= 0.005;
+      mat.opacity -= 0.3 * delta;
       if (mat.opacity <= 0) {
         this.scene.remove(fp);
+        mat.dispose();
         this.fadingFootprints.splice(i, 1);
       }
     }
 
-    if (this.curve && this.playerGroup) {
-        this.curveProgress += this.moveSpeed;
-
-        if (this.curveProgress > this.endProgress) {
-            this.resetPath();
-            return;
-        }
-
-        const point = this.curve.getPoint(this.curveProgress);
-        // 현재 위치에서의 접선(진행 방향) 벡터 가져오기
-        const tangent = this.curve.getTangent(this.curveProgress).normalize();
-
-        this.playerGroup.position.copy(point);
-        
-        // 플레이어도 진행 방향을 보게 함
-        const lookAtPos = point.clone().add(tangent);
-        this.playerGroup.lookAt(lookAtPos);
-
-        const now = this.clock.getElapsedTime();
-        if (now * 1000 - this.lastStepTime > this.stepInterval) {
-            // [수정] tangent 벡터를 함께 전달
-            this.createFootprint(point, tangent, this.isLeftFoot);
-            this.isLeftFoot = !this.isLeftFoot;
-            this.lastStepTime = now * 1000;
-        }
+    // 큰 delta를 16ms 단위로 세분화 → 발자국 간격 일정 유지
+    const SUB = 0.016;
+    let remaining = delta;
+    while (remaining > 0) {
+      const dt = Math.min(remaining, SUB);
+      remaining -= dt;
+      this.stepMovement(dt);
     }
+  }
+
+  private stepMovement(delta: number) {
+    if (!this.curve || !this.playerGroup) return;
+
+    this.curveProgress += this.moveSpeed * delta;
+
+    if (this.curveProgress > this.endProgress) {
+      this.resetPath();
+      return;
+    }
+
+    const point = this.curve.getPoint(this.curveProgress);
+    const tangent = this.curve.getTangent(this.curveProgress).normalize();
+
+    this.playerGroup.position.copy(point);
+    this.playerGroup.lookAt(point.clone().add(tangent));
+
+    if (point.distanceTo(this.lastStepPos) >= this.STEP_DIST) {
+      this.createFootprint(point, tangent, this.isLeftFoot);
+      this.isLeftFoot = !this.isLeftFoot;
+      this.lastStepPos.copy(point);
+    }
+  }
+
+  private animate() {
+    this.animationId = requestAnimationFrame(this.animate.bind(this));
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -528,6 +547,7 @@ export class App {
 
   public destroy() {
     if (this.animationId) cancelAnimationFrame(this.animationId);
+    if (this.logicIntervalId) clearInterval(this.logicIntervalId);
     window.removeEventListener("resize", this.resize.bind(this));
     this.canvas.removeEventListener("click", this.clickHandler);
     this.renderer.dispose();
