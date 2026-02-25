@@ -21,12 +21,33 @@ export class App {
   private sunLight: THREE.PointLight | null = null;
 
   private composer: EffectComposer | null = null;
+  private filterPass: ShaderPass | null = null;
+  private currentFilterIndex = 0;
 
   private people: THREE.Group[] = [];
   private mixers: THREE.AnimationMixer[] = [];
+  private shadowGroups: THREE.Group[] = [];
+  private readonly sunPos = new THREE.Vector3(0, 25, -25);
 
-  constructor(canvas: HTMLCanvasElement) {
+  private loadedCount = 0;
+  private totalToLoad = 0;
+  private onReadyCallback: (() => void) | null = null;
+
+  // ── 그림자 유형 분류 ──────────────────────────────────────
+  // 서있는 포즈: 인체 실루엣 그림자 (다리+몸통+머리)
+  private static readonly STANDING_MODELS: ReadonlySet<string> = new Set([
+    'Idle.fbx',
+    'Smoking.fbx',
+    'Talking_On_Phone.fbx',
+    // 새 서있는 모델 추가 시 여기에
+  ]);
+  // 누워있는 포즈: 발밑 타원 그림자
+  // (위 집합에 없으면 자동으로 누운 포즈 처리)
+  // ────────────────────────────────────────────────────────
+
+  constructor(canvas: HTMLCanvasElement, onReady?: () => void) {
   this.canvas = canvas;
+  this.onReadyCallback = onReady ?? null;
   this.clock = new THREE.Clock();
 
   const parent = this.canvas.parentElement;
@@ -239,46 +260,49 @@ private addFloor() {
     '/people/Laying_Sleeping.fbx',
     '/people/MaleLayingPose.fbx',
     '/people/MaleLayingPose_1.fbx',
-    '/people/Pacing_And_Talking_On_A_Phone.fbx',
     '/people/Smoking.fbx',
     '/people/Talking_On_Phone.fbx'
+
+    // '/people/Pacing_And_Talking_On_A_Phone.fbx',
   ];
 
   const sunPosition = new THREE.Vector3(0, 25, -25);
 
-  // 1. 랜덤 배치 (40명)
-  for (let i = 0; i < 10; i++) {
+  // 1. 랜덤 배치 (20명)
+  const count = 20;
+  this.totalToLoad = count;
+  for (let i = 0; i < count; i++) {
     const x = (Math.random() - 0.5) * 35;
     const z = -15 + Math.random() * 20;
     const randomModel = models[Math.floor(Math.random() * models.length)];
-    
+
     this.loadFBXPerson(fbxLoader, randomModel, x, z, sunPosition);
   }
 
-  // 2. 줄 서 있는 사람들 (20명) - 3줄
-  // 첫 번째 줄 (중앙 앞쪽)
-  for (let i = 0; i < 3; i++) {
-    const x = -10 + i * 1; // 3미터 간격
-    const z = -15;
-    const randomModel = models[Math.floor(Math.random() * models.length)];
-    this.loadFBXPerson(fbxLoader, randomModel, x, z, sunPosition);
-  }
+  // // 2. 줄 서 있는 사람들 (20명) - 3줄
+  // // 첫 번째 줄 (중앙 앞쪽)
+  // for (let i = 0; i < 3; i++) {
+  //   const x = -10 + i * 1; // 3미터 간격
+  //   const z = -15;
+  //   const randomModel = models[Math.floor(Math.random() * models.length)];
+  //   this.loadFBXPerson(fbxLoader, randomModel, x, z, sunPosition);
+  // }
 
-  // 두 번째 줄 (왼쪽)
-  for (let i = 0; i < 2; i++) {
-    const x = -15 + i * 0.5;
-    const z = -20 + i * 1;
-    const randomModel = models[Math.floor(Math.random() * models.length)];
-    this.loadFBXPerson(fbxLoader, randomModel, x, z, sunPosition);
-  }
+  // // 두 번째 줄 (왼쪽)
+  // for (let i = 0; i < 2; i++) {
+  //   const x = -15 + i * 0.5;
+  //   const z = -20 + i * 1;
+  //   const randomModel = models[Math.floor(Math.random() * models.length)];
+  //   this.loadFBXPerson(fbxLoader, randomModel, x, z, sunPosition);
+  // }
 
-  // 세 번째 줄 (오른쪽)
-  for (let i = 0; i < 3; i++) {
-    const x = 12;
-    const z = -5 + i * 0.5;
-    const randomModel = models[Math.floor(Math.random() * models.length)];
-    this.loadFBXPerson(fbxLoader, randomModel, x, z, sunPosition);
-  }
+  // // 세 번째 줄 (오른쪽)
+  // for (let i = 0; i < 3; i++) {
+  //   const x = 12;
+  //   const z = -5 + i * 0.5;
+  //   const randomModel = models[Math.floor(Math.random() * models.length)];
+  //   this.loadFBXPerson(fbxLoader, randomModel, x, z, sunPosition);
+  // }
   }
 
 
@@ -315,15 +339,24 @@ private addFloor() {
       }
 
       fbx.scale.set(scale, scale, scale);
-      fbx.position.set(x, 0, z);
+      const yOffset = modelPath.includes('Laying_Sleeping') ? -0.8 : 0;
+      fbx.position.set(x, yOffset, z);
 
       // 태양을 향해 회전
       const personPosition = new THREE.Vector3(x, 0, z);
       const direction = new THREE.Vector3().subVectors(sunPosition, personPosition);
       direction.y = 0;
-      
+
       const angle = Math.atan2(direction.x, direction.z);
       fbx.rotation.y = angle;
+
+      // FBX 유형에 따라 그림자 방식 분기
+      const filename = modelPath.split('/').pop() ?? '';
+      if (App.STANDING_MODELS.has(filename)) {
+        this.createPersonShadow(fbx, x, z);   // 인체 실루엣 그림자
+      } else {
+        this.createLayingShadow(fbx);          // 발밑 타원 그림자
+      }
 
       this.scene.add(fbx);
       this.people.push(fbx);
@@ -336,90 +369,366 @@ private addFloor() {
         action.play();
         this.mixers.push(mixer);
       }
+
+      this.checkAllLoaded();
     },
-    (progress) => {
-      // 로딩 진행상황 (필요시)
-      // console.log((progress.loaded / progress.total) * 100 + '% loaded');
-    },
+    () => { /* progress */ },
     (error) => {
       console.error(`Error loading ${modelPath}:`, error);
+      this.checkAllLoaded(); // 에러여도 카운트
     }
   );
   }
-// setupPostProcessing 메서드에서 filmPass 부분만 수정
+  private checkAllLoaded() {
+    this.loadedCount++;
+    if (this.loadedCount >= this.totalToLoad && this.onReadyCallback) {
+      this.onReadyCallback();
+      this.onReadyCallback = null;
+    }
+  }
+
+  private createPersonShadow(fbx: THREE.Group, x: number, z: number) {
+    fbx.updateMatrixWorld(true);
+    const bbox = new THREE.Box3().setFromObject(fbx);
+
+    const personHeight = Math.max(bbox.max.y, 0.5);
+    const personWidth = Math.max(bbox.max.x - bbox.min.x, bbox.max.z - bbox.min.z, 0.3);
+
+    const foot = new THREE.Vector3(x, 0, z);
+    const head = new THREE.Vector3(x, personHeight, z);
+
+    // 태양에서 머리 방향으로 ray, y=0 평면과 교점 계산
+    const dir = new THREE.Vector3().subVectors(head, this.sunPos);
+    if (Math.abs(dir.y) < 0.001) return;
+    const t = -this.sunPos.y / dir.y;
+    const shadowTip = new THREE.Vector3().addVectors(this.sunPos, dir.clone().multiplyScalar(t));
+
+    const shadowVec = new THREE.Vector3().subVectors(shadowTip, foot);
+    const shadowLength = Math.max(shadowVec.length(), 0.8);
+    const shadowCenter = new THREE.Vector3().lerpVectors(foot, shadowTip, 0.5);
+
+    const L = shadowLength;
+    const W = personWidth;
+
+    // 직사각형 조각 경계에 그레인 적용하는 공유 ShaderMaterial
+    const rectMat = new THREE.ShaderMaterial({
+      uniforms: { uOpacity: { value: 0.19 } },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uOpacity;
+        varying vec2 vUv;
+        float rand(vec2 co) {
+          return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+        }
+        void main() {
+          float edgeDist = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
+          float grain = rand(vUv * 80.0);
+          float edgeZone = 1.0 - smoothstep(0.0, 0.18, edgeDist);
+          float alpha = mix(1.0, step(grain, 0.58), edgeZone * 0.88);
+          gl_FragColor = vec4(0.02, 0.01, 0.0, alpha * uOpacity);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+
+    // 원형(머리 타원) 경계에 그레인 적용하는 ShaderMaterial
+    const circleMat = new THREE.ShaderMaterial({
+      uniforms: { uOpacity: { value: 0.19 } },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uOpacity;
+        varying vec2 vUv;
+        float rand(vec2 co) {
+          return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+        }
+        void main() {
+          float r = length(vUv - vec2(0.5, 0.5));
+          float edgeDist = 0.5 - r;
+          float grain = rand(vUv * 80.0);
+          float edgeZone = 1.0 - smoothstep(0.0, 0.18, edgeDist);
+          float alpha = mix(1.0, step(grain, 0.58), edgeZone * 0.88);
+          gl_FragColor = vec4(0.02, 0.01, 0.0, alpha * uOpacity);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+
+    const group = new THREE.Group();
+    group.position.set(shadowCenter.x, 0.02, shadowCenter.z);
+    group.rotation.y = Math.atan2(shadowVec.x, shadowVec.z);
+
+    // group 로컬 Z: -L/2 = 발(foot), +L/2 = 그림자 끝(head)
+    const addRect = (rw: number, rh: number, px: number, pz: number) => {
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(rw, rh, 2, 2), rectMat);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.set(px, 0, pz);
+      group.add(mesh);
+    };
+
+    // 1. 다리 두 기둥 (0~32%)
+    const legL  = L * 0.32;
+    const legW  = W * 0.10;        // 절반
+    const legSep = W * 0.073;      // 1/3
+    const legCZ = -L / 2 + legL / 2;
+    addRect(legW, legL, -legSep, legCZ); // 왼쪽 다리
+    addRect(legW, legL,  legSep, legCZ); // 오른쪽 다리
+
+    // 2. 허리/엉덩이 이음부 (25~48%): 다리 → 몸통 연결
+    const hipL = L * 0.23;
+    const hipW = W * 0.28;        // 절반
+    addRect(hipW, hipL, 0, -L / 2 + L * 0.25 + hipL / 2);
+
+    // 3. 몸통 (42~75%)
+    const bodyL = L * 0.33;
+    const bodyW = W * 0.37;        // 절반
+    addRect(bodyW, bodyL, 0, -L / 2 + L * 0.42 + bodyL / 2);
+
+    // 4. 머리 타원 (80~97%): CircleGeometry를 타원으로 스케일
+    //    rotation.x=-PI/2 후 scale.x→세계X, scale.y→세계Z(그림자방향)
+    const headRX = W * 0.19;       // 절반
+    const headRZ = L * 0.09;
+    const headMesh = new THREE.Mesh(new THREE.CircleGeometry(1, 20), circleMat);
+    headMesh.rotation.x = -Math.PI / 2;
+    headMesh.scale.set(headRX, headRZ, 1);
+    headMesh.position.set(0, 0, -L / 2 + L * 0.88);
+    group.add(headMesh);
+
+    this.scene.add(group);
+    this.shadowGroups.push(group);
+  }
+
+  // 누워있는 포즈: 모델 바로 아래에 타원형 그림자
+  private createLayingShadow(fbx: THREE.Group) {
+    fbx.updateMatrixWorld(true);
+    const bbox = new THREE.Box3().setFromObject(fbx);
+
+    // 월드 공간 bounding box 중심 (x/z만 사용)
+    const cx = (bbox.min.x + bbox.max.x) / 2;
+    const cz = (bbox.min.z + bbox.max.z) / 2;
+
+    // XZ 범위의 60%를 타원 반지름으로
+    const rx = Math.max((bbox.max.x - bbox.min.x) * 0.60, 0.2);
+    const rz = Math.max((bbox.max.z - bbox.min.z) * 0.60, 0.2);
+
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { uOpacity: { value: 0.095 } },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uOpacity;
+        varying vec2 vUv;
+        float rand(vec2 co) {
+          return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+        }
+        void main() {
+          float r = length(vUv - vec2(0.5, 0.5));
+          float edgeDist = 0.5 - r;
+          if (edgeDist < 0.0) discard;
+          float grain = rand(vUv * 80.0);
+          float edgeZone = 1.0 - smoothstep(0.0, 0.18, edgeDist);
+          float alpha = mix(1.0, step(grain, 0.58), edgeZone * 0.88);
+          gl_FragColor = vec4(0.02, 0.01, 0.0, alpha * uOpacity);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+
+    // CircleGeometry: rotation.x=-PI/2 후 scale.x→세계X, scale.y→세계Z
+    // rz↔rx 교환으로 90도 회전 효과
+    const mesh = new THREE.Mesh(new THREE.CircleGeometry(1, 24), mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.scale.set(rz, rx, 1);
+    mesh.position.set(cx, 0.02, cz);
+
+    this.scene.add(mesh);
+  }
+
+  private buildFilterShaders() {
+    const vert = `
+      varying vec2 vUv;
+      void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }
+    `;
+    const noise = `float random(vec2 st){return fract(sin(dot(st,vec2(12.9898,78.233)))*43758.5453);}`;
+
+    // 0. Vintage (현재)
+    const vintage = {
+      uniforms: { tDiffuse: { value: null }, time: { value: 0.0 } },
+      vertexShader: vert,
+      fragmentShader: `
+        uniform sampler2D tDiffuse; uniform float time; varying vec2 vUv;
+        ${noise}
+        void main() {
+          vec2 uv = vUv;
+          vec2 cc = uv - 0.5; float dist = dot(cc,cc)*0.12;
+          uv = (uv-0.5)*(1.0+dist)+0.5;
+          vec4 color = texture2D(tDiffuse, uv);
+          float gray = dot(color.rgb, vec3(0.299,0.587,0.114));
+          color.rgb = mix(vec3(gray), color.rgb, 0.95);
+          color.rgb *= vec3(1.02,0.98,0.92);
+          float vignette = smoothstep(0.85,0.25,length(uv-0.5));
+          color.rgb *= vignette;
+          color.rgb -= sin(uv.y*550.0+time*6.0)*0.025;
+          color.rgb += random(uv*time)*0.08;
+          float off = 0.0012;
+          color.r = mix(color.r, texture2D(tDiffuse,uv+vec2(off,0.0)).r, 0.25);
+          color.b = mix(color.b, texture2D(tDiffuse,uv-vec2(off,0.0)).b, 0.25);
+          gl_FragColor = color;
+        }
+      `,
+    };
+
+    // 1. Kodak Gold / Ultramax
+    const kodakGold = {
+      uniforms: { tDiffuse: { value: null }, time: { value: 0.0 } },
+      vertexShader: vert,
+      fragmentShader: `
+        uniform sampler2D tDiffuse; uniform float time; varying vec2 vUv;
+        ${noise}
+        void main() {
+          vec2 uv = vUv;
+          vec4 color = texture2D(tDiffuse, uv);
+          float lum = dot(color.rgb, vec3(0.299,0.587,0.114));
+          // 중간톤 채도 낮춤
+          float sat = 1.0 - smoothstep(0.3,0.7,lum)*0.28;
+          color.rgb = mix(vec3(lum), color.rgb, sat);
+          // 따뜻한 노란 하이라이트
+          float hi = smoothstep(0.5,1.0,lum);
+          color.rgb += vec3(0.14, 0.09, -0.06) * hi;
+          // 그린-황 shadow cast
+          float sh = 1.0 - smoothstep(0.0,0.4,lum);
+          color.rgb += vec3(0.02,0.055,-0.015) * sh;
+          // Soft vignette
+          color.rgb *= smoothstep(0.95,0.3,length(uv-0.5))*0.18+0.82;
+          color.rgb += random(uv*time)*0.05;
+          gl_FragColor = color;
+        }
+      `,
+    };
+
+    // 3. Cross-process (시안/마젠타)
+    const crossProcess = {
+      uniforms: { tDiffuse: { value: null }, time: { value: 0.0 } },
+      vertexShader: vert,
+      fragmentShader: `
+        uniform sampler2D tDiffuse; uniform float time; varying vec2 vUv;
+        ${noise}
+        void main() {
+          vec2 uv = vUv;
+          vec4 color = texture2D(tDiffuse, uv);
+          float lum = dot(color.rgb, vec3(0.299,0.587,0.114));
+          // Shadow cyan
+          float sh = 1.0 - smoothstep(0.0,0.5,lum);
+          color.r -= 0.16*sh; color.b += 0.22*sh;
+          // Highlight magenta
+          float hi = smoothstep(0.5,1.0,lum);
+          color.g -= 0.13*hi; color.r += 0.07*hi;
+          // Contrast boost
+          color.rgb = (color.rgb - 0.5)*1.4 + 0.5;
+          color.rgb *= smoothstep(0.9,0.2,length(uv-0.5));
+          color.rgb += random(uv*time)*0.06;
+          gl_FragColor = color;
+        }
+      `,
+    };
+
+    // 4. Duotone (붉은색 + 검정)
+    const duotone = {
+      uniforms: { tDiffuse: { value: null }, time: { value: 0.0 } },
+      vertexShader: vert,
+      fragmentShader: `
+        uniform sampler2D tDiffuse; uniform float time; varying vec2 vUv;
+        float random(vec2 st){return fract(sin(dot(st,vec2(12.9898,78.233)))*43758.5453);}
+        void main() {
+          vec2 uv = vUv;
+          vec4 color = texture2D(tDiffuse, uv);
+          float lum = dot(color.rgb, vec3(0.299,0.587,0.114));
+          lum = smoothstep(0.08, 0.88, lum);
+          vec3 dark  = vec3(0.04,0.01,0.01);
+          vec3 light = vec3(1.0,0.22,0.04);
+          vec3 duo = mix(dark, light, lum);
+          duo += random(uv*time)*0.04;
+          duo *= smoothstep(0.9,0.2,length(uv-0.5))*0.15+0.85;
+          gl_FragColor = vec4(duo, 1.0);
+        }
+      `,
+    };
+
+    // 7. Cross-process v2 (시안/청록 ↔ 붉은 보색)
+    const crossProcess2 = {
+      uniforms: { tDiffuse: { value: null }, time: { value: 0.0 } },
+      vertexShader: vert,
+      fragmentShader: `
+        uniform sampler2D tDiffuse; uniform float time; varying vec2 vUv;
+        float random(vec2 st){return fract(sin(dot(st,vec2(12.9898,78.233)))*43758.5453);}
+        void main() {
+          vec2 uv = vUv;
+          vec4 color = texture2D(tDiffuse, uv);
+          float lum = dot(color.rgb, vec3(0.299,0.587,0.114));
+          // 하이라이트에 강한 시안/청록
+          float hi = smoothstep(0.38,0.9,lum);
+          color.r -= 0.28*hi; color.g += 0.10*hi; color.b += 0.32*hi;
+          // 그림자는 따뜻하게 유지
+          float sh = 1.0 - smoothstep(0.0,0.4,lum);
+          color.r += 0.10*sh;
+          // High contrast
+          color.rgb = (color.rgb - 0.38)*1.55 + 0.38;
+          color.rgb += random(uv*time)*0.07;
+          color.rgb *= smoothstep(0.9,0.2,length(uv-0.5))*0.15+0.85;
+          gl_FragColor = color;
+        }
+      `,
+    };
+
+    return [vintage, kodakGold, crossProcess, duotone, crossProcess2];
+  }
 
   private setupPostProcessing() {
-  this.composer = new EffectComposer(this.renderer);
-  
-  const renderPass = new RenderPass(this.scene, this.camera);
-  this.composer.addPass(renderPass);
+    this.composer = new EffectComposer(this.renderer);
+    const renderPass = new RenderPass(this.scene, this.camera);
+    this.composer.addPass(renderPass);
 
-  const VintageShader = {
-    uniforms: {
-      tDiffuse: { value: null },
-      time: { value: 0.0 },
-    },
-    vertexShader: `
-      varying vec2 vUv;
-      void main() {
-        vUv = uv;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform sampler2D tDiffuse;
-      uniform float time;
-      varying vec2 vUv;
+    const shaders = this.buildFilterShaders();
+    this.filterPass = new ShaderPass(shaders[this.currentFilterIndex]);
+    this.filterPass.renderToScreen = true;
+    this.composer.addPass(this.filterPass);
+  }
 
-      // 노이즈 함수
-      float random(vec2 st) {
-        return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
-      }
+  public cycleFilter(): void {
+    const shaders = this.buildFilterShaders();
+    this.currentFilterIndex = (this.currentFilterIndex + 1) % shaders.length;
 
-      void main() {
-        vec2 uv = vUv;
-        
-        // CRT 왜곡
-        vec2 cc = uv - 0.5;
-        float dist = dot(cc, cc) * 0.12;
-        uv = (uv - 0.5) * (1.0 + dist) + 0.5;
-        
-        vec4 color = texture2D(tDiffuse, uv);
-        
-        // 채도 조정
-        float gray = dot(color.rgb, vec3(0.299, 0.587, 0.114));
-        color.rgb = mix(vec3(gray), color.rgb, 0.95);
-        
-        // 따뜻한 톤
-        color.rgb *= vec3(1.02, 0.98, 0.92);
-        
-        // 비네팅
-        float vignette = smoothstep(0.85, 0.25, length(uv - 0.5));
-        color.rgb *= vignette;
-        
-        // 스캔라인
-        float scanline = sin(uv.y * 550.0 + time * 6.0) * 0.025;
-        color.rgb -= scanline;
-        
-        // 필름 그레인 (노이즈)
-        float grain = random(uv * time) * 0.08;
-        color.rgb += grain;
-        
-        // 색수차
-        float offset = 0.0012;
-        float r = texture2D(tDiffuse, uv + vec2(offset, 0.0)).r;
-        float b = texture2D(tDiffuse, uv - vec2(offset, 0.0)).b;
-        color.r = mix(color.r, r, 0.25);
-        color.b = mix(color.b, b, 0.25);
-        
-        gl_FragColor = color;
-      }
-    `,
-  };
+    if (this.composer && this.filterPass) {
+      const idx = this.composer.passes.indexOf(this.filterPass);
+      if (idx !== -1) this.composer.passes.splice(idx, 1);
+      this.filterPass.dispose();
 
-  const vintagePass = new ShaderPass(VintageShader);
-  vintagePass.renderToScreen = true;
-  this.composer.addPass(vintagePass);
+      this.filterPass = new ShaderPass(shaders[this.currentFilterIndex]);
+      this.filterPass.renderToScreen = true;
+      this.composer.addPass(this.filterPass);
+    }
   }
 
   private animate = () => {
@@ -430,14 +739,8 @@ private addFloor() {
 
     this.mixers.forEach(mixer => mixer.update(delta));
 
-    if (this.composer) {
-      const passes = this.composer.passes;
-      if (passes.length > 1) {
-        const vintagePass = passes[1] as ShaderPass;
-        if (vintagePass.uniforms) {
-          vintagePass.uniforms.time.value = time;
-        }
-      }
+    if (this.filterPass?.uniforms?.time) {
+      this.filterPass.uniforms.time.value = time;
     }
 
     // 태양 펄스 (더 느리게)
