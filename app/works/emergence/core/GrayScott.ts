@@ -43,7 +43,7 @@ uniform float u_Kk;
 uniform float u_noiseKAmp;
 const float DT = 1.0;
 
-// Low-cost spatial+temporal hash for stochastic extinction
+// Low-cost spatial hash used for per-colony K noise
 float hash(vec2 p) {
   p = fract(p * vec2(127.1, 311.7));
   p += dot(p, p + 34.23);
@@ -103,18 +103,18 @@ void main(){
   // Colony boundary: drain V to zero so RD diffusion creates a natural dark zone.
   if (lftWall || rgtWall || upWall || dnWall) newV = 0.0;
 
-  // ── Hue + anisotropy propagation ───────────────────────────────────────────
+  // ── Hue + anisotropy propagation ──────────────────────────────────────────
   float newH;
   float newA;
   if (H > 0.005) {
     newH = H; newA = A;
   } else if (newV > 0.02) {
-    // Inherit hue AND anisotropy angle from the highest-V neighbour
+    // Background cell inherits from highest-V neighbour
     float mV = max(max(lft.g, rgt.g), max(up.g, dn.g));
     if      (lft.g >= mV - 0.001) { newH = lft.b; newA = lft.a; }
     else if (rgt.g >= mV - 0.001) { newH = rgt.b; newA = rgt.a; }
     else if (up.g  >= mV - 0.001) { newH = up.b;  newA = up.a;  }
-    else                          { newH = dn.b;  newA = dn.a;  }
+    else                           { newH = dn.b;  newA = dn.a;  }
   } else {
     newH = 0.0;
     newA = 0.0;
@@ -202,8 +202,6 @@ export class GrayScott implements Simulation {
   private ping = 0;
   private frame = 0;
 
-  // Shared hue sequencer — used for both seed patches and user-spawned patches.
-  // Starting offset is randomised so each session looks different.
   // Runtime RD parameters — randomised on right-click without reinitialising state
   private params = {
     F: DEF_F, K: DEF_K,
