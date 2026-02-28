@@ -92,6 +92,20 @@ export class App {
     this.onSimChange?.(type);
   }
 
+  public resetSim(): void {
+    if (this.currentType) this.setSim(this.currentType);
+  }
+
+  public toggleLeniaMode(): void {
+    if (this.sim && "toggleMode" in this.sim)
+      (this.sim as { toggleMode(): void }).toggleMode();
+  }
+
+  public toggleLeniaDelta(): void {
+    if (this.sim && "toggleDelta" in this.sim)
+      (this.sim as { toggleDelta(): void }).toggleDelta();
+  }
+
   public stopSim() {
     if (this.sim) {
       this.sim.destroy();

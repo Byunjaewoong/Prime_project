@@ -7,6 +7,73 @@ import CanvasApp from "./CanvasApp";
 import { App as EmergenceApp } from "./core/App";
 import { SimType } from "./core/types";
 
+// ── Lenia G(Uo, Ui) 2D phase diagram ─────────────────────────────────────────
+function LeniaPhaseChart({ params }: { params: Record<string, number> }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const W = canvas.width, H = canvas.height;
+    const ctx = canvas.getContext("2d")!;
+    const {
+      UO_LO1 = 0.26, UO_HI1 = 0.46,
+      UO_LO2 = 0.27, UO_HI2 = 0.36,
+      UI_THR  = 0.50,
+    } = params;
+
+    // Draw phase map pixel by pixel
+    const img = ctx.createImageData(W, H);
+    for (let py = 0; py < H; py++) {
+      for (let px = 0; px < W; px++) {
+        const uo = px / W;
+        const ui = 1 - py / H;   // Y flipped: Ui=1 at top
+        const alive = ui >= UI_THR
+          ? (uo >= UO_LO1 && uo <= UO_HI1)
+          : (uo >= UO_LO2 && uo <= UO_HI2);
+        const i = (py * W + px) * 4;
+        const v = alive ? 210 : 18;
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+        img.data[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+
+    // UI_THR horizontal dashed line
+    ctx.strokeStyle = "rgba(170,238,255,0.7)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([2, 3]);
+    const thrY = H * (1 - UI_THR);
+    ctx.beginPath(); ctx.moveTo(0, thrY); ctx.lineTo(W, thrY); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Axis labels
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.font = "8px monospace";
+    ctx.fillText("0", 2, H - 2);
+    ctx.fillText("1", W - 6, H - 2);
+    ctx.fillText("Uo →", W / 2 - 14, H - 2);
+    ctx.fillText("1", 2, 9);
+    ctx.fillText("Ui", 2, H / 2 + 4);
+  }, [params]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={160}
+      height={110}
+      style={{
+        width: "100%",
+        display: "block",
+        borderRadius: 3,
+        marginBottom: 10,
+        imageRendering: "pixelated",
+        border: "1px solid rgba(255,255,255,0.08)",
+      }}
+    />
+  );
+}
+
 const SIMS: {
   type: SimType;
   label: string;
@@ -47,6 +114,7 @@ export default function EmergencePage() {
   const [currentSim, setCurrentSim] = useState<SimType | null>(null);
   const [hovered, setHovered] = useState<SimType | null>(null);
   const [gsParams, setGsParams] = useState<Record<string, number> | null>(null);
+  const [leniaParams, setLeniaParams] = useState<Record<string, number> | null>(null);
 
   // Poll params while FAB is open on grayscott so values stay fresh
   useEffect(() => {
@@ -54,6 +122,16 @@ export default function EmergencePage() {
     setGsParams(appRef.current?.getSimParams() ?? null);
     const id = setInterval(() => {
       setGsParams(appRef.current?.getSimParams() ?? null);
+    }, 200);
+    return () => clearInterval(id);
+  }, [fabOpen, currentSim]);
+
+  // Poll params while FAB is open on lenia
+  useEffect(() => {
+    if (!fabOpen || currentSim !== "lenia") return;
+    setLeniaParams(appRef.current?.getSimParams() ?? null);
+    const id = setInterval(() => {
+      setLeniaParams(appRef.current?.getSimParams() ?? null);
     }, 200);
     return () => clearInterval(id);
   }, [fabOpen, currentSim]);
@@ -237,24 +315,42 @@ export default function EmergencePage() {
                     </p>
                   )}
                   {currentSim && (
-                    <button
-                      style={{
-                        marginTop: 12,
-                        fontSize: 11,
-                        padding: "4px 10px",
-                        background: "rgba(255,255,255,0.1)",
-                        border: "1px solid rgba(255,255,255,0.2)",
-                        borderRadius: 4,
-                        color: "inherit",
-                        cursor: "pointer",
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        goBack();
-                      }}
-                    >
-                      ← back to selection
-                    </button>
+                    <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
+                      <button
+                        style={{
+                          fontSize: 11,
+                          padding: "4px 10px",
+                          background: "rgba(255,255,255,0.1)",
+                          border: "1px solid rgba(255,255,255,0.2)",
+                          borderRadius: 4,
+                          color: "inherit",
+                          cursor: "pointer",
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          goBack();
+                        }}
+                      >
+                        ← back
+                      </button>
+                      <button
+                        style={{
+                          fontSize: 11,
+                          padding: "4px 10px",
+                          background: "rgba(255,255,255,0.07)",
+                          border: "1px solid rgba(255,255,255,0.2)",
+                          borderRadius: 4,
+                          color: "inherit",
+                          cursor: "pointer",
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          appRef.current?.resetSim();
+                        }}
+                      >
+                        ↺ reset
+                      </button>
+                    </div>
                   )}
                   {!currentSim && (
                     <p style={{ fontSize: 11, opacity: 0.5, marginTop: 8 }}>
@@ -262,6 +358,139 @@ export default function EmergencePage() {
                     </p>
                   )}
                 </div>
+
+                {/* Lenia params — scroll / drag to adjust */}
+                {currentSim === "lenia" && leniaParams && (() => {
+                  const isExpanded = (leniaParams._mode ?? 0) === 1;
+                  const PARAMS_STD: { key: string; label: string; min: number; max: number; step: number; fmt: (v: number) => string }[] = [
+                    { key: "R",       label: "kernel radius",  min: 8,    max: 20,   step: 1,     fmt: v => v.toFixed(0)  },
+                    { key: "SIGMA_K", label: "kernel width",   min: 0.03, max: 0.22, step: 0.005, fmt: v => v.toFixed(3)  },
+                    { key: "MU",      label: "growth center",  min: 0.08, max: 0.25, step: 0.002, fmt: v => v.toFixed(3)  },
+                    { key: "SIGMA_G", label: "growth width",   min: 0.02, max: 0.14, step: 0.002, fmt: v => v.toFixed(3)  },
+                    { key: "DT",      label: "time step",      min: 0.04, max: 0.18, step: 0.005, fmt: v => v.toFixed(3)  },
+                  ];
+                  const PARAMS_EXP: { key: string; label: string; min: number; max: number; step: number; fmt: (v: number) => string }[] = [
+                    { key: "R",       label: "outer radius",   min: 8,    max: 20,   step: 1,     fmt: v => v.toFixed(0)  },
+                    { key: "R_I",     label: "inner radius",   min: 3,    max: 12,   step: 1,     fmt: v => v.toFixed(0)  },
+                    { key: "UO_LO1",  label: "Uo lo (Ui≥thr)", min: 0.05, max: 0.80, step: 0.005, fmt: v => v.toFixed(3)  },
+                    { key: "UO_HI1",  label: "Uo hi (Ui≥thr)", min: 0.05, max: 0.90, step: 0.005, fmt: v => v.toFixed(3)  },
+                    { key: "UO_LO2",  label: "Uo lo (Ui<thr)", min: 0.05, max: 0.80, step: 0.005, fmt: v => v.toFixed(3)  },
+                    { key: "UO_HI2",  label: "Uo hi (Ui<thr)", min: 0.05, max: 0.90, step: 0.005, fmt: v => v.toFixed(3)  },
+                    { key: "UI_THR",  label: "Ui threshold",   min: 0.20, max: 0.80, step: 0.01,  fmt: v => v.toFixed(2)  },
+                    { key: "DT",      label: "time step",      min: 0.04, max: 0.18, step: 0.005, fmt: v => v.toFixed(3)  },
+                  ];
+                  const PARAMS = isExpanded ? PARAMS_EXP : PARAMS_STD;
+                  return (
+                    <div className="orbit-panel-section" style={{ marginTop: 8 }}>
+                      {isExpanded && <LeniaPhaseChart params={leniaParams} />}
+                      {/* Alive % monitor */}
+                      {(() => {
+                        const pct = leniaParams._alivePct ?? 0;
+                        const color = pct > 30 ? "#8f8" : pct > 8 ? "#ff8" : "#f88";
+                        return (
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 10 }}>
+                            <span style={{ opacity: 0.5 }}>alive cells</span>
+                            <span style={{ fontFamily: "monospace", color }}>{pct.toFixed(1)}%</span>
+                          </div>
+                        );
+                      })()}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                        <p style={{ fontSize: 10, letterSpacing: "0.15em", opacity: 0.4, textTransform: "uppercase", margin: 0 }}>
+                          parameters · scroll to adjust
+                        </p>
+                        <div style={{ display: "flex", gap: 4 }}>
+                          {(() => {
+                            const isDelta = (leniaParams._deltaActive ?? 0) === 1;
+                            return (
+                              <button
+                                style={{
+                                  fontSize: 10,
+                                  padding: "3px 8px",
+                                  background: isDelta ? "rgba(255,180,80,0.18)" : "rgba(255,255,255,0.07)",
+                                  border: `1px solid ${isDelta ? "rgba(255,180,80,0.55)" : "rgba(255,255,255,0.2)"}`,
+                                  borderRadius: 4,
+                                  color: isDelta ? "#fb4" : "inherit",
+                                  cursor: "pointer",
+                                  letterSpacing: "0.05em",
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  appRef.current?.toggleLeniaDelta();
+                                  setLeniaParams(appRef.current?.getSimParams() ?? null);
+                                }}
+                              >
+                                delta
+                              </button>
+                            );
+                          })()}
+                          <button
+                            style={{
+                              fontSize: 10,
+                              padding: "3px 8px",
+                              background: isExpanded ? "rgba(170,238,255,0.15)" : "rgba(255,255,255,0.07)",
+                              border: `1px solid ${isExpanded ? "rgba(170,238,255,0.5)" : "rgba(255,255,255,0.2)"}`,
+                              borderRadius: 4,
+                              color: isExpanded ? "#aef" : "inherit",
+                              cursor: "pointer",
+                              letterSpacing: "0.05em",
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              appRef.current?.toggleLeniaMode();
+                              setLeniaParams(appRef.current?.getSimParams() ?? null);
+                            }}
+                          >
+                            {isExpanded ? "expanded" : "standard"}
+                          </button>
+                        </div>
+                      </div>
+                      {PARAMS.map(({ key, label, min, max, step, fmt }) => {
+                        const val = leniaParams[key] ?? 0;
+                        const pct = Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100));
+                        const applyVal = (raw: number) => {
+                          const rounded = Math.round(raw / step) * step;
+                          const clamped = +Math.min(max, Math.max(min, rounded)).toFixed(5);
+                          appRef.current?.setSimParam(key, clamped);
+                          setLeniaParams((prev) => prev ? { ...prev, [key]: clamped } : prev);
+                        };
+                        return (
+                          <div
+                            key={key}
+                            onWheel={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              applyVal(val + (e.deltaY < 0 ? 1 : -1) * step);
+                            }}
+                            style={{ marginBottom: 8, userSelect: "none" }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>
+                              <span style={{ opacity: 0.5 }}>{label}</span>
+                              <span style={{ color: "#aef", fontFamily: "monospace" }}>{fmt(val)}</span>
+                            </div>
+                            <div
+                              style={{ height: 8, display: "flex", alignItems: "center", cursor: "ew-resize" }}
+                              onPointerDown={(e) => {
+                                e.preventDefault();
+                                e.currentTarget.setPointerCapture(e.pointerId);
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                applyVal(min + ((e.clientX - rect.left) / rect.width) * (max - min));
+                              }}
+                              onPointerMove={(e) => {
+                                if (!(e.buttons & 1)) return;
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                applyVal(min + ((e.clientX - rect.left) / rect.width) * (max - min));
+                              }}
+                            >
+                              <div style={{ width: "100%", height: 3, background: "rgba(255,255,255,0.1)", borderRadius: 2, overflow: "hidden" }}>
+                                <div style={{ width: `${pct}%`, height: "100%", background: "#aef", borderRadius: 2 }} />
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
 
                 {/* GrayScott params — scroll to adjust */}
                 {currentSim === "grayscott" && gsParams && (() => {
