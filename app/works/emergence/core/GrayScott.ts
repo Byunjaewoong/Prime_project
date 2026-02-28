@@ -145,8 +145,8 @@ vec3 hsv2rgb(float h, float s, float v){
 
 void main(){
   vec4  s = texture(u_state, v_uv);
-  float v = clamp(s.g * 4.0, 0.0, 1.0);
-  o = vec4(hsv2rgb(s.b, 0.85, v), 1.0);
+  float v = clamp(s.g * 3.0, 0.0, 0.78);
+  o = vec4(hsv2rgb(s.b, 0.62, v), 1.0);
 }`;
 
 // ─── WebGL helpers ────────────────────────────────────────────────────────────
