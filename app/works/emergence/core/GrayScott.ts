@@ -3,6 +3,10 @@ import { Simulation } from "./types";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const SUBSTEPS = 16;
+const SPOT_R        = 30;   // spot circle radius (canvas pixels)
+const TENT_R        = 15;   // tentacle half-thickness (px)
+const TENT_LEN      = 100;  // end-point distance from spot centre (px)
+const TENT_SAMPLES  = 50;   // bezier sample count for rasterisation
 
 // Default RD parameters (used as initial values; randomised on right-click)
 const DEF_DU        = 0.2097;
@@ -183,6 +187,46 @@ function mkFBO(gl: WebGL2RenderingContext, tex: WebGLTexture): WebGLFramebuffer 
   return f;
 }
 
+// ─── Spot ─────────────────────────────────────────────────────────────────────
+// Each colony owns one invisible "spot" that roams the boundary between colonies.
+// While roaming it moves along the H-field boundary (tangent to the edge).
+// When the boundary ring intersects enemy H, the spot overrides enemy pixels
+// inside its 30-px circle with the spot's own colony values.
+interface Tentacle {
+  // ── Far-end rotation ───────────────────────────────────────────────────────
+  endAngle:     number;  // current angle of far end from spot centre (radians)
+  rotSpeed:     number;  // rotation speed (rad/s), always positive
+  rotDir:       number;  // +1 = CCW, -1 = CW
+  rotReverseCd: number;  // countdown to next direction-reversal check (s)
+
+  // ── Control points: current interpolated values ───────────────────────────
+  cp1x: number; cp1y: number;  // relative to spot centre (canvas 2D)
+  cp2x: number; cp2y: number;
+
+  // ── Wriggle lerp A → B ────────────────────────────────────────────────────
+  cp1xA: number; cp1yA: number;  // lerp source
+  cp2xA: number; cp2yA: number;
+  cp1xB: number; cp1yB: number;  // lerp target
+  cp2xB: number; cp2yB: number;
+  cpT:   number;  // [0, 1] lerp progress
+  cpDur: number;  // lerp duration (s) ≈ 2
+}
+
+interface Spot {
+  hue:        number;  // colony H value (unique colony ID)
+  aniso:      number;  // colony A value
+  x:          number;  // canvas 2D x (integer px, x=0 left)
+  y:          number;  // canvas 2D y (integer px, y=0 top)
+  accX:       number;  // sub-pixel accumulator x
+  accY:       number;  // sub-pixel accumulator y
+  angle:      number;  // current movement direction (radians)
+  speed:      number;  // px / second
+  tangentDir: number;  // +1 or -1: which side to traverse along the boundary
+  reverseCd:  number;  // countdown to reverse-direction check (s)
+  dirCd:      number;  // roaming mode: countdown to random turn (s)
+  tentacles:  Tentacle[];
+}
+
 // ─── Simulation ───────────────────────────────────────────────────────────────
 // Golden-ratio hue sequencer: consecutive hues are maximally far apart
 // on the colour wheel (0.618… ≈ 1/φ stepping guarantees that any two
@@ -226,6 +270,46 @@ export class GrayScott implements Simulation {
     this.hueSeq = (this.hueSeq + GOLDEN) % 1.0;
     // Map [0,1] → [0.01, 1.0] so 0.0 stays reserved as the "uninitialised" sentinel
     return h * 0.99 + 0.01;
+  }
+
+  // Roaming spots — one per colony
+  private spots: Spot[] = [];
+
+  private makeSpot(x: number, y: number, hue: number, aniso: number): Spot {
+    const angle = Math.random() * Math.PI * 2;
+    const tentacles: Tentacle[] = Array.from({ length: 3 }, () => {
+      const endAngle = Math.random() * Math.PI * 2;
+      const ex = Math.cos(endAngle) * TENT_LEN;
+      const ey = Math.sin(endAngle) * TENT_LEN;
+      const cp1x = (Math.random() - 0.5) * 120;
+      const cp1y = (Math.random() - 0.5) * 120;
+      const cp2x = ex + (Math.random() - 0.5) * 80;
+      const cp2y = ey + (Math.random() - 0.5) * 80;
+      return {
+        endAngle,
+        rotSpeed:    0.15 + Math.random() * 0.2,   // 0.15–0.35 rad/s (2× slower)
+        rotDir:      Math.random() < 0.5 ? 1 : -1,
+        rotReverseCd: 1 + Math.random() * 2,       // first check in 1–3 s
+        cp1x, cp1y, cp2x, cp2y,
+        cp1xA: cp1x, cp1yA: cp1y,
+        cp2xA: cp2x, cp2yA: cp2y,
+        cp1xB: cp1x, cp1yB: cp1y,
+        cp2xB: cp2x, cp2yB: cp2y,
+        cpT: 1,    // immediately roll first wriggle target on first update
+        cpDur: 2,
+      };
+    });
+    return {
+      hue, aniso, x, y,
+      angle,
+      speed:      10 + Math.random() * 10,  // 10–20 px/s (2× slower)
+      accX:       0,
+      accY:       0,
+      tangentDir: Math.random() < 0.5 ? 1 : -1,
+      reverseCd:  1 + Math.random() * 2,    // first reversal in 1–3 s
+      dirCd:      1 + Math.random() * 4,    // first roaming turn in 1–5 s
+      tentacles,
+    };
   }
 
   constructor(w: number, h: number) {
@@ -302,6 +386,10 @@ export class GrayScott implements Simulation {
           data[i * 4+3] = p.aniso;                                // A (aniso angle)
         }
       }
+      // Spawn a spot at the patch centre.
+      // makeSeed uses texture Y coords (y=0 = bottom of screen);
+      // canvas 2D Y = h - 1 - texY, so canvas2D_y = h - 1 - p.cy.
+      this.spots.push(this.makeSpot(p.cx, h - 1 - p.cy, p.hue, p.aniso));
     }
     return data;
   }
@@ -341,6 +429,10 @@ export class GrayScott implements Simulation {
       }
       gl.bindTexture(gl.TEXTURE_2D, this.tex[this.ping]);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, cx0, cy0, cD, cD, gl.RGBA, gl.FLOAT, clearPatch);
+
+      // Remove spot belonging to the cleared colony
+      const clearedHue = pixel[2];
+      this.spots = this.spots.filter(s => Math.abs(s.hue - clearedHue) > 0.005);
     } else {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.bindTexture(gl.TEXTURE_2D, this.tex[this.ping]);
@@ -368,10 +460,301 @@ export class GrayScott implements Simulation {
     const y0 = Math.max(0, Math.min(h - D, (h - Math.round(cy)) - r));
     gl.texSubImage2D(gl.TEXTURE_2D, 0, x0, y0, D, D, gl.RGBA, gl.FLOAT, patch);
     gl.bindTexture(gl.TEXTURE_2D, null);
+
+    // Spawn spot at the new colony's centre (canvas 2D coords: cx, cy)
+    this.spots.push(this.makeSpot(cx, cy, hue, aniso));
+  }
+
+  // Move spots along the H-field boundary and claim enemy territory.
+  private updateSpots(delta: number) {
+    const { gl } = this;
+    const w = this.gsW, h = this.gsH;
+
+    for (const sp of this.spots) {
+      // ── 1. Sub-pixel accumulation → integer 1-px steps ───────────────────
+      sp.accX += Math.cos(sp.angle) * sp.speed * delta;
+      sp.accY += Math.sin(sp.angle) * sp.speed * delta;
+      const stepX = Math.trunc(sp.accX);
+      const stepY = Math.trunc(sp.accY);
+      sp.accX -= stepX;
+      sp.accY -= stepY;
+      if (stepX === 0 && stepY === 0) continue;
+
+      sp.x += stepX;
+      sp.y += stepY;
+
+      // ── 2. Wall bounce ─────────────────────────────────────────────────────
+      if (sp.x < SPOT_R) {
+        sp.x = SPOT_R; sp.accX = 0; sp.angle = Math.PI - sp.angle;
+      } else if (sp.x > w - SPOT_R) {
+        sp.x = w - SPOT_R; sp.accX = 0; sp.angle = Math.PI - sp.angle;
+      }
+      if (sp.y < SPOT_R) {
+        sp.y = SPOT_R; sp.accY = 0; sp.angle = -sp.angle;
+      } else if (sp.y > h - SPOT_R) {
+        sp.y = h - SPOT_R; sp.accY = 0; sp.angle = -sp.angle;
+      }
+
+      // ── 3. Read bounding box ───────────────────────────────────────────────
+      // Canvas 2D y=0 is top; texture y=0 is bottom → flip Y for readPixels.
+      const tcx = Math.max(0, Math.min(w - 1, Math.round(sp.x)));
+      const tcy = Math.max(0, Math.min(h - 1, h - 1 - Math.round(sp.y)));
+      const rx0 = Math.max(0, tcx - SPOT_R);
+      const ry0 = Math.max(0, tcy - SPOT_R);
+      const rx1 = Math.min(tcx + SPOT_R + 1, w);
+      const ry1 = Math.min(tcy + SPOT_R + 1, h);
+      const rW  = rx1 - rx0, rH = ry1 - ry0;
+      if (rW <= 0 || rH <= 0) continue;
+
+      const region = new Float32Array(rW * rH * 4);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo[this.ping]);
+      gl.readPixels(rx0, ry0, rW, rH, gl.RGBA, gl.FLOAT, region);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+      // ── 4. Boundary ring: compute centroid ────────────────────────────────
+      // Ring: (R-2)² ≤ dx²+dy² ≤ R²  (2-px thick inner edge)
+      // bCount: any non-own pixel (background H=0 OR enemy) → drives direction
+      // eCount: actual rival colony (H>0.005, H≠sp.hue)     → drives override
+      const R2   = SPOT_R * SPOT_R;
+      const R2in = (SPOT_R - 2) * (SPOT_R - 2);
+      let ex = 0, ey = 0, bCount = 0, eCount = 0;
+      for (let j = 0; j < rH; j++) {
+        for (let i = 0; i < rW; i++) {
+          const dx = (rx0 + i) - tcx, dy = (ry0 + j) - tcy;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < R2in || d2 > R2) continue;
+          const hv = region[(j * rW + i) * 4 + 2];
+          if (Math.abs(hv - sp.hue) > 0.005) {   // background or enemy
+            ex += dx; ey += dy; bCount++;
+          }
+          if (hv > 0.005 && Math.abs(hv - sp.hue) > 0.005) eCount++;
+        }
+      }
+
+      // ── 5. Update movement direction ───────────────────────────────────────
+      if (bCount > 0) {
+        // Boundary mode: move tangent to the normal pointing toward non-own pixels.
+        // (ex, ey) in texture space; angle applied in canvas 2D (y-axis flipped).
+        // Screen-space tangent = (ny_tex × tangentDir, nx_tex × tangentDir)
+        const len = Math.sqrt(ex * ex + ey * ey);
+        if (len > 0.5) {
+          const nx = ex / len, ny = ey / len;
+          sp.angle = Math.atan2(nx * sp.tangentDir, ny * sp.tangentDir);
+        }
+        // Periodically reverse traversal direction (50 % chance every 1–3 s)
+        sp.reverseCd -= delta;
+        if (sp.reverseCd <= 0) {
+          sp.reverseCd = 1 + Math.random() * 2;
+          if (Math.random() < 0.5) sp.tangentDir *= -1;
+        }
+      } else {
+        // Roaming mode: random ±45° turn when spot is fully inside own colony
+        sp.dirCd -= delta;
+        if (sp.dirCd <= 0) {
+          sp.dirCd  = 2 + Math.random() * 2;
+          sp.angle += (Math.random() - 0.5) * (Math.PI / 2);
+        }
+      }
+
+      // ── 6. Override enemy pixels inside the circle ────────────────────────
+      if (eCount === 0) continue;
+      let changed = false;
+      for (let j = 0; j < rH; j++) {
+        for (let i = 0; i < rW; i++) {
+          const dx = (rx0 + i) - tcx, dy = (ry0 + j) - tcy;
+          if (dx * dx + dy * dy > R2) continue;
+          const idx = (j * rW + i) * 4;
+          const hv  = region[idx + 2];
+          if (hv > 0.005 && Math.abs(hv - sp.hue) > 0.005) {
+            region[idx]     = 0.5  + (Math.random() - 0.5) * 0.1;  // U
+            region[idx + 1] = 0.25 + (Math.random() - 0.5) * 0.05; // V
+            region[idx + 2] = sp.hue;                               // H
+            region[idx + 3] = sp.aniso;                             // A
+            changed = true;
+          }
+        }
+      }
+      if (changed) {
+        gl.bindTexture(gl.TEXTURE_2D, this.tex[this.ping]);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, rx0, ry0, rW, rH, gl.RGBA, gl.FLOAT, region);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+      }
+    }
+  }
+
+  // Advance tentacle animations: rotate end-points + wriggle control points.
+  private updateTentacleAnimations(delta: number) {
+    for (const sp of this.spots) {
+      for (const ten of sp.tentacles) {
+        // ── 1. Rotate end-point ─────────────────────────────────────────────
+        ten.endAngle += ten.rotSpeed * ten.rotDir * delta;
+        ten.rotReverseCd -= delta;
+        if (ten.rotReverseCd <= 0) {
+          ten.rotReverseCd = 1 + Math.random() * 2;   // recheck in 1–3 s
+          if (Math.random() < 0.5) ten.rotDir *= -1;
+        }
+
+        // ── 2. Wriggle control points (lerp A → B, roll new B when done) ───
+        ten.cpT += delta / ten.cpDur;
+        if (ten.cpT >= 1) {
+          // Arrived — old target becomes new source, roll fresh target
+          ten.cp1xA = ten.cp1xB; ten.cp1yA = ten.cp1yB;
+          ten.cp2xA = ten.cp2xB; ten.cp2yA = ten.cp2yB;
+          const ex = Math.cos(ten.endAngle) * TENT_LEN;
+          const ey = Math.sin(ten.endAngle) * TENT_LEN;
+          ten.cp1xB = (Math.random() - 0.5) * 120;
+          ten.cp1yB = (Math.random() - 0.5) * 120;
+          ten.cp2xB = ex + (Math.random() - 0.5) * 80;
+          ten.cp2yB = ey + (Math.random() - 0.5) * 80;
+          ten.cpT   = 0;
+          ten.cpDur = 2;
+        }
+        // Smooth-step so motion eases in/out
+        const s = ten.cpT * ten.cpT * (3 - 2 * ten.cpT);
+        ten.cp1x = ten.cp1xA + (ten.cp1xB - ten.cp1xA) * s;
+        ten.cp1y = ten.cp1yA + (ten.cp1yB - ten.cp1yA) * s;
+        ten.cp2x = ten.cp2xA + (ten.cp2xB - ten.cp2xA) * s;
+        ten.cp2y = ten.cp2yA + (ten.cp2yB - ten.cp2yA) * s;
+      }
+    }
+  }
+
+  // Rasterise each spot's 3 bezier tentacles onto the H field.
+  // Any pixel touched by a tentacle that has a different H is overridden.
+  private updateTentacles() {
+    const { gl } = this;
+    const w = this.gsW, h = this.gsH;
+    const TR2 = TENT_R * TENT_R;
+
+    for (const sp of this.spots) {
+      // ── Bounding box (canvas 2D) covering all 3 tentacles ─────────────────
+      let minX = sp.x, maxX = sp.x, minY = sp.y, maxY = sp.y;
+      for (const ten of sp.tentacles) {
+        for (const [px, py] of [
+          [sp.x + ten.cp1x, sp.y + ten.cp1y],
+          [sp.x + ten.cp2x, sp.y + ten.cp2y],
+          [sp.x + Math.cos(ten.endAngle) * TENT_LEN, sp.y + Math.sin(ten.endAngle) * TENT_LEN],
+        ] as [number, number][]) {
+          if (px < minX) minX = px; if (px > maxX) maxX = px;
+          if (py < minY) minY = py; if (py > maxY) maxY = py;
+        }
+      }
+
+      // Canvas bbox → texture bbox (flip y: canvas y=0 top ↔ texture y=0 bottom)
+      const cx0 = Math.max(0, Math.floor(minX - TENT_R));
+      const cx1 = Math.min(w - 1, Math.ceil(maxX + TENT_R));
+      const cy0 = Math.max(0, Math.floor(minY - TENT_R));
+      const cy1 = Math.min(h - 1, Math.ceil(maxY + TENT_R));
+      const tx0 = cx0,  ty0 = h - 1 - cy1;
+      const tx1 = cx1,  ty1 = h - 1 - cy0;
+      const tW  = tx1 - tx0 + 1, tH = ty1 - ty0 + 1;
+      if (tW <= 0 || tH <= 0) continue;
+
+      // ── Read region ────────────────────────────────────────────────────────
+      const region = new Float32Array(tW * tH * 4);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo[this.ping]);
+      gl.readPixels(tx0, ty0, tW, tH, gl.RGBA, gl.FLOAT, region);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+      // ── Pre-compute all enemy tentacle sample positions (canvas 2D) ──────────
+      // Two tentacles overlap when a sample from each is within 2*TENT_R.
+      const OVERLAP_R2 = (2 * TENT_R) * (2 * TENT_R);
+      const enemyPts: number[] = [];  // flat [x0, y0, x1, y1, …]
+      for (const other of this.spots) {
+        if (Math.abs(other.hue - sp.hue) <= 0.005) continue;
+        for (const oten of other.tentacles) {
+          const op0x = other.x,                op0y = other.y;
+          const op1x = other.x + oten.cp1x,   op1y = other.y + oten.cp1y;
+          const op2x = other.x + oten.cp2x,   op2y = other.y + oten.cp2y;
+          const op3x = other.x + Math.cos(oten.endAngle) * TENT_LEN;
+          const op3y = other.y + Math.sin(oten.endAngle) * TENT_LEN;
+          for (let ti = 0; ti <= TENT_SAMPLES; ti++) {
+            const t = ti / TENT_SAMPLES, u = 1 - t;
+            enemyPts.push(
+              u*u*u*op0x + 3*u*u*t*op1x + 3*u*t*t*op2x + t*t*t*op3x,
+              u*u*u*op0y + 3*u*u*t*op1y + 3*u*t*t*op2y + t*t*t*op3y,
+            );
+          }
+        }
+      }
+
+      // ── Sample each tentacle and paint disks ───────────────────────────────
+      let changed = false;
+      let conflictX = 0, conflictY = 0, conflictCount = 0;
+
+      for (const ten of sp.tentacles) {
+        const p0x = sp.x,              p0y = sp.y;
+        const p1x = sp.x + ten.cp1x,  p1y = sp.y + ten.cp1y;
+        const p2x = sp.x + ten.cp2x,  p2y = sp.y + ten.cp2y;
+        const p3x = sp.x + Math.cos(ten.endAngle) * TENT_LEN;
+        const p3y = sp.y + Math.sin(ten.endAngle) * TENT_LEN;
+
+        for (let ti = 0; ti <= TENT_SAMPLES; ti++) {
+          const t = ti / TENT_SAMPLES;
+          const u = 1 - t;
+          // Cubic bezier sample in canvas 2D
+          const bx = u*u*u*p0x + 3*u*u*t*p1x + 3*u*t*t*p2x + t*t*t*p3x;
+          const by = u*u*u*p0y + 3*u*u*t*p1y + 3*u*t*t*p2y + t*t*t*p3y;
+
+          // Check tentacle-vs-tentacle: is this sample within 2*TENT_R of any enemy sample?
+          let inEnemyTentacle = false;
+          for (let ei = 0; ei < enemyPts.length; ei += 2) {
+            const ddx = bx - enemyPts[ei], ddy = by - enemyPts[ei + 1];
+            if (ddx * ddx + ddy * ddy <= OVERLAP_R2) { inEnemyTentacle = true; break; }
+          }
+
+          if (inEnemyTentacle) {
+            // Record conflict direction (canvas 2D offset from spot centre)
+            conflictX += bx - sp.x;
+            conflictY += by - sp.y;
+            conflictCount++;
+            continue;  // skip painting this disk
+          }
+
+          // Paint disk — override background AND enemy colony body
+          const stx = Math.round(bx);
+          const sty = h - 1 - Math.round(by);
+          for (let dy = -TENT_R; dy <= TENT_R; dy++) {
+            for (let dx = -TENT_R; dx <= TENT_R; dx++) {
+              if (dx*dx + dy*dy > TR2) continue;
+              const px = stx + dx, py = sty + dy;
+              if (px < tx0 || px > tx1 || py < ty0 || py > ty1) continue;
+              const ri = ((py - ty0) * tW + (px - tx0)) * 4;
+              if (Math.abs(region[ri + 2] - sp.hue) > 0.005) {
+                // Always update colony identity (H) and anisotropy (A).
+                // Claim the pixel: set our identity but zero out V.
+                // V=0 means the pixel shows black (brightness = V*4 = 0).
+                // Our colony's V diffuses naturally from the bezier path
+                // (which is connected to our established colony from P0),
+                // filling the claimed area with our own RD pattern —
+                // no foreign-coloured pixels at the boundary.
+                region[ri]     = 1.0;   // U = substrate
+                region[ri + 1] = 0.0;   // V = 0 → let diffusion fill
+                region[ri + 2] = sp.hue;
+                region[ri + 3] = sp.aniso;
+                changed = true;
+              }
+            }
+          }
+        }
+      }
+
+      // Steer the spot away from the enemy-tentacle contact centroid
+      if (conflictCount > 0) {
+        const cx = conflictX / conflictCount;
+        const cy = conflictY / conflictCount;
+        sp.angle = Math.atan2(cy, cx) + Math.PI;
+      }
+
+      if (changed) {
+        gl.bindTexture(gl.TEXTURE_2D, this.tex[this.ping]);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, tx0, ty0, tW, tH, gl.RGBA, gl.FLOAT, region);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+      }
+    }
   }
 
   update(delta: number) {
-    void delta;
     const { gl, cProg, tex, fbo, vao } = this;
     gl.useProgram(cProg);
     gl.bindVertexArray(vao);
@@ -400,6 +783,11 @@ export class GrayScott implements Simulation {
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.bindVertexArray(null);
+
+    // Move spots and claim enemy territory (CPU → GPU write per spot in enemy zone)
+    this.updateSpots(delta);
+    this.updateTentacleAnimations(delta);
+    this.updateTentacles();
   }
 
   render(ctx: CanvasRenderingContext2D, _w: number, _h: number) {
@@ -461,6 +849,58 @@ export class GrayScott implements Simulation {
     }
 
     ctx.restore();
+
+    // Draw tentacles (thick bezier curves, one per tentacle)
+    for (const sp of this.spots) {
+      const hsl = `hsl(${(sp.hue * 360).toFixed(0)}, 100%, 60%)`;
+      ctx.save();
+      ctx.strokeStyle = hsl;
+      ctx.lineWidth   = TENT_R * 2;
+      ctx.lineCap     = "round";
+      ctx.lineJoin    = "round";
+      ctx.globalAlpha = 0.35;
+      for (const ten of sp.tentacles) {
+        ctx.beginPath();
+        ctx.moveTo(sp.x, sp.y);
+        ctx.bezierCurveTo(
+          sp.x + ten.cp1x, sp.y + ten.cp1y,
+          sp.x + ten.cp2x, sp.y + ten.cp2y,
+          sp.x + Math.cos(ten.endAngle) * TENT_LEN, sp.y + Math.sin(ten.endAngle) * TENT_LEN,
+        );
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Draw spots: outline circle + centre dot + direction arrow
+    for (const sp of this.spots) {
+      const hsl = `hsl(${(sp.hue * 360).toFixed(0)}, 100%, 60%)`;
+      ctx.save();
+      ctx.strokeStyle = hsl;
+      ctx.fillStyle   = hsl;
+      ctx.lineWidth   = 1.5;
+      ctx.globalAlpha = 0.85;
+
+      // Boundary circle
+      ctx.beginPath();
+      ctx.arc(sp.x, sp.y, SPOT_R, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Centre dot
+      ctx.beginPath();
+      ctx.arc(sp.x, sp.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Direction arrow
+      const ax = sp.x + Math.cos(sp.angle) * SPOT_R;
+      const ay = sp.y + Math.sin(sp.angle) * SPOT_R;
+      ctx.beginPath();
+      ctx.moveTo(sp.x, sp.y);
+      ctx.lineTo(ax, ay);
+      ctx.stroke();
+
+      ctx.restore();
+    }
   }
 
   getParams(): Record<string, number> {
@@ -543,6 +983,12 @@ export class GrayScott implements Simulation {
     gl.useProgram(this.cProg);
     gl.uniform2f(gl.getUniformLocation(this.cProg, "u_res"), w, h);
     gl.useProgram(null);
+
+    // Clamp spot positions to stay within the new canvas bounds
+    for (const sp of this.spots) {
+      sp.x = Math.max(SPOT_R, Math.min(w - SPOT_R, sp.x));
+      sp.y = Math.max(SPOT_R, Math.min(h - SPOT_R, sp.y));
+    }
   }
 
   destroy() {
