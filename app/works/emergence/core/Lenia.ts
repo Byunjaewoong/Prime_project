@@ -528,7 +528,7 @@ export class Lenia implements Simulation {
   }
 
   /** Randomise params + start colour transition (same as right-click) */
-  private deltaRandomise() {
+  randomiseParams() {
     this.p = randParams();
     this.rebuildCompute();
     this.hueShiftSrc = this.hueShiftCur;
@@ -558,7 +558,7 @@ export class Lenia implements Simulation {
       this.deltaLastAction = now;
       if (this.alivePct <= 5) {
         // Still dying → re-randomise + spawn again
-        this.deltaRandomise();
+        this.randomiseParams();
         this.deltaSpawnRescue();
         return;  // stay in recovery, check again in 0.5s
       }
@@ -572,7 +572,7 @@ export class Lenia implements Simulation {
     this.deltaLastAction = now;
 
     // Randomise parameters
-    this.deltaRandomise();
+    this.randomiseParams();
 
     // Check if rescue needed
     if (this.alivePct <= 5) {
@@ -585,15 +585,7 @@ export class Lenia implements Simulation {
   onPointerDown(x: number, y: number, button: number) {
     if (button === 0) { this.spawnCircle(x, y); return; }
     if (button !== 2) return;
-
-    this.p = randParams();
-    this.rebuildCompute();
-
-    this.hueShiftSrc = this.hueShiftCur;
-    this.hueScaleSrc = this.hueScaleCur;
-    this.hueShiftTgt = Math.random();
-    this.hueScaleTgt = 0.3 + Math.random() * 0.7;
-    this.colorT = 0;
+    this.randomiseParams();
   }
 
   resize(w: number, h: number) {

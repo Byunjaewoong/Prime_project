@@ -399,6 +399,25 @@ export default function EmergencePage() {
                           parameters · scroll to adjust
                         </p>
                         <div style={{ display: "flex", gap: 4 }}>
+                          <button
+                            style={{
+                              fontSize: 10,
+                              padding: "3px 8px",
+                              background: "rgba(255,255,255,0.07)",
+                              border: "1px solid rgba(255,255,255,0.2)",
+                              borderRadius: 4,
+                              color: "#fff",
+                              cursor: "pointer",
+                              letterSpacing: "0.05em",
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              appRef.current?.randomiseParams();
+                              setLeniaParams(appRef.current?.getSimParams() ?? null);
+                            }}
+                          >
+                            random
+                          </button>
                           {(() => {
                             const isDelta = (leniaParams._deltaActive ?? 0) === 1;
                             return (
@@ -503,9 +522,30 @@ export default function EmergencePage() {
                   ];
                   return (
                     <div className="orbit-panel-section" style={{ marginTop: 8 }}>
-                      <p style={{ fontSize: 10, letterSpacing: "0.15em", opacity: 0.4, textTransform: "uppercase", marginBottom: 8 }}>
-                        parameters · scroll to adjust
-                      </p>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                        <p style={{ fontSize: 10, letterSpacing: "0.15em", opacity: 0.4, textTransform: "uppercase", margin: 0 }}>
+                          parameters · scroll to adjust
+                        </p>
+                        <button
+                          style={{
+                            fontSize: 10,
+                            padding: "3px 8px",
+                            background: "rgba(255,255,255,0.07)",
+                            border: "1px solid rgba(255,255,255,0.2)",
+                            borderRadius: 4,
+                            color: "#fff",
+                            cursor: "pointer",
+                            letterSpacing: "0.05em",
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            appRef.current?.randomiseParams();
+                            setGsParams(appRef.current?.getSimParams() ?? null);
+                          }}
+                        >
+                          random
+                        </button>
+                      </div>
                       {PARAMS.map(({ key, label, min, max, step }) => {
                         const val = gsParams[key] ?? 0;
                         const pct = Math.max(0, Math.min(100, ((val - min) / (max - min)) * 100));

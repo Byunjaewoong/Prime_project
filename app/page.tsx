@@ -98,9 +98,9 @@ export default function HomePage() {
           </li>
 
           {/* 8. Emergence */}
-          <li style={{ marginLeft: "25%", width: "fit-content" }}>
+          <li style={{ marginLeft: "45%", width: "fit-content" }}>
             <Link href="/works/emergence" style={{ textDecoration: "none", color: "inherit" }}>
-              <span>emergence</span>
+              <span>Emergence</span>
             </Link>
           </li>
 

@@ -914,28 +914,30 @@ export class GrayScott implements Simulation {
     }
   }
 
+  randomiseParams(): void {
+    const rnd  = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
+    const snap = (v: number, step: number) => +(Math.round(v / step) * step).toFixed(4);
+    const candidates = ["F", "DU", "DV", "noiseKAmp"];
+    const i = Math.floor(Math.random() * 4);
+    let j = Math.floor(Math.random() * 3); if (j >= i) j++;
+    const p = this.params as Record<string, number>;
+    const setVal = (key: string) => {
+      if      (key === "F")         p["F"]         = snap(rnd(0.034, 0.057), 0.001);
+      else if (key === "DU")        p["DU"]        = snap(rnd(0.18,  0.22),  0.005);
+      else if (key === "DV")        p["DV"]        = snap(rnd(0.09,  0.12),  0.005);
+      else                          p["noiseKAmp"] = snap(rnd(0.004, 0.014), 0.001);
+    };
+    setVal(candidates[i]);
+    setVal(candidates[j]);
+    this.paramsDirty = true;
+  }
+
   // Left-click: spawn a new colony. Right-click: randomise RD parameters.
   onPointerDown(x: number, y: number, button: number) {
     if (button === 0) {
       this.spawnPatch(x, y);
     } else if (button === 2) {
-      const rnd  = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
-      const snap = (v: number, step: number) => +(Math.round(v / step) * step).toFixed(4);
-      // Pick 2 of the four params at random (without repeat) and change only those.
-      // K is never touched.
-      const candidates = ["F", "DU", "DV", "noiseKAmp"];
-      const i = Math.floor(Math.random() * 4);
-      let j = Math.floor(Math.random() * 3); if (j >= i) j++;
-      const p = this.params as Record<string, number>;
-      const setVal = (key: string) => {
-        if      (key === "F")         p["F"]         = snap(rnd(0.034, 0.057), 0.001);
-        else if (key === "DU")        p["DU"]        = snap(rnd(0.18,  0.22),  0.005);
-        else if (key === "DV")        p["DV"]        = snap(rnd(0.09,  0.12),  0.005);
-        else                          p["noiseKAmp"] = snap(rnd(0.004, 0.014), 0.001);
-      };
-      setVal(candidates[i]);
-      setVal(candidates[j]);
-      this.paramsDirty = true;
+      this.randomiseParams();
     }
   }
 

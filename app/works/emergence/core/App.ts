@@ -101,6 +101,11 @@ export class App {
       (this.sim as { toggleMode(): void }).toggleMode();
   }
 
+  public randomiseParams(): void {
+    if (this.sim && "randomiseParams" in this.sim)
+      (this.sim as { randomiseParams(): void }).randomiseParams();
+  }
+
   public toggleLeniaDelta(): void {
     if (this.sim && "toggleDelta" in this.sim)
       (this.sim as { toggleDelta(): void }).toggleDelta();
