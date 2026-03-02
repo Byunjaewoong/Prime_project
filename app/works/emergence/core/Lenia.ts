@@ -151,20 +151,34 @@ uniform float     u_hue_scale;
 in  vec2 v_uv;
 out vec4 o;
 
-vec3 hsv2rgb(float h){
-  float k6 = h * 6.0;
-  float r   = clamp(abs(k6 - 3.0) - 1.0, 0.0, 1.0);
-  float g   = clamp(2.0 - abs(k6 - 2.0), 0.0, 1.0);
-  float b   = clamp(2.0 - abs(k6 - 4.0), 0.0, 1.0);
-  return vec3(r, g, b);
+vec3 ramp(float t, float hueRot){
+  vec3 c0 = vec3(0.0);
+  vec3 c1 = vec3(0.85, 0.25, 0.05);
+  vec3 c2 = vec3(0.05, 0.45, 0.55);
+  vec3 c3 = vec3(0.15, 0.65, 0.85);
+  vec3 c4 = vec3(1.0,  0.92, 0.80);
+
+  float hr = hueRot * 6.2832;
+  float cs = cos(hr), sn = sin(hr);
+  mat3 rot = mat3(
+    0.333+0.667*cs+0.167*sn, 0.333-0.333*cs-0.5*sn,   0.333-0.333*cs+0.833*sn,
+    0.333-0.333*cs+0.167*sn, 0.333+0.667*cs+0.5*sn,    0.333-0.333*cs-0.167*sn,
+    0.333-0.333*cs-0.833*sn, 0.333-0.333*cs+0.5*sn,    0.333+0.667*cs-0.167*sn
+  );
+
+  vec3 c;
+  if      (t < 0.12) c = mix(c0, c1, t / 0.12);
+  else if (t < 0.30) c = mix(c1, c2, (t - 0.12) / 0.18);
+  else if (t < 0.55) c = mix(c2, c3, (t - 0.30) / 0.25);
+  else               c = mix(c3, c4, (t - 0.55) / 0.45);
+
+  return rot * c;
 }
 
 void main(){
   float v = texture(u_state, v_uv).r;
-  vec3  c = hsv2rgb(fract(v * u_hue_scale + u_hue_shift));
-  float luma = dot(c, vec3(0.299, 0.587, 0.114));
-  c = mix(vec3(luma), c, 0.65);
-  c *= 0.78 * smoothstep(0.0, 0.06, v);
+  float t = smoothstep(0.0, 0.05, v) * clamp(v * 1.4, 0.0, 1.0);
+  vec3  c = ramp(t, u_hue_shift);
   o = vec4(c, 1.0);
 }`;
 
@@ -414,9 +428,9 @@ export class Lenia implements Simulation {
   // ── Left-click / drag: spawn a 100px alive circle ──
   // Uses mode-aware center value + smooth radial falloff so convolution
   // result lands inside the growth function's alive zone.
-  private spawnCircle(cx: number, cy: number) {
+  private spawnCircle(cx: number, cy: number, radius = 100) {
     const { gl } = this;
-    const R = 100;
+    const R = radius;
     const w = this.gsW, h = this.gsH;
     const texCX = Math.round(cx);
     const texCY = h - 1 - Math.round(cy);
@@ -538,13 +552,14 @@ export class Lenia implements Simulation {
     this.colorT = 0;
   }
 
-  /** Spawn N circles at random positions with random alive patterns */
+  /** Spawn N circles at random positions with random size (1×–3× base) */
   private deltaSpawnRescue() {
-    const count = 3 + Math.floor(Math.random() * 5); // 3–7
+    const count = 5 + Math.floor(Math.random() * 3); // 5–7
     for (let i = 0; i < count; i++) {
       const rx = Math.random() * this.gsW;
       const ry = Math.random() * this.gsH;
-      this.spawnCircle(rx, ry);
+      const r = Math.round(100 * (1 + Math.random() * 2)); // 100–300 px
+      this.spawnCircle(rx, ry, r);
     }
   }
 
