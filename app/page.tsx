@@ -104,6 +104,13 @@ export default function HomePage() {
             </Link>
           </li>
 
+          {/* 9. Laboratory */}
+          <li style={{ marginLeft: "25%", width: "fit-content" }}>
+            <Link href="/works/laboratory" style={{ textDecoration: "none", color: "inherit" }}>
+              <span>Laboratory</span>
+            </Link>
+          </li>
+
         </ul>
         
 
