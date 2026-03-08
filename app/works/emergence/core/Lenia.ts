@@ -618,12 +618,16 @@ export class Lenia implements Simulation {
     this.glCanvas.height = h;
 
     const newData = new Float32Array(w * h * 4);
+    const ox = Math.max(0, Math.floor((w - oldW) / 2));
+    const oy = Math.max(0, Math.floor((h - oldH) / 2));
+    const sx = Math.max(0, Math.floor((oldW - w) / 2));
+    const sy = Math.max(0, Math.floor((oldH - h) / 2));
     const cpW = Math.min(oldW, w);
     const cpH = Math.min(oldH, h);
     for (let y = 0; y < cpH; y++) {
       for (let x = 0; x < cpW; x++) {
-        const src = (y * oldW + x) * 4;
-        const dst = (y * w + x) * 4;
+        const src = ((y + sy) * oldW + (x + sx)) * 4;
+        const dst = ((y + oy) * w   + (x + ox)) * 4;
         newData[dst]     = oldData[src];
         newData[dst + 3] = 1.0;
       }

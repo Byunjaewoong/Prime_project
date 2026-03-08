@@ -960,13 +960,17 @@ export class GrayScott implements Simulation {
     const newData = new Float32Array(w * h * 4);
     for (let i = 0; i < w * h; i++) newData[i * 4] = 1.0;
 
-    // Copy overlapping region top-left aligned (preserves U, V, H, A)
+    // Copy overlapping region centered (preserves U, V, H, A)
+    const ox = Math.max(0, Math.floor((w - oldW) / 2));
+    const oy = Math.max(0, Math.floor((h - oldH) / 2));
+    const sx = Math.max(0, Math.floor((oldW - w) / 2));
+    const sy = Math.max(0, Math.floor((oldH - h) / 2));
     const cpW = Math.min(oldW, w);
     const cpH = Math.min(oldH, h);
     for (let y = 0; y < cpH; y++) {
       for (let x = 0; x < cpW; x++) {
-        const src = (y * oldW + x) * 4;
-        const dst = (y * w + x) * 4;
+        const src = ((y + sy) * oldW + (x + sx)) * 4;
+        const dst = ((y + oy) * w   + (x + ox)) * 4;
         newData[dst]     = oldData[src];     // U
         newData[dst + 1] = oldData[src + 1]; // V
         newData[dst + 2] = oldData[src + 2]; // H
@@ -986,11 +990,13 @@ export class GrayScott implements Simulation {
     gl.uniform2f(gl.getUniformLocation(this.cProg, "u_res"), w, h);
     gl.useProgram(null);
 
-    // Clamp spot positions to stay within the new canvas bounds
-    for (const sp of this.spots) {
-      sp.x = Math.max(SPOT_R, Math.min(w - SPOT_R, sp.x));
-      sp.y = Math.max(SPOT_R, Math.min(h - SPOT_R, sp.y));
-    }
+    // Translate spot positions by the centering offset; remove any that fall outside the new field
+    const dx = ox - sx, dy = oy - sy;
+    this.spots = this.spots.filter(sp => {
+      sp.x += dx;
+      sp.y += dy;
+      return sp.x >= SPOT_R && sp.x <= w - SPOT_R && sp.y >= SPOT_R && sp.y <= h - SPOT_R;
+    });
   }
 
   destroy() {

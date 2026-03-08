@@ -344,13 +344,17 @@ export class Physarum implements Simulation {
     this.outerW = w;
     this.outerH = h;
 
-    // 1. Copy trail state into new array (top-left aligned, zero-fill elsewhere)
-    const newTrail = new Float32Array(newMW * newMH);
+    // 1. Copy trail state into new array (centered, zero-fill elsewhere)
+    const ox = Math.max(0, Math.floor((newMW - oldMW) / 2));
+    const oy = Math.max(0, Math.floor((newMH - oldMH) / 2));
+    const sx = Math.max(0, Math.floor((oldMW - newMW) / 2));
+    const sy = Math.max(0, Math.floor((oldMH - newMH) / 2));
     const cpW = Math.min(oldMW, newMW);
     const cpH = Math.min(oldMH, newMH);
+    const newTrail = new Float32Array(newMW * newMH);
     for (let y = 0; y < cpH; y++) {
       for (let x = 0; x < cpW; x++) {
-        newTrail[y * newMW + x] = this.trail[y * oldMW + x];
+        newTrail[(y + oy) * newMW + (x + ox)] = this.trail[(y + sy) * oldMW + (x + sx)];
       }
     }
     this.trail              = newTrail;
@@ -358,12 +362,11 @@ export class Physarum implements Simulation {
     this.extinctionWave     = new Float32Array(newMW * newMH);
     this.nextExtinctionWave = new Float32Array(newMW * newMH);
 
-    // 2. Scale agent positions proportionally to new map dimensions
-    const scaleX = newMW / oldMW;
-    const scaleY = newMH / oldMH;
+    // 2. Shift agent positions by the centering offset
+    const dxMap = ox - sx, dyMap = oy - sy;
     for (let i = 0; i < N_AGENTS; i++) {
-      this.ax[i] = Math.max(0, Math.min(newMW - 1, this.ax[i] * scaleX));
-      this.ay[i] = Math.max(0, Math.min(newMH - 1, this.ay[i] * scaleY));
+      this.ax[i] = Math.max(0, Math.min(newMW - 1, this.ax[i] + dxMap));
+      this.ay[i] = Math.max(0, Math.min(newMH - 1, this.ay[i] + dyMap));
     }
 
     this.mapW = newMW;
