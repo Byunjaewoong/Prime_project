@@ -30,6 +30,10 @@ export class App {
   private ptrUpHandler:   (e: PointerEvent) => void;
   private ctxMenuHandler: (e: Event) => void;
   private wheelHandler:   (e: WheelEvent) => void;
+  private touchStartHandler: (e: TouchEvent) => void;
+  private touchMoveHandler:  (e: TouchEvent) => void;
+  private touchEndHandler:   (e: TouchEvent) => void;
+  private pinchStartDist = 0;
 
   // ── View transform state ───────────────────────────────────────────────────
   // Transform: screenX = fieldX * (zoom * sw/fieldW) + tx
@@ -134,11 +138,53 @@ export class App {
       }, ZOOM_SETTLE_MS);
     };
 
+    // ── Pinch-to-zoom (mobile) ─────────────────────────────────────────────
+    this.touchStartHandler = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        this.pinchStartDist = Math.hypot(dx, dy);
+      }
+    };
+    this.touchMoveHandler = (e: TouchEvent) => {
+      if (e.touches.length === 2 && this.pinchStartDist > 0) {
+        e.preventDefault();
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.hypot(dx, dy);
+        const ratio = dist / this.pinchStartDist;
+        this.pinchStartDist = dist;
+
+        // ratio > 1 = spread (zoom in), ratio < 1 = pinch (zoom out)
+        this.zoomTarget = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, this.zoomTarget * ratio));
+
+        if (this.zoomSettleTimer) clearTimeout(this.zoomSettleTimer);
+        this.zoomSettleTimer = setTimeout(() => {
+          const sw = this.canvas.width, sh = this.canvas.height;
+          const newW = Math.round(this.fieldW / this.zoomTarget);
+          const newH = Math.round(this.fieldH / this.zoomTarget);
+          const clampedW = Math.max(Math.round(sw * 0.33), Math.min(Math.round(sw * 3), newW));
+          const clampedH = Math.max(Math.round(sh * 0.33), Math.min(Math.round(sh * 3), newH));
+          this.zoom = this.zoomTarget;
+          this.fieldW = clampedW;
+          this.fieldH = clampedH;
+          this.sim?.resize(clampedW, clampedH);
+          this.zoomTarget = 1.0;
+          this.zoomSettleTimer = null;
+        }, ZOOM_SETTLE_MS);
+      }
+    };
+    this.touchEndHandler = () => { this.pinchStartDist = 0; };
+
     this.canvas.addEventListener("pointerdown",  this.ptrDownHandler);
     this.canvas.addEventListener("pointermove",  this.ptrMoveHandler);
     this.canvas.addEventListener("pointerup",    this.ptrUpHandler);
     this.canvas.addEventListener("contextmenu",  this.ctxMenuHandler);
     this.canvas.addEventListener("wheel",        this.wheelHandler, { passive: false });
+    this.canvas.addEventListener("touchstart",   this.touchStartHandler, { passive: false });
+    this.canvas.addEventListener("touchmove",    this.touchMoveHandler,  { passive: false });
+    this.canvas.addEventListener("touchend",     this.touchEndHandler);
 
     this.animationId = requestAnimationFrame(this.animate.bind(this));
   }
@@ -254,5 +300,8 @@ export class App {
     this.canvas.removeEventListener("pointerup",   this.ptrUpHandler);
     this.canvas.removeEventListener("contextmenu", this.ctxMenuHandler);
     this.canvas.removeEventListener("wheel",       this.wheelHandler);
+    this.canvas.removeEventListener("touchstart",  this.touchStartHandler);
+    this.canvas.removeEventListener("touchmove",   this.touchMoveHandler);
+    this.canvas.removeEventListener("touchend",    this.touchEndHandler);
   }
 }
