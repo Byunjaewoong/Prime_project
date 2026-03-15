@@ -49,51 +49,57 @@ export default function HomePage() {
 
           <li style={{ marginLeft: "2%", width: "fit-content" }}>
             <Link href="/works/orbit" style={{ textDecoration: "none", color: "inherit" }}>
-              <span>1. Geo-centr</span>
+              <span>Geo-centr</span>
             </Link>
           </li>
 
           <li style={{ marginLeft: "60%", width: "fit-content" }}>
             <Link href="/works/orbit2" style={{ textDecoration: "none", color: "inherit" }}>
-              <span>2. Helio-centr</span>
+              <span>Helio-centr</span>
             </Link>
           </li>
 
           <li style={{ marginLeft: "35%", width: "fit-content" }}>
             <Link href="/works/donut" style={{ textDecoration: "none", color: "inherit" }}>
-              <span>3. ASCII Donut</span>
+              <span>ASCII Donut</span>
             </Link>
           </li>
 
           <li style={{ marginLeft: "15%", width: "fit-content" }}>
             <Link href="/works/perlin_noise" style={{ textDecoration: "none", color: "inherit" }}>
-              <span>4. Perlin noise</span>
+              <span>Perlin noise</span>
             </Link>
           </li>
 
           <li style={{ marginLeft: "55%", width: "fit-content" }}>
             <Link href="/works/snow_walk" style={{ textDecoration: "none", color: "inherit" }}>
-              <span>5. Snow walker</span>
+              <span>Snow walker</span>
             </Link>
           </li>
 
           <li style={{ marginLeft: "45%", width: "fit-content" }}>
             <Link href="/works/emergence" style={{ textDecoration: "none", color: "inherit" }}>
-              <span>6. Emergence</span>
+              <span>Emergence</span>
             </Link>
           </li>
 
           <li style={{ marginLeft: "25%", width: "fit-content" }}>
-            <Link href="/works/laboratory" style={{ textDecoration: "none", color: "inherit" }}>
-              <span>7. Laboratory</span>
+            <Link href="/works/FluidSim_cpu" style={{ textDecoration: "none", color: "inherit" }}>
+              <span>Vortex</span>
             </Link>
           </li>
 
         </ul>
-        
+
+        {/* Laboratory — :) 바로 위, 이탤릭 */}
+        <div style={{ textAlign: "left", marginTop: "120px" }}>
+          <Link href="/works/laboratory" style={{ textDecoration: "none", color: "inherit", fontStyle: "italic" }}>
+            Laboratory
+          </Link>
+        </div>
 
         {/* 하단 푸터 영역 */}
-        <div style={{ marginTop: "250px", fontSize: "0.85rem", opacity: 0.2 }}>
+        <div style={{ marginTop: "10px", fontSize: "0.85rem", opacity: 0.2 }}>
           <div style={{ marginBottom: "10px" }}>:)</div>
           <div>2025 11 23</div>
           <div style={{ textAlign: "right", marginTop: "20px" }}>
