@@ -157,12 +157,42 @@ out vec4 fragColor;
 uniform sampler2D uTexture;
 uniform float saturation;
 uniform float brightness;
+uniform float uTime;
+
+// pseudo-random hash
+float hash(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+
 void main(){
   vec3 c = texture(uTexture, vUv).rgb;
+
+  // ── saturation & brightness ──
   float gray = dot(c, vec3(0.299, 0.587, 0.114));
   c = mix(vec3(gray), c, saturation);
   c *= brightness;
-  c = pow(clamp(c, 0.0, 1.0), vec3(0.75));
+
+  // ── smoke/fog: subtle haze that lifts blacks ──
+  float smoke = 0.012 + 0.008 * sin(vUv.y * 6.0 + uTime * 0.3);
+  c += smoke * vec3(0.7, 0.75, 0.8);
+
+  // ── film grain ──
+  float grain = hash(vUv * 1000.0 + fract(uTime * 7.13)) - 0.5;
+  c += grain * 0.06;
+
+  // ── vignette ──
+  vec2 vig = vUv * (1.0 - vUv);
+  float v = pow(vig.x * vig.y * 16.0, 0.3);
+  c *= mix(0.45, 1.0, v);
+
+  // ── tone curve (film-like S-curve with lifted blacks) ──
+  c = clamp(c, 0.0, 1.0);
+  c = c * c * (3.0 - 2.0 * c);              // smoothstep S-curve
+  c = mix(c, pow(c, vec3(0.85)), 0.5);      // slight highlight lift
+  c = max(c, vec3(0.015, 0.013, 0.018));    // lifted blacks (never pure black)
+
   fragColor = vec4(c, 1.0);
 }`;
 
@@ -245,6 +275,37 @@ void main(){
   fragColor = vec4(result, 1.0);
 }`;
 
+const boundaryFrag = `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform sampler2D uVelocity;
+uniform vec2 texelSize;
+void main(){
+  vec2 vel = texture(uVelocity, vUv).xy;
+
+  // wall thickness in UV space (1 texel from each edge)
+  float bx = texelSize.x;
+  float by = texelSize.y;
+
+  // left/right walls: zero out horizontal velocity
+  if (vUv.x < bx)          vel.x = max(vel.x, 0.0);  // left wall: no leftward flow
+  if (vUv.x > 1.0 - bx)   vel.x = min(vel.x, 0.0);  // right wall: no rightward flow
+
+  // bottom/top walls: zero out vertical velocity
+  if (vUv.y < by)          vel.y = max(vel.y, 0.0);  // bottom wall: no downward flow
+  if (vUv.y > 1.0 - by)   vel.y = min(vel.y, 0.0);  // top wall: no upward flow
+
+  // corners & edge: full zero within half-texel of border
+  float halfX = bx * 0.5;
+  float halfY = by * 0.5;
+  if (vUv.x < halfX || vUv.x > 1.0 - halfX || vUv.y < halfY || vUv.y > 1.0 - halfY) {
+    vel = vec2(0.0);
+  }
+
+  fragColor = vec4(vel, 0.0, 1.0);
+}`;
+
 const clearFrag = `#version 300 es
 precision highp float;
 in vec2 vUv;
@@ -299,6 +360,7 @@ export class FluidGL {
   private vorticityProg!: Program;
   private displayProg!: Program;
   private vectorFieldProg!: Program;
+  private boundaryProg!: Program;
   private clearProg!: Program;
 
   // simulation resolution
@@ -319,6 +381,7 @@ export class FluidGL {
   saturation = 1.3;
   brightness = 0.6;
   showVectors = false;
+  private time = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -344,6 +407,7 @@ export class FluidGL {
     this.vorticityProg = this.createProgram(baseVert, vorticityFrag);
     this.displayProg = this.createProgram(baseVert, displayFrag);
     this.vectorFieldProg = this.createProgram(baseVert, vectorFieldFrag);
+    this.boundaryProg = this.createProgram(baseVert, boundaryFrag);
     this.clearProg = this.createProgram(baseVert, clearFrag);
   }
 
@@ -386,6 +450,7 @@ export class FluidGL {
   step(dt: number): void {
     const gl = this.gl;
     gl.disable(gl.BLEND);
+    this.time += dt;
 
     // curl
     this.useProg(this.curlProg);
@@ -497,6 +562,15 @@ export class FluidGL {
     gl.uniform1f(this.advectionProg.uniforms.dissipation, this.densityDissipation);
     this.blit(this.dye.write);
     this.dye.swap();
+
+    // enforce wall boundaries on velocity
+    this.useProg(this.boundaryProg);
+    gl.uniform2f(this.boundaryProg.uniforms.texelSize, 1 / this.simW, 1 / this.simH);
+    gl.uniform1i(this.boundaryProg.uniforms.uVelocity, 0);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.velocity.read.texture);
+    this.blit(this.velocity.write);
+    this.velocity.swap();
   }
 
   splat(x: number, y: number, dx: number, dy: number, color: [number, number, number]): void {
@@ -528,17 +602,18 @@ export class FluidGL {
   render(): void {
     const gl = this.gl;
 
-    if (this.showVectors) {
-      // render dye to screen first via display shader
-      this.useProg(this.displayProg);
-      gl.uniform2f(this.displayProg.uniforms.texelSize, 1 / gl.drawingBufferWidth, 1 / gl.drawingBufferHeight);
-      gl.uniform1i(this.displayProg.uniforms.uTexture, 0);
-      gl.uniform1f(this.displayProg.uniforms.saturation, this.saturation);
-      gl.uniform1f(this.displayProg.uniforms.brightness, this.brightness);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, this.dye.read.texture);
-      this.blit(null);
+    // display pass (dye + film effects)
+    this.useProg(this.displayProg);
+    gl.uniform2f(this.displayProg.uniforms.texelSize, 1 / gl.drawingBufferWidth, 1 / gl.drawingBufferHeight);
+    gl.uniform1i(this.displayProg.uniforms.uTexture, 0);
+    gl.uniform1f(this.displayProg.uniforms.saturation, this.saturation);
+    gl.uniform1f(this.displayProg.uniforms.brightness, this.brightness);
+    gl.uniform1f(this.displayProg.uniforms.uTime, this.time);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.dye.read.texture);
+    this.blit(null);
 
+    if (this.showVectors) {
       // overlay vector field with blending
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -556,15 +631,6 @@ export class FluidGL {
       this.blit(null);
 
       gl.disable(gl.BLEND);
-    } else {
-      this.useProg(this.displayProg);
-      gl.uniform2f(this.displayProg.uniforms.texelSize, 1 / gl.drawingBufferWidth, 1 / gl.drawingBufferHeight);
-      gl.uniform1i(this.displayProg.uniforms.uTexture, 0);
-      gl.uniform1f(this.displayProg.uniforms.saturation, this.saturation);
-      gl.uniform1f(this.displayProg.uniforms.brightness, this.brightness);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, this.dye.read.texture);
-      this.blit(null);
     }
   }
 
