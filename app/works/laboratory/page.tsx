@@ -54,22 +54,8 @@ export default function LaboratoryPage() {
           </li>
 
           <li>
-            <Link href="/works/vortex" style={{ textDecoration: "none", color: "inherit", display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "1px dotted rgba(26,64,49,0.2)", paddingBottom: "6px" }}>
-              <span>3. Vortex</span>
-              <span style={{ fontSize: "0.75rem", opacity: 0.3, marginLeft: 12 }}>stable fluids</span>
-            </Link>
-          </li>
-
-          <li>
-            <Link href="/works/FluidSim_cpu" style={{ textDecoration: "none", color: "inherit", display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "1px dotted rgba(26,64,49,0.2)", paddingBottom: "6px" }}>
-              <span>4. Vortex</span>
-              <span style={{ fontSize: "0.75rem", opacity: 0.3, marginLeft: 12 }}>stable fluids (CPU)</span>
-            </Link>
-          </li>
-
-          <li>
-            <Link href="/works/Fluid_sim_gpu" style={{ textDecoration: "none", color: "inherit", display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "1px dotted rgba(26,64,49,0.2)", paddingBottom: "6px" }}>
-              <span>5. FluidSim GPU</span>
+            <Link href="/works/Vortex_GPU" style={{ textDecoration: "none", color: "inherit", display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "1px dotted rgba(26,64,49,0.2)", paddingBottom: "6px" }}>
+              <span>3. Vortex GPU</span>
               <span style={{ fontSize: "0.75rem", opacity: 0.3, marginLeft: 12 }}>stable fluids (GPU)</span>
             </Link>
           </li>

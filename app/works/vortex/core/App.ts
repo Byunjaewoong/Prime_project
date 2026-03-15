@@ -1,7 +1,8 @@
-// app/works/vortex/core/App.ts
-// Orchestrator: animation loop, pointer events, dye injection (GPU-based)
+// app/works/FluidSim_cpu/core/App.ts
+// Orchestrator: animation loop, pointer events, dye injection (CPU-based)
 
-import { FluidGL } from "./FluidGL";
+import { FluidSolver } from "./FluidSolver";
+import { Renderer } from "./Renderer";
 
 function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   const c = (1 - Math.abs(2 * l - 1)) * s;
@@ -17,146 +18,167 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   return [r + m, g + m, b + m];
 }
 
+const CELLS_PER_PX = 0.133; // 1920px → ~256 cells
+const MIN_GRID = 64;
+const MAX_GRID = 512;
+
 export class App {
   private canvas: HTMLCanvasElement;
-  private fluid: FluidGL;
+  private ctx: CanvasRenderingContext2D;
+  private solver!: FluidSolver;
+  private renderer: Renderer;
   private animationId: number | null = null;
-  private lastTime = 0;
 
-  // pointer tracking
   private prevX = -1;
   private prevY = -1;
   private hueAngle = 0;
 
-  // params
-  private forceMultiplier = 15;
+  private forceMultiplier = 0.1;
+  showVectors = false;
+  private baseDyeRadius = 3;
+  private baseVelRadius = 4;
+  private static readonly REF_GRID = 144; // reference grid size (1080px)
 
-  // event handlers
   private resizeHandler: () => void;
+  private ptrDownHandler: (e: PointerEvent) => void;
   private ptrMoveHandler: (e: PointerEvent) => void;
+  private ptrUpHandler: () => void;
   private ptrLeaveHandler: () => void;
   private ctxMenuHandler: (e: Event) => void;
+  private pointerDown = false;
+  private resizeDebounce: ReturnType<typeof setTimeout> | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    this.ctx = canvas.getContext("2d")!;
+    this.renderer = new Renderer();
 
-    this.fluid = new FluidGL(canvas);
+    this.fitCanvas();
+    this.createSolver();
 
     this.resizeHandler = () => {
-      this.fluid.resize();
+      this.fitCanvas();
+      if (this.resizeDebounce) clearTimeout(this.resizeDebounce);
+      this.resizeDebounce = setTimeout(() => {
+        this.createSolver();
+        this.resizeDebounce = null;
+      }, 200);
     };
     window.addEventListener("resize", this.resizeHandler);
 
+    this.ptrDownHandler = (e: PointerEvent) => {
+      this.pointerDown = true;
+      this.prevX = -1;
+      this.prevY = -1;
+      canvas.setPointerCapture(e.pointerId);
+    };
+
     this.ptrMoveHandler = (e: PointerEvent) => {
+      if (!this.pointerDown && e.pointerType === "touch") return;
       const rect = this.canvas.getBoundingClientRect();
       const cx = e.clientX - rect.left;
       const cy = e.clientY - rect.top;
-
       if (this.prevX >= 0) {
-        const dx = cx - this.prevX;
-        const dy = cy - this.prevY;
-        const speed = Math.sqrt(dx * dx + dy * dy);
-        if (speed > 0.5) {
-          this.injectAt(cx, cy, dx, dy);
-        }
+        const dx = cx - this.prevX, dy = cy - this.prevY;
+        if (Math.sqrt(dx * dx + dy * dy) > 0.5) this.injectAt(cx, cy, dx, dy);
       }
-
       this.prevX = cx;
       this.prevY = cy;
     };
 
-    this.ptrLeaveHandler = () => {
-      this.prevX = -1;
-      this.prevY = -1;
-    };
-
+    this.ptrUpHandler = () => { this.pointerDown = false; this.prevX = -1; this.prevY = -1; };
+    this.ptrLeaveHandler = () => { this.pointerDown = false; this.prevX = -1; this.prevY = -1; };
     this.ctxMenuHandler = (e: Event) => e.preventDefault();
 
+    canvas.addEventListener("pointerdown", this.ptrDownHandler);
     canvas.addEventListener("pointermove", this.ptrMoveHandler);
+    canvas.addEventListener("pointerup", this.ptrUpHandler);
     canvas.addEventListener("pointerleave", this.ptrLeaveHandler);
     canvas.addEventListener("contextmenu", this.ctxMenuHandler);
 
     this.animationId = requestAnimationFrame(this.animate);
   }
 
-  private injectAt(cx: number, cy: number, dx: number, dy: number): void {
-    const w = this.canvas.clientWidth;
-    const h = this.canvas.clientHeight;
+  private createSolver(): void {
+    const w = window.innerWidth, h = window.innerHeight;
+    const gridW = Math.max(MIN_GRID, Math.min(MAX_GRID, Math.round(w * CELLS_PER_PX)));
+    const gridH = Math.max(MIN_GRID, Math.min(MAX_GRID, Math.round(h * CELLS_PER_PX)));
 
-    const mult = this.forceMultiplier;
-    const vx = dx * mult;
-    const vy = -dy * mult;
-    const dyeAmt = 12.0;
-
-    // emit 3 splats spread perpendicular to movement so colors stay separated
-    const spread = 60;
-    const len = Math.sqrt(dx * dx + dy * dy) || 1;
-    const px = -dy / len;  // perpendicular unit vector
-    const py = dx / len;
-
-    const splats = [
-      { ox: 0, oy: 0, hueShift: 0 },
-      { ox: px * spread, oy: py * spread, hueShift: 90 },
-      { ox: -px * spread, oy: -py * spread, hueShift: 210 },
-    ];
-
-    for (const { ox, oy, hueShift } of splats) {
-      const nx = (cx + ox) / w;
-      const ny = 1.0 - (cy + oy) / h;
-      const hue = (this.hueAngle + hueShift) % 360;
-      const [r, g, b] = hslToRgb(hue, 1.0, 0.5);
-      this.fluid.splat(nx, ny, vx, vy, [r * dyeAmt, g * dyeAmt, b * dyeAmt]);
+    const old = this.solver;
+    this.solver = new FluidSolver(gridW, gridH);
+    if (old) {
+      this.solver.vorticityEps = old.vorticityEps;
+      this.solver.dyeDecay = old.dyeDecay;
+      this.solver.diffusion = old.diffusion;
+      this.solver.velocityDecay = old.velocityDecay;
     }
   }
 
-  private animate = (timestamp: number): void => {
-    this.animationId = requestAnimationFrame(this.animate);
+  private injectAt(cx: number, cy: number, dx: number, dy: number): void {
+    const W = this.solver.W, H = this.solver.H;
+    const cssW = window.innerWidth, cssH = window.innerHeight;
+    const gx = Math.floor(1 + (cx / cssW) * W);
+    const gy = Math.floor(1 + (cy / cssH) * H);
+    if (gx < 1 || gx > W || gy < 1 || gy > H) return;
 
-    const dt = Math.min((timestamp - this.lastTime) / 1000, 0.033);
-    this.lastTime = timestamp;
-
-    this.hueAngle += 1.5;
-
-    this.fluid.step(dt);
-    this.fluid.render();
-  };
-
-  // ── Public API ────────────────────────────────────────────────────────────
-
-  reset(): void {
-    this.fluid.reset();
+    const scale = Math.max(W, H) / App.REF_GRID;
+    const velR = Math.max(1, Math.round(this.baseVelRadius * scale));
+    const dyeR = Math.max(1, Math.round(this.baseDyeRadius * scale));
+    const invScale2 = 1 / (scale * scale);
+    this.solver.addVelocity(gx, gy, dx * this.forceMultiplier * invScale2, dy * this.forceMultiplier * invScale2, velR);
+    const [r, g, b] = hslToRgb(this.hueAngle % 360, 1.0, 0.5);
+    this.solver.addDye(gx, gy, r * 80 * invScale2, g * 80 * invScale2, b * 80 * invScale2, dyeR);
   }
 
+  private animate = (_timestamp: number): void => {
+    this.animationId = requestAnimationFrame(this.animate);
+    this.hueAngle += 4.0;
+    this.solver.step();
+    const w = window.innerWidth, h = window.innerHeight;
+    this.renderer.render(this.ctx, this.solver.W, this.solver.H, this.solver.W + 2,
+      this.solver.dR, this.solver.dG, this.solver.dB, w, h);
+    if (this.showVectors) {
+      this.renderer.renderVectors(this.ctx, this.solver.W, this.solver.H, this.solver.W + 2,
+        this.solver.u, this.solver.v, w, h);
+    }
+  };
+
+  private fitCanvas(): void {
+    const dpr = window.devicePixelRatio || 1;
+    const w = window.innerWidth, h = window.innerHeight;
+    this.canvas.width = w * dpr;
+    this.canvas.height = h * dpr;
+    this.canvas.style.width = w + "px";
+    this.canvas.style.height = h + "px";
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  reset(): void { this.solver.reset(); }
+
   getParams(): Record<string, number> {
-    return {
-      vorticity: this.fluid.curl,
-      dyeDecay: this.fluid.densityDissipation,
-      force: this.forceMultiplier,
-    };
+    return { vorticity: this.solver.vorticityEps, dyeDecay: this.solver.dyeDecay, force: this.forceMultiplier, drag: this.solver.velocityDecay, viscosity: this.solver.diffusion, saturation: this.renderer.saturation, brightness: this.renderer.brightness };
   }
 
   setParam(key: string, value: number): void {
     switch (key) {
-      case "vorticity":
-        this.fluid.curl = value;
-        break;
-      case "dyeDecay":
-        this.fluid.densityDissipation = value;
-        break;
-      case "force":
-        this.forceMultiplier = value;
-        break;
+      case "vorticity": this.solver.vorticityEps = value; break;
+      case "dyeDecay": this.solver.dyeDecay = value; break;
+      case "force": this.forceMultiplier = value; break;
+      case "drag": this.solver.velocityDecay = value; break;
+      case "viscosity": this.solver.diffusion = value; break;
+      case "saturation": this.renderer.saturation = value; break;
+      case "brightness": this.renderer.brightness = value; break;
     }
   }
 
   destroy(): void {
     if (this.animationId !== null) cancelAnimationFrame(this.animationId);
+    if (this.resizeDebounce) clearTimeout(this.resizeDebounce);
     window.removeEventListener("resize", this.resizeHandler);
+    this.canvas.removeEventListener("pointerdown", this.ptrDownHandler);
     this.canvas.removeEventListener("pointermove", this.ptrMoveHandler);
+    this.canvas.removeEventListener("pointerup", this.ptrUpHandler);
     this.canvas.removeEventListener("pointerleave", this.ptrLeaveHandler);
     this.canvas.removeEventListener("contextmenu", this.ctxMenuHandler);
-    this.fluid.destroy();
   }
 }

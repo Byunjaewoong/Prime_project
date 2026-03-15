@@ -27,8 +27,8 @@ export class App {
   private prevY = -1;
   private hueAngle = 0;
 
-  private forceMultiplier = 0.1;
-  // GPU velocity is in UV space; CPU force 0.1 ≈ GPU force 5
+  private forceMultiplier = 0.2;
+  // Scale factor for GPU force injection (texel-space advection)
   private static readonly GPU_FORCE_SCALE = 50;
 
   private resizeHandler: () => void;
@@ -87,7 +87,7 @@ export class App {
     const mult = this.forceMultiplier * App.GPU_FORCE_SCALE;
     const vx = dx * mult;
     const vy = -dy * mult;
-    const dyeAmt = 12.0;
+    const dyeAmt = 0.4;
 
     const nx = cx / w;
     const ny = 1.0 - cy / h;
@@ -109,6 +109,9 @@ export class App {
   };
 
   // ── Public API ────────────────────────────────────────────────────────────
+
+  get showVectors(): boolean { return this.fluid.showVectors; }
+  set showVectors(v: boolean) { this.fluid.showVectors = v; }
 
   reset(): void {
     this.fluid.reset();

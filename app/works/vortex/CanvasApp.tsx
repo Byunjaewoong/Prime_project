@@ -1,36 +1,21 @@
-// app/works/vortex/CanvasApp.tsx
+// app/works/FluidSim_cpu/CanvasApp.tsx
 "use client";
 
 import { useEffect, useRef } from "react";
-import { App as VortexApp } from "./core/App";
+import { App as FluidCpuApp } from "./core/App";
 
-type Props = {
-  onReady?: (app: VortexApp | null) => void;
-};
+type Props = { onReady?: (app: FluidCpuApp | null) => void };
 
 export default function CanvasApp({ onReady }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const appRef = useRef<VortexApp | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
-    const app = new VortexApp(canvas);
-    appRef.current = app;
+    const app = new FluidCpuApp(canvas);
     onReady?.(app);
-
-    return () => {
-      app.destroy();
-      appRef.current = null;
-      onReady?.(null);
-    };
+    return () => { app.destroy(); onReady?.(null); };
   }, [onReady]);
 
-  return (
-    <canvas
-      ref={canvasRef}
-      style={{ display: "block", width: "100%", height: "100vh" }}
-    />
-  );
+  return <canvas ref={canvasRef} style={{ display: "block", width: "100%", height: "100vh", touchAction: "none" }} />;
 }

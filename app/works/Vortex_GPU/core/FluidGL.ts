@@ -1,5 +1,5 @@
-// app/works/vortex/core/FluidGL.ts
-// WebGL2 GPU-based Stable Fluids simulation
+// app/works/Fluid_sim_gpu/core/FluidGL.ts
+// WebGL2 GPU-based Stable Fluids simulation — ported from CPU FluidSim parameters
 
 // ── GLSL Shaders ──────────────────────────────────────────────────────────────
 
@@ -51,6 +51,24 @@ void main(){
   fragColor = vec4(result, 1.0);
 }`;
 
+const diffuseFrag = `#version 300 es
+precision highp float;
+in vec2 vUv; in vec2 vL; in vec2 vR; in vec2 vT; in vec2 vB;
+out vec4 fragColor;
+uniform sampler2D uVelocity;
+uniform sampler2D uSource;
+uniform float alpha;
+uniform float rBeta;
+void main(){
+  vec2 L = texture(uVelocity, vL).xy;
+  vec2 R = texture(uVelocity, vR).xy;
+  vec2 T = texture(uVelocity, vT).xy;
+  vec2 B = texture(uVelocity, vB).xy;
+  vec2 center = texture(uSource, vUv).xy;
+  vec2 result = (center + alpha * (L + R + T + B)) * rBeta;
+  fragColor = vec4(result, 0.0, 1.0);
+}`;
+
 const divergenceFrag = `#version 300 es
 precision highp float;
 in vec2 vUv; in vec2 vL; in vec2 vR; in vec2 vT; in vec2 vB;
@@ -61,7 +79,7 @@ void main(){
   float R = texture(uVelocity, vR).x;
   float T = texture(uVelocity, vT).y;
   float B = texture(uVelocity, vB).y;
-  float div = 0.5 * (R - L + T - B);
+  float div = 0.5 * ((R - L) + (T - B));
   fragColor = vec4(div, 0.0, 0.0, 1.0);
 }`;
 
@@ -125,7 +143,7 @@ void main(){
   float T = texture(uCurl, vT).x;
   float B = texture(uCurl, vB).x;
   float C = texture(uCurl, vUv).x;
-  vec2 force = 0.5 * vec2(abs(T) - abs(B), abs(R) - abs(L));
+  vec2 force = 0.5 * vec2(abs(T) - abs(B), abs(L) - abs(R));
   float len = length(force) + 1e-5;
   force = force / len * curl * C;
   vec2 vel = texture(uVelocity, vUv).xy + force * dt;
@@ -137,15 +155,94 @@ precision highp float;
 in vec2 vUv;
 out vec4 fragColor;
 uniform sampler2D uTexture;
+uniform float saturation;
+uniform float brightness;
 void main(){
   vec3 c = texture(uTexture, vUv).rgb;
-  // boost saturation: shift away from gray
   float gray = dot(c, vec3(0.299, 0.587, 0.114));
-  c = mix(vec3(gray), c, 1.6);
-  // brightness boost + gentle tone curve
-  c *= 1.3;
+  c = mix(vec3(gray), c, saturation);
+  c *= brightness;
   c = pow(clamp(c, 0.0, 1.0), vec3(0.75));
   fragColor = vec4(c, 1.0);
+}`;
+
+const vectorFieldFrag = `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 fragColor;
+uniform sampler2D uVelocity;
+uniform sampler2D uDye;
+uniform vec2 texelSize;
+uniform float gridSize;     // number of vector cells across larger axis (~40)
+uniform float maxVel;       // velocity normalization cap
+
+vec3 speedColor(float t) {
+  // blue → cyan → green → yellow → red
+  t = clamp(t, 0.0, 1.0);
+  if (t < 0.25) return mix(vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 1.0), t / 0.25);
+  if (t < 0.50) return mix(vec3(0.0, 1.0, 1.0), vec3(0.0, 1.0, 0.0), (t - 0.25) / 0.25);
+  if (t < 0.75) return mix(vec3(0.0, 1.0, 0.0), vec3(1.0, 1.0, 0.0), (t - 0.50) / 0.25);
+  return mix(vec3(1.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), (t - 0.75) / 0.25);
+}
+
+void main(){
+  // dye background
+  vec3 bg = texture(uDye, vUv).rgb;
+
+  // aspect-corrected pixel coord in [0, gridSize] space
+  float aspect = texelSize.y / texelSize.x;  // w/h
+  float cellsX = gridSize * aspect;
+  float cellsY = gridSize;
+
+  vec2 cellCoord = vec2(vUv.x * cellsX, vUv.y * cellsY);
+  vec2 cellCenter = floor(cellCoord) + 0.5;
+
+  // sample velocity at cell center
+  vec2 sampleUv = vec2(cellCenter.x / cellsX, cellCenter.y / cellsY);
+  vec2 vel = texture(uVelocity, sampleUv).xy;
+  float speed = length(vel);
+  float norm = clamp(speed / maxVel, 0.0, 1.0);
+
+  // vector endpoint: cell center + velocity direction * half cell
+  vec2 dir = speed > 0.001 ? vel / speed : vec2(0.0);
+  float lineLen = norm * 0.45; // max half-cell length
+  vec2 endPt = cellCenter + dir * lineLen;
+
+  // distance from pixel to line segment (cellCenter → endPt)
+  vec2 p = cellCoord;
+  vec2 a = cellCenter;
+  vec2 b = endPt;
+  vec2 ab = b - a;
+  float segLen = length(ab);
+
+  float alpha = 0.0;
+
+  if (segLen > 0.01 && norm > 0.02) {
+    float t = clamp(dot(p - a, ab) / dot(ab, ab), 0.0, 1.0);
+    vec2 closest = a + t * ab;
+    float dist = length(p - closest);
+
+    // line thickness (in cell units)
+    float thickness = 0.08;
+    alpha = smoothstep(thickness, thickness * 0.4, dist);
+
+    // arrowhead at endpoint
+    float tipDist = length(p - b);
+    vec2 perp = vec2(-dir.y, dir.x);
+    float arrowBack = dot(p - b, -dir);
+    float arrowSide = abs(dot(p - b, perp));
+    if (arrowBack > 0.0 && arrowBack < 0.18 && arrowSide < arrowBack * 0.6) {
+      alpha = max(alpha, smoothstep(0.18, 0.08, arrowBack));
+    }
+
+    // dot at cell center
+    float centerDist = length(p - a);
+    alpha = max(alpha, smoothstep(0.12, 0.06, centerDist));
+  }
+
+  vec3 vecColor = speedColor(norm);
+  vec3 result = mix(bg, vecColor, alpha * 0.85);
+  fragColor = vec4(result, 1.0);
 }`;
 
 const clearFrag = `#version 300 es
@@ -194,12 +291,14 @@ export class FluidGL {
   // programs
   private splatProg!: Program;
   private advectionProg!: Program;
+  private diffuseProg!: Program;
   private divergenceProg!: Program;
   private pressureProg!: Program;
   private gradSubProg!: Program;
   private curlProg!: Program;
   private vorticityProg!: Program;
   private displayProg!: Program;
+  private vectorFieldProg!: Program;
   private clearProg!: Program;
 
   // simulation resolution
@@ -208,13 +307,18 @@ export class FluidGL {
   private dyeW = 0;
   private dyeH = 0;
 
-  // params
-  simResolution = 512;
-  dyeResolution = 512;
+  // params (CPU-matched defaults)
+  simResolution = 256;
+  dyeResolution = 1024;
   pressureIterations = 20;
-  curl = 12.0;
-  densityDissipation = 0.985;
-  velocityDissipation = 0.99;
+  diffuseIterations = 4;
+  curl = 9.0;
+  densityDissipation = 0.996;
+  velocityDissipation = 0.995;
+  diffusion = 0.00001;
+  saturation = 1.3;
+  brightness = 0.6;
+  showVectors = false;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -232,12 +336,14 @@ export class FluidGL {
   private initPrograms(): void {
     this.splatProg = this.createProgram(baseVert, splatFrag);
     this.advectionProg = this.createProgram(baseVert, advectionFrag);
+    this.diffuseProg = this.createProgram(baseVert, diffuseFrag);
     this.divergenceProg = this.createProgram(baseVert, divergenceFrag);
     this.pressureProg = this.createProgram(baseVert, pressureFrag);
     this.gradSubProg = this.createProgram(baseVert, gradSubFrag);
     this.curlProg = this.createProgram(baseVert, curlFrag);
     this.vorticityProg = this.createProgram(baseVert, vorticityFrag);
     this.displayProg = this.createProgram(baseVert, displayFrag);
+    this.vectorFieldProg = this.createProgram(baseVert, vectorFieldFrag);
     this.clearProg = this.createProgram(baseVert, clearFrag);
   }
 
@@ -270,10 +376,10 @@ export class FluidGL {
     this.dyeW = dyeW;
     this.dyeH = dyeH;
 
-    this.velocity = this.createDoubleFBO(simW, simH, gl.RG16F, gl.RG, gl.HALF_FLOAT, gl.LINEAR);
-    this.pressure = this.createDoubleFBO(simW, simH, gl.R16F, gl.RED, gl.HALF_FLOAT, gl.NEAREST);
-    this.divergenceFBO = this.createFBO(simW, simH, gl.R16F, gl.RED, gl.HALF_FLOAT, gl.NEAREST);
-    this.curlFBO = this.createFBO(simW, simH, gl.R16F, gl.RED, gl.HALF_FLOAT, gl.NEAREST);
+    this.velocity = this.createDoubleFBO(simW, simH, gl.RG32F, gl.RG, gl.FLOAT, gl.LINEAR);
+    this.pressure = this.createDoubleFBO(simW, simH, gl.R32F, gl.RED, gl.FLOAT, gl.NEAREST);
+    this.divergenceFBO = this.createFBO(simW, simH, gl.R32F, gl.RED, gl.FLOAT, gl.NEAREST);
+    this.curlFBO = this.createFBO(simW, simH, gl.R32F, gl.RED, gl.FLOAT, gl.NEAREST);
     this.dye = this.createDoubleFBO(dyeW, dyeH, gl.RGBA16F, gl.RGBA, gl.HALF_FLOAT, gl.LINEAR);
   }
 
@@ -299,9 +405,28 @@ export class FluidGL {
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.curlFBO.texture);
     gl.uniform1f(this.vorticityProg.uniforms.curl, this.curl);
-    gl.uniform1f(this.vorticityProg.uniforms.dt, 0.1); // fixed dt like CPU
+    gl.uniform1f(this.vorticityProg.uniforms.dt, 0.1);
     this.blit(this.velocity.write);
     this.velocity.swap();
+
+    // diffuse velocity (Jacobi iteration)
+    const a = this.diffusion * this.simW * this.simH;
+    if (a > 0) {
+      this.useProg(this.diffuseProg);
+      gl.uniform2f(this.diffuseProg.uniforms.texelSize, 1 / this.simW, 1 / this.simH);
+      gl.uniform1f(this.diffuseProg.uniforms.alpha, a);
+      gl.uniform1f(this.diffuseProg.uniforms.rBeta, 1.0 / (1.0 + 4.0 * a));
+      for (let i = 0; i < this.diffuseIterations; i++) {
+        gl.uniform1i(this.diffuseProg.uniforms.uVelocity, 0);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.velocity.read.texture);
+        gl.uniform1i(this.diffuseProg.uniforms.uSource, 1);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, this.velocity.read.texture);
+        this.blit(this.velocity.write);
+        this.velocity.swap();
+      }
+    }
 
     // divergence
     this.useProg(this.divergenceProg);
@@ -317,7 +442,7 @@ export class FluidGL {
     gl.uniform1i(this.clearProg.uniforms.uTexture, 0);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.pressure.read.texture);
-    gl.uniform1f(this.clearProg.uniforms.value, 0.0); // CPU resets pressure to 0 each step
+    gl.uniform1f(this.clearProg.uniforms.value, 0.0);
     this.blit(this.pressure.write);
     this.pressure.swap();
 
@@ -356,7 +481,7 @@ export class FluidGL {
     gl.uniform1i(this.advectionProg.uniforms.uSource, 1);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.velocity.read.texture);
-    gl.uniform1f(this.advectionProg.uniforms.dt, 0.1); // fixed dt like CPU
+    gl.uniform1f(this.advectionProg.uniforms.dt, 0.1);
     gl.uniform1f(this.advectionProg.uniforms.dissipation, this.velocityDissipation);
     this.blit(this.velocity.write);
     this.velocity.swap();
@@ -387,7 +512,7 @@ export class FluidGL {
     gl.uniform1f(this.splatProg.uniforms.aspectRatio, aspect);
     gl.uniform2f(this.splatProg.uniforms.point, x, y);
     gl.uniform3f(this.splatProg.uniforms.color, dx, dy, 0);
-    gl.uniform1f(this.splatProg.uniforms.radius, 0.001); // larger to match CPU radius=4 cells
+    gl.uniform1f(this.splatProg.uniforms.radius, 0.001);
     this.blit(this.velocity.write);
     this.velocity.swap();
 
@@ -395,19 +520,52 @@ export class FluidGL {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.dye.read.texture);
     gl.uniform3f(this.splatProg.uniforms.color, color[0], color[1], color[2]);
-    gl.uniform1f(this.splatProg.uniforms.radius, 0.002);
+    gl.uniform1f(this.splatProg.uniforms.radius, 0.0003);
     this.blit(this.dye.write);
     this.dye.swap();
   }
 
   render(): void {
     const gl = this.gl;
-    this.useProg(this.displayProg);
-    gl.uniform2f(this.displayProg.uniforms.texelSize, 1 / gl.drawingBufferWidth, 1 / gl.drawingBufferHeight);
-    gl.uniform1i(this.displayProg.uniforms.uTexture, 0);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.dye.read.texture);
-    this.blit(null);
+
+    if (this.showVectors) {
+      // render dye to screen first via display shader
+      this.useProg(this.displayProg);
+      gl.uniform2f(this.displayProg.uniforms.texelSize, 1 / gl.drawingBufferWidth, 1 / gl.drawingBufferHeight);
+      gl.uniform1i(this.displayProg.uniforms.uTexture, 0);
+      gl.uniform1f(this.displayProg.uniforms.saturation, this.saturation);
+      gl.uniform1f(this.displayProg.uniforms.brightness, this.brightness);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.dye.read.texture);
+      this.blit(null);
+
+      // overlay vector field with blending
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+      this.useProg(this.vectorFieldProg);
+      gl.uniform2f(this.vectorFieldProg.uniforms.texelSize, 1 / gl.drawingBufferWidth, 1 / gl.drawingBufferHeight);
+      gl.uniform1f(this.vectorFieldProg.uniforms.gridSize, 40.0);
+      gl.uniform1f(this.vectorFieldProg.uniforms.maxVel, 30.0);
+      gl.uniform1i(this.vectorFieldProg.uniforms.uVelocity, 0);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.velocity.read.texture);
+      gl.uniform1i(this.vectorFieldProg.uniforms.uDye, 1);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, this.dye.read.texture);
+      this.blit(null);
+
+      gl.disable(gl.BLEND);
+    } else {
+      this.useProg(this.displayProg);
+      gl.uniform2f(this.displayProg.uniforms.texelSize, 1 / gl.drawingBufferWidth, 1 / gl.drawingBufferHeight);
+      gl.uniform1i(this.displayProg.uniforms.uTexture, 0);
+      gl.uniform1f(this.displayProg.uniforms.saturation, this.saturation);
+      gl.uniform1f(this.displayProg.uniforms.brightness, this.brightness);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.dye.read.texture);
+      this.blit(null);
+    }
   }
 
   reset(): void {

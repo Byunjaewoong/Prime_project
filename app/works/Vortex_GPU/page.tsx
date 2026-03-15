@@ -1,25 +1,26 @@
-// app/works/FluidSim_cpu/page.tsx
+// app/works/Vortex_GPU/page.tsx
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import CanvasApp from "./CanvasApp";
-import type { App as FluidCpuApp } from "./core/App";
+import type { App as FluidGpuApp } from "./core/App";
 
-export default function FluidSimCpuPage() {
+export default function VortexGpuPage() {
   const [showPanel, setShowPanel] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
-  const [app, setApp] = useState<FluidCpuApp | null>(null);
+  const [app, setApp] = useState<FluidGpuApp | null>(null);
 
   const [vorticity, setVorticity] = useState(9);
-  const [dyeDecay, setDyeDecay] = useState(0.981);
-  const [force, setForce] = useState(0.1);
+  const [dyeDecay, setDyeDecay] = useState(0.996);
+  const [force, setForce] = useState(0.2);
   const [drag, setDrag] = useState(0.995);
-  const [viscosity, setViscosity] = useState(0.00002);
-  const [saturation, setSaturation] = useState(0.9);
+  const [viscosity, setViscosity] = useState(0.00001);
+  const [saturation, setSaturation] = useState(1.3);
   const [brightness, setBrightness] = useState(0.6);
   const [showVectors, setShowVectors] = useState(false);
 
+  /* ── Desktop: left-edge hover panel ─── */
   useEffect(() => {
     const threshold = 32, hideOffset = threshold + 80;
     const handleMove = (e: MouseEvent) => {
@@ -30,7 +31,7 @@ export default function FluidSimCpuPage() {
     return () => window.removeEventListener("mousemove", handleMove);
   }, []);
 
-  const onReady = useCallback((a: FluidCpuApp | null) => { setApp(a); }, []);
+  const onReady = useCallback((a: FluidGpuApp | null) => { setApp(a); }, []);
 
   const updateParam = (key: string, value: number) => {
     app?.setParam(key, value);
@@ -49,12 +50,12 @@ export default function FluidSimCpuPage() {
     <main className="full-canvas-page">
       <CanvasApp onReady={onReady} />
 
-      {/* ── Left slide panel ──────────────────────────────────────── */}
+      {/* ── Left slide panel (desktop hover) ─────────────────────── */}
       <div className={"orbit-side-panel" + (showPanel ? " orbit-side-panel--visible" : "")}>
         <Link href="/" className="orbit-side-panel__button">go to main</Link>
       </div>
 
-      {/* ── FAB ───────────────────────────────────────────────────── */}
+      {/* ── FAB (mobile drag / desktop hover) ────────────────────── */}
       <div className="orbit-fab">
         <div className={"orbit-fab__actions" + (fabOpen ? " orbit-fab__actions--open" : "")}>
           <Link href="/" className="orbit-fab__action" aria-label="go to main" onClick={(e) => e.stopPropagation()}>
@@ -65,8 +66,8 @@ export default function FluidSimCpuPage() {
             <div className="orbit-fab__controls" onClick={(e) => e.stopPropagation()}>
               <div className="orbit-panel-container">
                 <div className="orbit-panel-section">
-                  <h4>Vortex</h4>
-                  <p style={{ fontSize: 11, opacity: 0.5, marginTop: 4 }}>stable fluids (CPU)</p>
+                  <h4>Vortex GPU</h4>
+                  <p style={{ fontSize: 11, opacity: 0.5, marginTop: 4 }}>stable fluids (GPU)</p>
 
                   <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
                     <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>

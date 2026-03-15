@@ -48,43 +48,43 @@ export default function HomePage() {
         <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "60px" }}>
 
           <li style={{ marginLeft: "2%", width: "fit-content" }}>
-            <Link href="/works/orbit" style={{ textDecoration: "none", color: "inherit" }}>
+            <Link href="/works/Geo-centr" style={{ textDecoration: "none", color: "inherit" }}>
               <span>Geo-centr</span>
             </Link>
           </li>
 
           <li style={{ marginLeft: "60%", width: "fit-content" }}>
-            <Link href="/works/orbit2" style={{ textDecoration: "none", color: "inherit" }}>
+            <Link href="/works/Helio-centr" style={{ textDecoration: "none", color: "inherit" }}>
               <span>Helio-centr</span>
             </Link>
           </li>
 
           <li style={{ marginLeft: "35%", width: "fit-content" }}>
-            <Link href="/works/donut" style={{ textDecoration: "none", color: "inherit" }}>
+            <Link href="/works/ASCII-Donut" style={{ textDecoration: "none", color: "inherit" }}>
               <span>ASCII Donut</span>
             </Link>
           </li>
 
           <li style={{ marginLeft: "15%", width: "fit-content" }}>
-            <Link href="/works/perlin_noise" style={{ textDecoration: "none", color: "inherit" }}>
+            <Link href="/works/Perlin-noise" style={{ textDecoration: "none", color: "inherit" }}>
               <span>Perlin noise</span>
             </Link>
           </li>
 
           <li style={{ marginLeft: "55%", width: "fit-content" }}>
-            <Link href="/works/snow_walk" style={{ textDecoration: "none", color: "inherit" }}>
+            <Link href="/works/Snow-walker" style={{ textDecoration: "none", color: "inherit" }}>
               <span>Snow walker</span>
             </Link>
           </li>
 
           <li style={{ marginLeft: "45%", width: "fit-content" }}>
-            <Link href="/works/emergence" style={{ textDecoration: "none", color: "inherit" }}>
+            <Link href="/works/Emergence" style={{ textDecoration: "none", color: "inherit" }}>
               <span>Emergence</span>
             </Link>
           </li>
 
           <li style={{ marginLeft: "25%", width: "fit-content" }}>
-            <Link href="/works/FluidSim_cpu" style={{ textDecoration: "none", color: "inherit" }}>
+            <Link href="/works/Vortex" style={{ textDecoration: "none", color: "inherit" }}>
               <span>Vortex</span>
             </Link>
           </li>
