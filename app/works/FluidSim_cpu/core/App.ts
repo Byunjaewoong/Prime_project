@@ -34,14 +34,18 @@ export class App {
   private hueAngle = 0;
 
   private forceMultiplier = 0.1;
+  showVectors = false;
   private baseDyeRadius = 3;
   private baseVelRadius = 4;
   private static readonly REF_GRID = 144; // reference grid size (1080px)
 
   private resizeHandler: () => void;
+  private ptrDownHandler: (e: PointerEvent) => void;
   private ptrMoveHandler: (e: PointerEvent) => void;
+  private ptrUpHandler: () => void;
   private ptrLeaveHandler: () => void;
   private ctxMenuHandler: (e: Event) => void;
+  private pointerDown = false;
   private resizeDebounce: ReturnType<typeof setTimeout> | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -62,7 +66,15 @@ export class App {
     };
     window.addEventListener("resize", this.resizeHandler);
 
+    this.ptrDownHandler = (e: PointerEvent) => {
+      this.pointerDown = true;
+      this.prevX = -1;
+      this.prevY = -1;
+      canvas.setPointerCapture(e.pointerId);
+    };
+
     this.ptrMoveHandler = (e: PointerEvent) => {
+      if (!this.pointerDown && e.pointerType === "touch") return;
       const rect = this.canvas.getBoundingClientRect();
       const cx = e.clientX - rect.left;
       const cy = e.clientY - rect.top;
@@ -74,10 +86,13 @@ export class App {
       this.prevY = cy;
     };
 
-    this.ptrLeaveHandler = () => { this.prevX = -1; this.prevY = -1; };
+    this.ptrUpHandler = () => { this.pointerDown = false; this.prevX = -1; this.prevY = -1; };
+    this.ptrLeaveHandler = () => { this.pointerDown = false; this.prevX = -1; this.prevY = -1; };
     this.ctxMenuHandler = (e: Event) => e.preventDefault();
 
+    canvas.addEventListener("pointerdown", this.ptrDownHandler);
     canvas.addEventListener("pointermove", this.ptrMoveHandler);
+    canvas.addEventListener("pointerup", this.ptrUpHandler);
     canvas.addEventListener("pointerleave", this.ptrLeaveHandler);
     canvas.addEventListener("contextmenu", this.ctxMenuHandler);
 
@@ -122,6 +137,10 @@ export class App {
     const w = window.innerWidth, h = window.innerHeight;
     this.renderer.render(this.ctx, this.solver.W, this.solver.H, this.solver.W + 2,
       this.solver.dR, this.solver.dG, this.solver.dB, w, h);
+    if (this.showVectors) {
+      this.renderer.renderVectors(this.ctx, this.solver.W, this.solver.H, this.solver.W + 2,
+        this.solver.u, this.solver.v, w, h);
+    }
   };
 
   private fitCanvas(): void {
@@ -156,7 +175,9 @@ export class App {
     if (this.animationId !== null) cancelAnimationFrame(this.animationId);
     if (this.resizeDebounce) clearTimeout(this.resizeDebounce);
     window.removeEventListener("resize", this.resizeHandler);
+    this.canvas.removeEventListener("pointerdown", this.ptrDownHandler);
     this.canvas.removeEventListener("pointermove", this.ptrMoveHandler);
+    this.canvas.removeEventListener("pointerup", this.ptrUpHandler);
     this.canvas.removeEventListener("pointerleave", this.ptrLeaveHandler);
     this.canvas.removeEventListener("contextmenu", this.ctxMenuHandler);
   }

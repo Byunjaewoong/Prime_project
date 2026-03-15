@@ -17,5 +17,5 @@ export default function CanvasApp({ onReady }: Props) {
     return () => { app.destroy(); onReady?.(null); };
   }, [onReady]);
 
-  return <canvas ref={canvasRef} style={{ display: "block", width: "100%", height: "100vh" }} />;
+  return <canvas ref={canvasRef} style={{ display: "block", width: "100%", height: "100vh", touchAction: "none" }} />;
 }

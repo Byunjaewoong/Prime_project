@@ -18,6 +18,7 @@ export default function FluidSimCpuPage() {
   const [viscosity, setViscosity] = useState(0.00002);
   const [saturation, setSaturation] = useState(0.9);
   const [brightness, setBrightness] = useState(0.6);
+  const [showVectors, setShowVectors] = useState(false);
 
   useEffect(() => {
     const threshold = 32, hideOffset = threshold + 80;
@@ -126,17 +127,35 @@ export default function FluidSimCpuPage() {
                     </label>
                   </div>
 
-                  <button
-                    onClick={(e) => { e.stopPropagation(); app?.reset(); }}
-                    style={{
-                      marginTop: 12, fontSize: 11, padding: "4px 10px",
-                      background: "rgba(255,255,255,0.07)",
-                      border: "1px solid rgba(255,255,255,0.2)",
-                      borderRadius: 4, color: "inherit", cursor: "pointer",
-                    }}
-                  >
-                    ↺ reset
-                  </button>
+                  <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const next = !showVectors;
+                        setShowVectors(next);
+                        if (app) app.showVectors = next;
+                      }}
+                      style={{
+                        fontSize: 11, padding: "4px 10px",
+                        background: showVectors ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.07)",
+                        border: "1px solid rgba(255,255,255,0.2)",
+                        borderRadius: 4, color: "inherit", cursor: "pointer",
+                      }}
+                    >
+                      {showVectors ? "⇢ vectors ON" : "⇢ vectors"}
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); app?.reset(); }}
+                      style={{
+                        fontSize: 11, padding: "4px 10px",
+                        background: "rgba(255,255,255,0.07)",
+                        border: "1px solid rgba(255,255,255,0.2)",
+                        borderRadius: 4, color: "inherit", cursor: "pointer",
+                      }}
+                    >
+                      ↺ reset
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
