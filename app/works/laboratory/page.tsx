@@ -39,14 +39,17 @@ export default function LaboratoryPage() {
         {/* 실험 프로젝트 링크 목록 */}
         <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "60px" }}>
 
-          {/* 실험 프로젝트 링크를 여기에 추가하세요 */}
-          {/* 예시:
           <li style={{ marginLeft: "10%", width: "fit-content" }}>
-            <Link href="/works/laboratory/experiment-1" style={{ textDecoration: "none", color: "inherit" }}>
-              <span>Experiment 1</span>
+            <Link href="/works/Fluid" style={{ textDecoration: "none", color: "inherit" }}>
+              <span>1. Fluid</span>
             </Link>
           </li>
-          */}
+
+          <li style={{ marginLeft: "40%", width: "fit-content" }}>
+            <Link href="/works/weatherProject" style={{ textDecoration: "none", color: "inherit" }}>
+              <span>2. Weather Project</span>
+            </Link>
+          </li>
 
         </ul>
 

@@ -46,68 +46,46 @@ export default function HomePage() {
            3. 모바일에서 너무 오른쪽으로 가지 않도록 최대 % 조절 (최대 60% 정도 추천)
         */}
         <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "60px" }}>
-          
-          {/* 1. Geocentrism: 왼쪽 살짝 (기존 20px -> 2%) */}
+
           <li style={{ marginLeft: "2%", width: "fit-content" }}>
             <Link href="/works/orbit" style={{ textDecoration: "none", color: "inherit" }}>
-              <span>Geo-centr</span>
+              <span>1. Geo-centr</span>
             </Link>
           </li>
 
-          {/* 2. Heliocentrism: 오른쪽 끝 (기존 720px -> 60%) 
-              모바일 안전을 위해 60~65% 정도가 적당합니다. */}
           <li style={{ marginLeft: "60%", width: "fit-content" }}>
             <Link href="/works/orbit2" style={{ textDecoration: "none", color: "inherit" }}>
-              <span>Helio-centr</span>
+              <span>2. Helio-centr</span>
             </Link>
           </li>
 
-          {/* 3. ASCII Donut: 중간 (기존 370px -> 35%) */}
           <li style={{ marginLeft: "35%", width: "fit-content" }}>
             <Link href="/works/donut" style={{ textDecoration: "none", color: "inherit" }}>
-              <span>ASCII Donut</span>
+              <span>3. ASCII Donut</span>
             </Link>
           </li>
 
-          {/* 4. Perlin noise: 왼쪽 중간 (기존 110px -> 15%) */}
           <li style={{ marginLeft: "15%", width: "fit-content" }}>
             <Link href="/works/perlin_noise" style={{ textDecoration: "none", color: "inherit" }}>
-              <span>Perlin noise</span>
+              <span>4. Perlin noise</span>
             </Link>
           </li>
 
-          {/* 5. Snow walker: 다시 오른쪽 (기존 720px -> 55%) */}
           <li style={{ marginLeft: "55%", width: "fit-content" }}>
             <Link href="/works/snow_walk" style={{ textDecoration: "none", color: "inherit" }}>
-              <span>Snow walker</span>
+              <span>5. Snow walker</span>
             </Link>
           </li>
 
-          {/* 6.fluid: 다시 오른쪽 (기존 720px -> 55%) */}
-          <li style={{ marginLeft: "15%", width: "fit-content" }}>
-            <Link href="/works/Fluid" style={{ textDecoration: "none", color: "inherit" }}>
-              <span>fluid</span>
-            </Link>
-          </li>
-
-          {/* 6.fluid: 다시 오른쪽 (기존 720px -> 55%) */}
-          <li style={{ marginLeft: "15%", width: "fit-content" }}>
-            <Link href="/works/weatherProject" style={{ textDecoration: "none", color: "inherit" }}>
-              <span>Weather Project</span>
-            </Link>
-          </li>
-
-          {/* 8. Emergence */}
           <li style={{ marginLeft: "45%", width: "fit-content" }}>
             <Link href="/works/emergence" style={{ textDecoration: "none", color: "inherit" }}>
-              <span>Emergence</span>
+              <span>6. Emergence</span>
             </Link>
           </li>
 
-          {/* 9. Laboratory */}
           <li style={{ marginLeft: "25%", width: "fit-content" }}>
             <Link href="/works/laboratory" style={{ textDecoration: "none", color: "inherit" }}>
-              <span>Laboratory</span>
+              <span>7. Laboratory</span>
             </Link>
           </li>
 
