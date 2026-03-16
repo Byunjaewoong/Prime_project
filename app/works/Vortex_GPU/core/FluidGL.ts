@@ -180,7 +180,8 @@ void main(){
 
   // ── film grain ──
   float grain = hash(vUv * 1000.0 + fract(uTime * 7.13)) - 0.5;
-  c += grain * 0.06;
+  float coarseGrain = hash(vUv * 200.0 + fract(uTime * 3.71)) - 0.5;
+  c += grain * 0.18 + coarseGrain * 0.08;
 
   // ── vignette ──
   vec2 vig = vUv * (1.0 - vUv);
