@@ -484,7 +484,7 @@ export class App {
         transparent: true,
         opacity: 0.6,
         shininess: this.isColoredMode ? 100 : 0,
-        specular: 0xffffff,
+        specular: FIELD_STYLES[this.fieldIndex].footprintSpecular,
         flatShading: false,
         side: THREE.DoubleSide
     });
@@ -616,8 +616,13 @@ export class App {
     this.sunLight.intensity = blend(this.sunLight.intensity, style.intensity);
     this.sunLight.position.y = blend(this.sunLight.position.y, style.sunHeight);
     this.defaultColor.lerp(new THREE.Color(style.footprint), alpha);
+    const footprintSpecular = new THREE.Color(style.footprintSpecular);
     for (const footprint of [...this.footprints, ...this.fadingFootprints]) {
-      if (!this.isColoredMode) (footprint.material as THREE.MeshPhongMaterial).color.copy(this.defaultColor);
+      if (!this.isColoredMode) {
+        const material = footprint.material as THREE.MeshPhongMaterial;
+        material.color.copy(this.defaultColor);
+        material.specular.lerp(footprintSpecular, alpha);
+      }
     }
   }
 
