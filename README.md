@@ -22,7 +22,7 @@ http://localhost:3000 에서 실행합니다. 프로덕션은 npm run build 후 
 | /works/Helio-centr | Canvas 2D, 고정 태양과 공전 |
 | /works/ASCII-Donut | Canvas 2D, ASCII 도넛과 문자/빛/색 제어 |
 | /works/Perlin-noise | Canvas 2D, 절차적 파형 |
-| /works/Snow-walker | Three.js, 보행 모델·발자국·나무 |
+| /works/Snow-walker | Three.js, 보행 모델·발자국·눈밭/초록/금빛 잔디·우클릭 나무 |
 | /works/Emergence | Lenia, Boids, Gray-Scott, Physarum 시뮬레이션 |
 | /works/Vortex | CPU 유체 계산, GPU 고해상도 색상 표현 |
 | /works/Vortex_GPU | WebGL2 GPU 유체 시뮬레이션 |
@@ -60,3 +60,9 @@ GitHub Actions에서도 lint, build, typecheck를 실행합니다.
 Vortex는 기존 CPU 흐름을 유지하고 색상 표현을 GPU로 처리합니다. 4K 화면에서도 움직임 격자는 1080p 기준 크기로 유지하며 색상은 최대 2048×1152(16:9), 출력은 3840×2160까지 사용합니다. WebGL2/부동소수점 framebuffer 미지원 또는 context loss 시 기존 Canvas 출력으로 전환합니다.
 
 구현 전 백업: `backup-260914-before-vortex-4k` (`58afedf`). `vortex-4k-260914`에서 구현한 변경은 main에 반영하며, Vortex의 기본 Vorticity는 6.0입니다. 비교 결과와 되돌리는 방법은 [VORTEX_4K_260914.md](VORTEX_4K_260914.md)에 기록합니다.
+
+## Snow-walker 필드 전환
+
+왼쪽 클릭 또는 탭으로 눈밭 → 초록 잔디 → 금빛 잔디를 순환합니다. 인물·걷기 경로·발자국·기존 나무를 유지하며 바닥 재질과 조명을 부드럽게 전환합니다. 오른쪽 클릭은 클릭한 지면에 나무를 생성합니다.
+
+구현 전 백업: `backup-260914-before-snow-fields` (`f19b283`). 작업 브랜치: `snow-fields-260914`. 구현 및 검증·복원 방법은 [SNOW_FIELDS_260914.md](SNOW_FIELDS_260914.md)에 기록합니다.

@@ -20,6 +20,7 @@ const FOOTPRINT_SVG = `
 `;
 
 import { disposeObject } from "@/app/lib/disposeObject";
+import { FIELD_STYLES, createGrassTexture } from "./FieldStyles";
 
 export class App {
   private destroyed = false;
@@ -33,6 +34,13 @@ export class App {
 
   // Objects
   private ground: THREE.Mesh | null = null;
+  private groundMaterial!: THREE.MeshStandardMaterial;
+  private grassTexture!: THREE.CanvasTexture;
+  private grassMix = { value: 0 };
+  private ambientLight!: THREE.AmbientLight;
+  private sunLight!: THREE.DirectionalLight;
+  private fieldIndex = 0;
+  private readonly transitionDuration = 0.6;
   private playerGroup: THREE.Group | null = null;
 
   // Model & Animation
@@ -67,6 +75,10 @@ export class App {
   private frustum: THREE.Frustum = new THREE.Frustum();
   private projScreenMatrix: THREE.Matrix4 = new THREE.Matrix4();
   private clickHandler: (event: MouseEvent) => void;
+  private readonly contextMenuHandler = (event: MouseEvent) => {
+    event.preventDefault();
+    this.addTreeOnClick(event);
+  };
 
   // 백그라운드 로직 루프 (탭 비활성화에도 지속)
   private logicIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -108,8 +120,11 @@ export class App {
 
     window.addEventListener("resize", this.resizeHandler);
     // 클릭 이벤트 리스너 등록
-    this.clickHandler = (event: MouseEvent) => this.addTreeOnClick(event);
+    this.clickHandler = (event: MouseEvent) => {
+      if (event.button === 0) this.nextField();
+    };
     this.canvas.addEventListener("click", this.clickHandler);
+    this.canvas.addEventListener("contextmenu", this.contextMenuHandler);
   }
 
   private init() {
@@ -167,9 +182,11 @@ export class App {
 
   private addLights() {
     const ambientLight = new THREE.AmbientLight(0xffffff, 1);
+    this.ambientLight = ambientLight;
     this.scene.add(ambientLight);
 
     const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    this.sunLight = sunLight;
     sunLight.position.set(15, 13, -15);
     sunLight.castShadow = true;
 
@@ -216,6 +233,8 @@ export class App {
     };
 
     const snowTexture = createBrightSnowTexture();
+    this.grassTexture = createGrassTexture();
+    this.grassTexture.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
 
     const geometry = new THREE.PlaneGeometry(120, 120, 128, 128);
     const material = new THREE.MeshStandardMaterial({
@@ -226,6 +245,29 @@ export class App {
       roughness: 0.6,
       metalness: 0.1,
     });
+    this.groundMaterial = material;
+    // Blend cached texture samples without recreating the ground or scene.
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms.grassMap = { value: this.grassTexture };
+      shader.uniforms.grassMix = this.grassMix;
+      shader.fragmentShader = "uniform sampler2D grassMap;\nuniform float grassMix;\n" + shader.fragmentShader;
+      shader.fragmentShader = shader.fragmentShader.replace("#include <map_fragment>", `
+        #ifdef USE_MAP
+          vec4 fieldGrain = mix(texture2D(map, vMapUv), texture2D(grassMap, vMapUv), grassMix);
+          diffuseColor *= fieldGrain;
+        #endif
+      `);
+      shader.fragmentShader = shader.fragmentShader.replace("#include <bumpmap_pars_fragment>",
+        THREE.ShaderChunk.bumpmap_pars_fragment
+          .replace("texture2D( bumpMap, vBumpMapUv ).x", "fieldHeight(vBumpMapUv)")
+          .replace("texture2D( bumpMap, vBumpMapUv + dSTdx ).x", "fieldHeight(vBumpMapUv + dSTdx)")
+          .replace("texture2D( bumpMap, vBumpMapUv + dSTdy ).x", "fieldHeight(vBumpMapUv + dSTdy)")
+          .replace("uniform float bumpScale;", `uniform float bumpScale;
+          float fieldHeight(vec2 uv) {
+            return mix(texture2D(bumpMap, uv).x, texture2D(grassMap, uv).x, grassMix);
+          }`));
+    };
+    material.customProgramCacheKey = () => "snow-walker-fields-v1";
 
     this.ground = new THREE.Mesh(geometry, material);
     this.ground.rotation.x = -Math.PI / 2;
@@ -488,6 +530,7 @@ export class App {
 
   private updateLogic(delta: number) {
     if (this.mixer) this.mixer.update(delta);
+    this.updateField(delta);
 
     // 페이드 속도 delta 기반 (0.3/초 = 0.005 * 60fps)
     for (let i = this.fadingFootprints.length - 1; i >= 0; i--) {
@@ -539,6 +582,35 @@ export class App {
     this.renderer.render(this.scene, this.camera);
   }
 
+  public nextField(): void {
+    this.fieldIndex = (this.fieldIndex + 1) % FIELD_STYLES.length;
+  }
+
+  public getFieldName(): string { return FIELD_STYLES[this.fieldIndex].name; }
+
+  private updateField(delta: number): void {
+    const style = FIELD_STYLES[this.fieldIndex];
+    const alpha = 1 - Math.exp(-Math.max(0, delta) * 5 / this.transitionDuration);
+    const blend = (a: number, b: number) => THREE.MathUtils.lerp(a, b, alpha);
+    this.groundMaterial.color.lerp(new THREE.Color(style.ground), alpha);
+    this.groundMaterial.bumpScale = blend(this.groundMaterial.bumpScale, style.bump);
+    this.groundMaterial.roughness = blend(this.groundMaterial.roughness, style.grass ? 0.95 : 0.6);
+    this.groundMaterial.metalness = blend(this.groundMaterial.metalness, style.grass ? 0 : 0.1);
+    this.grassMix.value = blend(this.grassMix.value, style.grass);
+    (this.scene.background as THREE.Color).lerp(new THREE.Color(style.background), alpha);
+    const fog = this.scene.fog as THREE.FogExp2;
+    fog.color.copy(this.scene.background as THREE.Color);
+    fog.density = blend(fog.density, style.fog);
+    this.ambientLight.intensity = blend(this.ambientLight.intensity, style.ambient);
+    this.sunLight.color.lerp(new THREE.Color(style.sun), alpha);
+    this.sunLight.intensity = blend(this.sunLight.intensity, style.intensity);
+    this.sunLight.position.y = blend(this.sunLight.position.y, style.sunHeight);
+    this.defaultColor.lerp(new THREE.Color(style.footprint), alpha);
+    for (const footprint of [...this.footprints, ...this.fadingFootprints]) {
+      if (!this.isColoredMode) (footprint.material as THREE.MeshPhongMaterial).color.copy(this.defaultColor);
+    }
+  }
+
   private resize() {
     const parent = this.canvas.parentElement;
     if (parent) {
@@ -558,11 +630,19 @@ export class App {
     if (this.logicIntervalId) clearInterval(this.logicIntervalId);
     window.removeEventListener("resize", this.resizeHandler);
     this.canvas.removeEventListener("click", this.clickHandler);
+    this.canvas.removeEventListener("contextmenu", this.contextMenuHandler);
     this.mixer?.stopAllAction();
     if (this.mixer) this.mixer.uncacheRoot(this.mixer.getRoot());
+    const skeletons = new Set<THREE.Skeleton>();
+    this.scene.traverse(object => {
+      if (object instanceof THREE.SkinnedMesh) skeletons.add(object.skeleton);
+    });
+    skeletons.forEach(skeleton => skeleton.dispose());
     disposeObject(this.scene);
+    this.grassTexture.dispose();
     this.leftFootGeometry?.dispose();
     this.rightFootGeometry?.dispose();
     this.renderer.dispose();
+    this.renderer.forceContextLoss();
   }
 }

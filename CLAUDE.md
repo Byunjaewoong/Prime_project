@@ -18,6 +18,7 @@ Each work follows page.tsx (UI), CanvasApp.tsx (React mount/cleanup), core/App.t
 
 Canvas 2D: Geo-centr, Helio-centr, ASCII-Donut, Perlin-noise, Fluid.
 Three.js: Snow-walker (GLTFLoader, SVGLoader, footprints), weatherProject (FBXLoader, mixers, EffectComposer, ShaderPass).
+Snow-walker: core/FieldStyles.ts defines snow/green/gold presets and a seeded, code-generated grass texture. Left click/tap cycles fields; canvas contextmenu plants a tree. Blend the cached ground material, texture samples, lighting, fog and footprint colors without resetting the player, mixer, path, footprints or existing trees. Keep the camera fixed. Dispose skeletons and the grass shader texture and release the dedicated WebGL context on unmount.
 Emergence: Lenia, Boids, GrayScott, Physarum implementations in core/.
 Vortex: original CPU solver with reference swaps, a CPU reference dye field, and GPU high-resolution dye presentation in core/DyeRenderer.ts. core/resolution.ts caps the physics domain to a 1920px reference long edge, scales pointer displacement, and budgets output to 4K pixels. Canvas 2D handles input/vector overlay and is also the fallback when GPU dye is unavailable. Keep the original tone curve and the reference-field correction when changing the presentation layer. Vortex_GPU: independent WebGL2 shader solver in core/FluidGL.ts; explicitly release FBOs on resize and destruction.
 
@@ -37,3 +38,4 @@ origin: https://github.com/Byunjaewoong/Prime_project.git
 backup-260914 preserves the pre-maintenance commit 405495f. It includes tracked files only.
 backup-260914-before-vortex-4k preserves 58afedf before the Vortex display changes; vortex-4k-260914 is the implementation branch integrated into main. Vortex defaults to Vorticity 6.0 in both the solver and UI. Verification scripts compare the solver exactly and run deterministic 1080p/4K/mobile screenshots against this backup using matching Vorticity settings.
 Avoid committing .env, dependency folders, generated build output or browser screenshots.
+backup-260914-before-snow-fields preserves f19b283; snow-fields-260914 contains field switching. scripts/verify-snow-fields.mjs runs state-identity, repeated-switching, tree, cleanup and desktop/mobile React-page checks with a temporary Playwright installation and VERIFY_BASE_URL (default localhost:3000).

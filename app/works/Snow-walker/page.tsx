@@ -75,11 +75,11 @@ export default function SnowWalkPage() {
                 <div className="orbit-panel-section">
                   <h4>Snow walker</h4>
                   <p style={{ fontSize: 12, opacity: 0.8 }}>
-                    click function, not yet
+                    Left click / tap: change field
                   </p>
                   <ul style={{ fontSize: 11, opacity: 0.75, marginTop: 8 }}>
-                    <li>MONO</li>
-                    <li>COLORED</li>
+                    <li>Snow → Green grass → Golden grass</li>
+                    <li>Right click: plant a tree</li>
                   </ul>
                 </div>
               </div>
