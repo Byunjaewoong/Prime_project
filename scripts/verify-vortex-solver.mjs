@@ -18,6 +18,8 @@ const { vortexResolution } = load(fs.readFileSync('app/works/Vortex/core/resolut
 const fields = ['u', 'v', 'u0', 'v0', 'dR', 'dG', 'dB', 'dR0', 'dG0', 'dB0'];
 for (const [w, h] of [[31, 23], [64, 113], [255, 144]]) {
   const a = new original(w, h), b = new updated(w, h);
+  // Compare algorithms with the same setting, even when defaults change.
+  a.vorticityEps = b.vorticityEps;
   for (let frame = 0; frame < 120; frame++) {
     if (frame < 70) {
       const x = 1 + Math.floor((w - 2) * (0.5 + Math.sin(frame * 0.13) * 0.35));

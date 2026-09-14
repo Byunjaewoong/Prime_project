@@ -21,7 +21,7 @@ export class FluidSolver {
   dt = 0.1;
   diffusion = 0.00002;
   dyeDiff = 0.0;
-  vorticityEps = 9.0;
+  vorticityEps = 6.0;
   dyeDecay = 0.981;
   velocityDecay = 0.995;
 

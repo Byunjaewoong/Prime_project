@@ -59,4 +59,4 @@ GitHub Actions에서도 lint, build, typecheck를 실행합니다.
 
 Vortex는 기존 CPU 흐름을 유지하고 색상 표현을 GPU로 처리합니다. 4K 화면에서도 움직임 격자는 1080p 기준 크기로 유지하며 색상은 최대 2048×1152(16:9), 출력은 3840×2160까지 사용합니다. WebGL2/부동소수점 framebuffer 미지원 또는 context loss 시 기존 Canvas 출력으로 전환합니다.
 
-구현 전 백업: `backup-260914-before-vortex-4k` (`58afedf`). 구현 브랜치: `vortex-4k-260914`. 비교 결과와 되돌리는 방법은 [VORTEX_4K_260914.md](VORTEX_4K_260914.md)에 기록합니다.
+구현 전 백업: `backup-260914-before-vortex-4k` (`58afedf`). `vortex-4k-260914`에서 구현한 변경은 main에 반영하며, Vortex의 기본 Vorticity는 6.0입니다. 비교 결과와 되돌리는 방법은 [VORTEX_4K_260914.md](VORTEX_4K_260914.md)에 기록합니다.

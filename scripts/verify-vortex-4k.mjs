@@ -53,6 +53,7 @@ try {
       oldCanvas.width = width; oldCanvas.height = height;
       oldCanvas.style.width = '100%'; oldCanvas.style.height = '100%';
       const updated = new window.modules.App.App(input, gpu);
+      baseline.setParam('vorticity', updated.getParams().vorticity);
       window.apps = { baseline, updated };
       const gl = gpu.getContext('webgl2');
       const debug = gl?.getExtension('WEBGL_debug_renderer_info');
@@ -183,6 +184,7 @@ try {
     await page.evaluate(engine => {
       const input = document.querySelector('#input'), gpu = document.querySelector('#gpu');
       window.app = engine === 'baseline' ? new window.modules['baseline-app'].App(input) : new window.modules.App.App(input, gpu);
+      if (engine === 'baseline') window.app.setParam('vorticity', new window.modules.FluidSolver.FluidSolver(64, 64).vorticityEps);
     }, engine);
     for (let i = 0; i < 40; i++) {
       await page.mouse.move(3840 * (0.2 + i * 0.015), 2160 * (0.5 + Math.sin(i * 0.16) * 0.15));

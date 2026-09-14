@@ -35,5 +35,5 @@ There is no unit test suite. GitHub Actions runs lint, build and typecheck. scri
 
 origin: https://github.com/Byunjaewoong/Prime_project.git
 backup-260914 preserves the pre-maintenance commit 405495f. It includes tracked files only.
-backup-260914-before-vortex-4k preserves 58afedf before the Vortex display changes; vortex-4k-260914 is the implementation branch. Verification scripts compare the solver exactly and run deterministic 1080p/4K/mobile screenshots against this backup.
+backup-260914-before-vortex-4k preserves 58afedf before the Vortex display changes; vortex-4k-260914 is the implementation branch integrated into main. Vortex defaults to Vorticity 6.0 in both the solver and UI. Verification scripts compare the solver exactly and run deterministic 1080p/4K/mobile screenshots against this backup using matching Vorticity settings.
 Avoid committing .env, dependency folders, generated build output or browser screenshots.

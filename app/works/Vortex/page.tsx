@@ -11,7 +11,7 @@ export default function FluidSimCpuPage() {
   const [fabOpen, setFabOpen] = useState(false);
   const appRef = useRef<FluidCpuApp | null>(null);
 
-  const [vorticity, setVorticity] = useState(9);
+  const [vorticity, setVorticity] = useState(6);
   const [dyeDecay, setDyeDecay] = useState(0.981);
   const [force, setForce] = useState(0.1);
   const [drag, setDrag] = useState(0.995);
