@@ -4,7 +4,7 @@
 
 수정 전 `405495f466b912fbf3d9f053ae4227d6390e5d9e`를 로컬 `backup-260914` 브랜치로 보존했다. Git 추적 소스와 public 에셋을 포함하며 node_modules, .next, .env 및 미추적 파일은 포함하지 않는다. 기존 버전을 확인하려면 작업 중 변경 사항을 보관한 뒤 `git switch backup-260914`를 사용한다.
 
-GitHub 업로드 대상은 기존 origin인 `https://github.com/Byunjaewoong/Prime_project.git`이다. 백업 push는 자동 승인 검토에서 해당 목적지에 대한 구체적인 승인이 없다는 이유로 거부됐다. 사용자에게 목적지를 명시해 확인을 요청했으며, 승인 전 push를 재시도하지 않았다. 현재 수정본과 백업의 원격 반영은 대기 상태다.
+GitHub 업로드 대상은 기존 origin인 `https://github.com/Byunjaewoong/Prime_project.git`이다. 최초 백업 push는 자동 승인 검토에서 해당 목적지에 대한 구체적인 승인이 없다는 이유로 거부됐다. 목적지를 명시해 사용자 승인을 받은 뒤 수정 커밋 `35cc080`의 main과 `backup-260914`를 atomic push했고, 원격 커밋 일치를 확인했다. 이후 이 보고서의 업로드 완료 기록도 main에 반영한다.
 
 ## 변경 사항
 
