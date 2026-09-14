@@ -2,7 +2,7 @@
 
 ## 백업과 복원
 
-현재 버전 `f19b283`을 `backup-260914-before-snow-fields` 브랜치로 보존하고 기존 GitHub 저장소에 push했다. 구현은 `snow-fields-260914` 브랜치에 보관한다.
+수정 전 main `f19b283`을 `backup-260914-before-snow-fields` 브랜치로 보존하고 기존 GitHub 저장소에 push했다. `snow-fields-260914`의 구현을 main에 반영했고, 완료 버전은 `backup-260914-snow-fields-complete` 브랜치로도 보관한다.
 
 작업 중 변경 사항이 없는 상태에서 기존 버전으로 전환한다.
 
@@ -11,7 +11,7 @@ git switch backup-260914-before-snow-fields
 npm run dev
 ```
 
-구현본으로 돌아오려면 `git switch snow-fields-260914`를 실행한다.
+구현본으로 돌아오려면 `git switch main`을 실행한다. 완료 시점 그대로 확인하려면 `git switch backup-260914-snow-fields-complete`를 사용한다.
 
 ## 동작과 표현
 

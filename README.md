@@ -65,4 +65,4 @@ Vortex는 기존 CPU 흐름을 유지하고 색상 표현을 GPU로 처리합니
 
 왼쪽 클릭 또는 탭으로 눈밭 → 초록 잔디 → 금빛 잔디를 순환합니다. 인물·걷기 경로·발자국·기존 나무를 유지하며 바닥 재질과 조명을 부드럽게 전환합니다. 오른쪽 클릭은 클릭한 지면에 나무를 생성합니다.
 
-구현 전 백업: `backup-260914-before-snow-fields` (`f19b283`). 작업 브랜치: `snow-fields-260914`. 구현 및 검증·복원 방법은 [SNOW_FIELDS_260914.md](SNOW_FIELDS_260914.md)에 기록합니다.
+구현 전 백업: `backup-260914-before-snow-fields` (`f19b283`). `snow-fields-260914`의 변경을 main에 반영했습니다. 완료 버전 백업: `backup-260914-snow-fields-complete`. 구현 및 검증·복원 방법은 [SNOW_FIELDS_260914.md](SNOW_FIELDS_260914.md)에 기록합니다.
