@@ -1,7 +1,7 @@
 // app/works/perlin_noise/core/App.ts
 import { Calculate } from "./tool";
 import { Lowestline, Perlin } from "./perlin";
-import { useIsMobile } from "./useIsMobile"; 
+
 
 export class App {
   canvas: HTMLCanvasElement;
@@ -25,6 +25,7 @@ export class App {
 
   private animationId: number | null = null;
   private resizeHandler: () => void;
+  private clickHandler: (e: MouseEvent) => void;
 
   constructor(canvas: HTMLCanvasElement) {
     this.isMobile = window.innerWidth <= 768;
@@ -58,7 +59,7 @@ export class App {
     // 초기 배경색
     this.canvas.style.backgroundColor = "black";
 
-    window.addEventListener("click", (e) => {
+    this.clickHandler = (e) => {
       const target = e.target as HTMLElement | null;
 
       // orbit/donut용 UI 같은 다른 FAB 위 클릭은 무시하고 싶다면 여기서 필터링 가능
@@ -93,7 +94,8 @@ export class App {
           this.canvas.style.backgroundColor = "black";
           break;
       }
-    });
+    };
+    window.addEventListener("click", this.clickHandler);
 
     // 초기 라인 세팅
     for (let i = 0; i < this.linecount; i++) {
@@ -196,5 +198,6 @@ export class App {
       this.animationId = null;
     }
     window.removeEventListener("resize", this.resizeHandler);
+    window.removeEventListener("click", this.clickHandler);
   }
 }

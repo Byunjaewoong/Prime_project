@@ -1,62 +1,38 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Commands
 
-```bash
-npm run dev    # Start development server at localhost:3000
-npm run build  # Build for production
-npm run lint   # Run ESLint
-npm start      # Start production server
-```
-
-There is no test suite in this project.
+- npm ci: install locked dependencies (Node.js 24)
+- npm run dev: development server, localhost:3000
+- npm run lint -- --max-warnings=0: lint
+- npm run build: production build (downloads Courier Prime from Google Fonts)
+- npm run typecheck: TypeScript validation
+- npm start: production server
+- npm audit: dependency security check with network access
 
 ## Architecture
 
-This is a Next.js creative coding portfolio called "Prime" — a collection of interactive 2D/3D visualizations accessible via the main "Work Archives" page.
+Prime is an interactive creative coding portfolio. app/page.tsx is Work Archives; app/works/laboratory/page.tsx links experimental works.
 
-### App Router Structure
+Each work follows page.tsx (UI), CanvasApp.tsx (React mount/cleanup), core/App.ts (rendering). Keep renderer instances in refs when controls mutate them. Register and remove the same event handler reference. Cancel animation frames and timers on unmount; dispose graphics resources and guard asynchronous model callbacks after destruction.
 
-The root page (`app/page.tsx`) lists all works as links. Each work lives under `app/works/[project-name]/` and follows a consistent three-layer pattern:
+Canvas 2D: Geo-centr, Helio-centr, ASCII-Donut, Perlin-noise, Fluid.
+Three.js: Snow-walker (GLTFLoader, SVGLoader, footprints), weatherProject (FBXLoader, mixers, EffectComposer, ShaderPass).
+Emergence: Lenia, Boids, GrayScott, Physarum implementations in core/.
+Vortex: CPU solver and renderer. Vortex_GPU: WebGL2 shader solver in core/FluidGL.ts; explicitly release FBOs on resize and destruction.
 
-| File | Role |
-|---|---|
-| `page.tsx` | Next.js page — React UI (controls, panels, buttons) |
-| `CanvasApp.tsx` | React component that mounts/unmounts the canvas and bridges React ↔ core |
-| `core/App.ts` | Vanilla TypeScript class — all rendering logic lives here |
+app/lib/disposeObject.ts releases Three.js scene geometry, materials, textures and shadow resources.
+Shared layout, slide panels and FAB controls are in app/globals.css. Preserve case-sensitive route names for Linux deployment.
+public/ holds GLB/FBX models, textures, SVGs and audio. Some tree models are approximately 20 MB; consider loading cost when changing 3D works.
 
-This separation keeps framework concerns (React state, lifecycle) out of the rendering code.
+## Tooling and validation
 
-### Technology by Visualization Type
+Next.js 16, React 19, Three.js 0.181, Tailwind CSS 4, TypeScript 5, ESLint 9. Inspect package-lock.json for exact installed versions. @/* maps to the project root.
+The app uses Courier Prime through next/font/google. Google Fonts access is required for a fresh build.
+There is no unit test suite. GitHub Actions runs lint, build and typecheck. scripts/verify-browser.mjs exercises the ten works in desktop/mobile Chrome; screenshot artifacts are ignored by Git.
 
-- **2D (Canvas API):** orbit, orbit2, donut, perlin_noise, snow_walk, Fluid
-- **3D (Three.js):** weatherProject — uses GLTFLoader (`.glb`), FBXLoader (`.fbx`), AnimationMixer, EffectComposer for post-processing
+## Repository
 
-### Shared UI Patterns (defined in `app/globals.css`)
-
-- `.full-canvas-page` / `.orbit-canvas` — full-screen canvas layout
-- `.orbit-side-panel` — left slide-out info panel (appears on hover near left edge)
-- `.orbit-fab*` — Floating Action Button menu (bottom-right corner)
-- Control panel styles for real-time parameter adjustment
-
-### Public Assets
-
-3D models and textures are served from `public/`:
-- `.glb` files — island/environment models (loaded via GLTFLoader)
-- `.fbx` files in `public/people/` — character animation models (loaded via FBXLoader)
-- `.jpg` files — material textures
-- `.svg` files — UI graphics
-
-### Key Dependencies
-
-- **Three.js 0.181** — 3D rendering
-- **postprocessing 6.38** — Three.js post-processing effects (FilmPass, ShaderPass, EffectComposer)
-- **simplex-noise 4** — procedural noise for 2D works
-- **framer-motion 12** — UI animations
-- **Tailwind CSS 4** — utility styling
-
-### Path Alias
-
-`@/*` resolves to the project root (configured in `tsconfig.json`).
+origin: https://github.com/Byunjaewoong/Prime_project.git
+backup-260914 preserves the pre-maintenance commit 405495f. It includes tracked files only.
+Avoid committing .env, dependency folders, generated build output or browser screenshots.

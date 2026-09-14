@@ -1,5 +1,5 @@
 // app/works/donut/core/App.ts
-import { Donut } from "./donut";
+import { Donut, type AsciiPresetKey } from "./donut";
 
 // 🔤 폰트 패밀리 매핑 (key → CSS font-family 문자열)
 const FONT_FAMILIES: Record<string, string> = {
@@ -31,7 +31,7 @@ function getFontFamily(key: string) {
 }
 
 // 🎲 폰트 + 문자셋 랜덤 프리셋
-const FONT_CHARSET_PRESETS: { fontKey: string; charsetKey: string }[] = [
+const FONT_CHARSET_PRESETS: { fontKey: string; charsetKey: AsciiPresetKey }[] = [
   { fontKey: "gothic", charsetKey: "latin_inverse" },
   { fontKey: "serif", charsetKey: "latin" },
   { fontKey: "mono", charsetKey: "latin_void" },
@@ -47,7 +47,7 @@ const FONT_CHARSET_PRESETS: { fontKey: string; charsetKey: string }[] = [
   { fontKey: "gothic", charsetKey: "DNA_4" },
 ];
 
-type DonutConfig = {
+export type DonutConfig = {
   size: number; // 0 ~ 1
   distance: number; // 0 ~ 1
   speed: number; // 0 ~ 1
@@ -64,7 +64,7 @@ type DonutConfig = {
 
   // 🆕 폰트 + 문자셋 키
   fontKey: string; // "gothic" | "serif" | "mono" | "hangulSans" | ...
-  charsetKey: string; // "latin" | "hangul" | "hanja" | "arabic" | "math" | ...
+  charsetKey: AsciiPresetKey; // "latin" | "hangul" | "hanja" | "arabic" | "math" | ...
 
   // 🅰 폰트 크기 (px)
   fontSize: number;
@@ -303,7 +303,7 @@ export class App {
     // 폰트/문자셋 적용
     this.donut.setFontSize(this.config.fontSize);
     this.donut.setFontFamily(getFontFamily(this.config.fontKey));
-    this.donut.setCharsetPreset(this.config.charsetKey as any);
+    this.donut.setCharsetPreset(this.config.charsetKey);
   }
 
   resize() {
@@ -383,7 +383,7 @@ export class App {
     }
 
     if (charsetChanged) {
-      this.donut.setCharsetPreset(this.config.charsetKey as any);
+      this.donut.setCharsetPreset(this.config.charsetKey);
     }
 
     if (modeChanged) {

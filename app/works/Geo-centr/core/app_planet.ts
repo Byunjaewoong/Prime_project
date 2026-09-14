@@ -55,14 +55,7 @@ export class Calculate {
   }
 }
 
-export type PlanetLike =
-  | Planet
-  | {
-      spaceZ: number;
-      genSun?: number;
-      resize?: () => void;
-      [key: string]: any;
-    };
+export type PlanetLike = Planet | { spaceZ: number; genSun: 1 };
 
 export class PlanetGroup {
   array: PlanetLike[];
@@ -81,18 +74,6 @@ export class PlanetGroup {
   }
 }
 
-const PLANET_COLOR_PRESETS = [
-  // lava
-  { r: 2.0, g: 0.4, b: -1.6 },
-  // jungle
-  { r: 0.4, g: 2.0, b: -1.5 },
-  // ocean
-  { r: 0.3, g: 0.8, b: 2.0 },
-  // desert
-  { r: 1.8, g: 1.4, b: 0.3 },
-  // gas giant
-  { r: -1.8, g: 0.6, b: 1.6 },
-];
 
 export class Planet {
   
@@ -141,8 +122,8 @@ export class Planet {
     planetR: number,
     sunx: number,
     suny: number,
-    stageWidth: number,
-    stageHeight: number
+    _stageWidth: number,
+    _stageHeight: number
   ) {
     this.canvas = canvas;
 
@@ -284,8 +265,8 @@ export class Planet {
   renderingPlanet(
     sunx: number,
     suny: number,
-    stageWidth: number,
-    stageHeight: number
+    _stageWidth: number,
+    _stageHeight: number
   ) {
     this.sunx = sunx;
     this.suny = suny;
@@ -424,16 +405,6 @@ createSatellites(n: number) {
 
 }
 
-const SATELLITE_COLOR_PRESETS = [
-  // icy grey
-  { r: 1.6, g: 1.8, b: 2.0 },
-  // warm rock
-  { r: 2.0, g: 1.4, b: 0.6 },
-  // dark moon
-  { r: 0.8, g: 0.8, b: 0.9 },
-  // metallic
-  { r: 1.2, g: 1.6, b: 1.9 },
-];
 
 export class Satellite {
   canvas: HTMLCanvasElement;
@@ -587,9 +558,9 @@ export class Satellite {
     const cosX = Math.cos(this.tiltX);
     const sinX = Math.sin(this.tiltX);
 
-    let y1 = localY * cosX - localZ * sinX;
-    let z1 = localY * sinX + localZ * cosX;
-    let x1 = localX;
+    const y1 = localY * cosX - localZ * sinX;
+    const z1 = localY * sinX + localZ * cosX;
+    const x1 = localX;
 
     // 3) Y축 기울기 → XZ 평면 회전
     const cosY = Math.cos(this.tiltY);

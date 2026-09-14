@@ -104,8 +104,8 @@ export class App {
 
     // 행성 위치 리사이즈
     for (let i = 0; i < this.planetGroup.array.length; i++) {
-      const planet = this.planetGroup.array[i] as any;
-      if (!planet.genSun && typeof planet.resize === "function") {
+      const planet = this.planetGroup.array[i];
+      if (planet instanceof Planet && typeof planet.resize === "function") {
         planet.resize(this.sunx, this.suny);
       }
     }
@@ -122,8 +122,8 @@ export class App {
     this.landScape.genStar();
 
     for (let i = 0; i < this.planetGroup.array.length; i++) {
-      const obj = this.planetGroup.array[i] as any;
-      if (obj.genSun) {
+      const obj = this.planetGroup.array[i];
+      if (!(obj instanceof Planet)) {
         this.landScape.genSun(this.sunx, this.suny, 100);
       } else {
         obj.fallPlanet();

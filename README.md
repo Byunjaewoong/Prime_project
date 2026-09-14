@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Prime
 
-## Getting Started
+GrimGriGi의 인터랙티브 2D/3D 크리에이티브 코딩 포트폴리오입니다.
 
-First, run the development server:
+## 실행
 
-```bash
+Node.js 24와 npm을 사용합니다.
+
+```powershell
+npm ci
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+http://localhost:3000 에서 실행합니다. 프로덕션은 npm run build 후 npm start로 실행합니다.
+빌드 시 Courier Prime 폰트를 다운로드하므로 Google Fonts에 접근할 수 있어야 합니다.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 작품
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| 경로 | 구현 |
+| --- | --- |
+| /works/Geo-centr | Canvas 2D, 마우스 태양과 행성 생성 |
+| /works/Helio-centr | Canvas 2D, 고정 태양과 공전 |
+| /works/ASCII-Donut | Canvas 2D, ASCII 도넛과 문자/빛/색 제어 |
+| /works/Perlin-noise | Canvas 2D, 절차적 파형 |
+| /works/Snow-walker | Three.js, 보행 모델·발자국·나무 |
+| /works/Emergence | Lenia, Boids, Gray-Scott, Physarum 시뮬레이션 |
+| /works/Vortex | CPU 유체 시뮬레이션 |
+| /works/Vortex_GPU | WebGL2 GPU 유체 시뮬레이션 |
+| /works/Fluid | Canvas 2D, 이미지·블렌드·사운드 |
+| /works/weatherProject | Three.js, 인물·태양·후처리 |
 
-## Learn More
+홈 Work Archives와 /works/laboratory에서 작품을 엽니다. WebGL 작품은 지원되는 브라우저가 필요합니다.
 
-To learn more about Next.js, take a look at the following resources:
+## 검증
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```powershell
+npm run lint -- --max-warnings=0
+npm run build
+npm run typecheck
+npm audit
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+GitHub Actions에서도 lint, build, typecheck를 실행합니다.
+브라우저 검증 스크립트는 scripts/verify-browser.mjs이며, 임시 설치한 Playwright의 package.json 경로를 인자로 전달합니다. 로컬 프로덕션 서버와 Chrome이 필요합니다.
+스크린샷과 결과는 artifacts/browser-260914에 생성됩니다.
 
-## Deploy on Vercel
+## GitHub 및 백업
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+원격 저장소: https://github.com/Byunjaewoong/Prime_project
+수정 전 2026-09-14 백업은 backup-260914 브랜치이며 기준 커밋은 405495f입니다.
+이 백업은 Git이 추적하는 소스와 에셋을 보존합니다. node_modules, .next, .env 및 미추적 로컬 파일은 포함하지 않습니다.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+변경한 파일을 검토해 git add, git commit을 실행하고 git push origin main으로 업로드합니다.
+기존 버전은 git switch backup-260914로 확인할 수 있습니다. 작업 중 변경 사항이 있으면 먼저 커밋하거나 보관해야 합니다.
+
+초기 점검은 [PROJECT_AUDIT.md](PROJECT_AUDIT.md), 수정과 브라우저 검증 결과는 [MAINTENANCE_260914.md](MAINTENANCE_260914.md)를 참고하세요.

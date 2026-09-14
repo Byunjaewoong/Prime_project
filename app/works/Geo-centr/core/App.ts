@@ -29,8 +29,8 @@ export class App {
     const margin = 10; // 살짝 여유
 
     for (const obj of this.planetGroup.array) {
-      const p = obj as any;
-      if (p.genSun) continue; // 태양 더미는 무시
+      const p = obj;
+      if (!(p instanceof Planet)) continue; // 태양 더미는 무시
 
       const existing = p as Planet;
       const exX = existing.spaceX;
@@ -138,7 +138,7 @@ export class App {
     window.addEventListener("click", this.clickHandler);
 
     // 태양 더미
-    this.planetGroup.pushing({ spaceZ: 0, genSun: 1 } as any);
+    this.planetGroup.pushing({ spaceZ: 0, genSun: 1 });
 
     // 애니메이션 시작
     this.animate = this.animate.bind(this);
@@ -156,8 +156,8 @@ export class App {
     this.ctx.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
 
     for (let i = 0; i < this.planetGroup.array.length; i++) {
-      const planet = this.planetGroup.array[i] as any;
-      if (!planet.genSun && typeof planet.resize === "function") {
+      const planet = this.planetGroup.array[i];
+      if (planet instanceof Planet && typeof planet.resize === "function") {
         planet.resize();
       }
     }
@@ -174,14 +174,14 @@ export class App {
     this.landScape.genStar();
 
     for (let i = 0; i < this.planetGroup.array.length; i++) {
-      const planet = this.planetGroup.array[i] as any;
+      const planet = this.planetGroup.array[i];
 
-      if (planet.genSun) {
+      if (!(planet instanceof Planet)) {
         this.landScape.genSunCore(this.sunx, this.suny);
 
         for (let j = 0; j < this.planetGroup.array.length; j++) {
-          const p = this.planetGroup.array[j] as any;
-          if (!p.genSun && p.spaceZ > 0) {
+          const p = this.planetGroup.array[j];
+          if (p instanceof Planet && p.spaceZ > 0) {
             const xMin = p.windowX - p.windowRadius;
             const xMax = p.windowX + p.windowRadius;
             const yMin = p.windowY - p.windowRadius;

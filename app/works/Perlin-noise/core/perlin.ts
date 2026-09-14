@@ -265,12 +265,9 @@ export class Lowestline {
   maxReturn(lineArry: Perlin[]) {
     this.lineArry = lineArry;
     for (let i = 0; i < this.stageWidth + this.resolution; i++) {
-      this.lowestDot[i] = Math.max.apply(
-        Math,
-        this.lineArry.map(
+      this.lowestDot[i] = Math.max(...this.lineArry.map(
           (o) => o.perlinGroup.allarry[i]
-        )
-      );
+        ));
     }
   }
 

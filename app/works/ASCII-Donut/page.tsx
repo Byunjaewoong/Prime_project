@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Home } from "lucide-react";
 import CanvasApp from "./CanvasApp";
-import type { App as DonutCoreApp } from "./core/App";
+import type { App as DonutCoreApp, DonutConfig } from "./core/App";
 
 // 🔤 donut.ts 의 ASCII_PRESETS 키들과 동일하게 맞춰줌
 const CHARSET_KEYS = [
@@ -56,18 +56,6 @@ export default function DonutPage() {
 
   // 🎨 글자 색 모드 (UI 상태)
   const [paintMode, setPaintMode] = useState(false);
-  const [paintSeed, setPaintSeed] = useState(0);
-
-  const deltaVelRef = useRef({
-    rotX: 0,
-    rotY: 0,
-    rotZ: 0,
-    lightX: 0,
-    lightY: 0,
-    lightZ: 0,
-  });
-  const deltaFrameRef = useRef<number | null>(null);
-  const lastTimeRef = useRef<number | null>(null);
 
   // 왼쪽 슬라이드 패널 (마우스 왼쪽 벽 근처)
   useEffect(() => {
@@ -90,29 +78,11 @@ export default function DonutPage() {
 
   // 🔧 코어에 상태 전달
   const updateDonut = (
-    patch: Partial<{
-      size: number;
-      distance: number;
-      speed: number;
-      rotX: number;
-      rotY: number;
-      rotZ: number;
-      lightX: number;
-      lightY: number;
-      lightZ: number;
-      colorMode: boolean;
-      colorSeed: number;
-      fontSize: number;
-      fontKey: string;
-      charsetKey: string;
-      mode: number;
-    }>
+    patch: Partial<DonutConfig>
   ) => {
-    donutApp?.updateConfig(patch as any);
+    donutApp?.updateConfig(patch);
   };
 
-  const clamp = (v: number, min: number, max: number) =>
-    Math.min(max, Math.max(min, v));
 
   // 🔺 Δ 버튼 토글
   const toggleDelta = () => {
@@ -152,7 +122,7 @@ export default function DonutPage() {
         rotX: nextRotX,
         rotY: nextRotY,
         rotZ: nextRotZ,
-      } as any);
+      });
     }, 2000);
 
     // 2) 빛: 4초 동안 보간
@@ -173,7 +143,7 @@ export default function DonutPage() {
       return { x, y, z };
     };
 
-    let start = { x: lightX, y: lightY, z: lightZ };
+    let start = { x: donutApp.lightX, y: donutApp.lightY, z: donutApp.lightZ };
     let target = makeRandomLightDir();
     let startTime = performance.now();
     const DURATION = 4000;
@@ -193,7 +163,7 @@ export default function DonutPage() {
         lightX: curX,
         lightY: curY,
         lightZ: curZ,
-      } as any);
+      });
 
       if (t >= 1) {
         start = { x: curX, y: curY, z: curZ };
@@ -212,7 +182,7 @@ export default function DonutPage() {
         CHARSET_KEYS[Math.floor(Math.random() * CHARSET_KEYS.length)];
       donutApp.updateConfig({
         charsetKey: key as CharsetKey,
-      } as any);
+      });
     }, 500);
 
     // 4) 2초마다 색상 팔레트 변경 (페인트 버튼 효과)
@@ -222,7 +192,7 @@ export default function DonutPage() {
       donutApp.updateConfig({
         colorMode: true,
         colorSeed: seed,
-      } as any);
+      });
     }, 200);
 
     // cleanup
@@ -245,7 +215,6 @@ export default function DonutPage() {
     const nextSeed = Date.now();
 
     setPaintMode(nextMode);
-    setPaintSeed(nextSeed);
 
     updateDonut({
       colorMode: nextMode,

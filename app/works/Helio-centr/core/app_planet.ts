@@ -202,19 +202,21 @@ export class Calculate {
   }
 }
 
+export type PlanetLike = Planet | { spaceZ: number; genSun: 1 };
+
 export class PlanetGroup {
-  array: any[];
+  array: PlanetLike[];
 
   constructor() {
     this.array = [];
   }
 
-  pushing(planet: any) {
+  pushing(planet: PlanetLike) {
     this.array.push(planet);
     this.sorting(this.array);
   }
 
-  sorting(array: any[]) {
+  sorting(array: PlanetLike[]) {
     array.sort((a, b) => a.spaceZ - b.spaceZ);
   }
 }
@@ -271,11 +273,11 @@ export class Planet {
     angleSpeed: number,
     sunx: number,
     suny: number,
-    stageWidth: number,
-    stageHeight: number
+    _stageWidth: number,
+    _stageHeight: number
   ) {
-    this.stageWidth = stageWidth;
-    this.stageHeight = stageHeight;
+    this.stageWidth = _stageWidth;
+    this.stageHeight = _stageHeight;
     this.planetR = planetR * (Math.random() + 0.5);
     this.event = event;
     this.canvas = canvas;
@@ -392,8 +394,8 @@ export class Planet {
   renderingPlanet(
     sunx: number,
     suny: number,
-    stageWidth: number,
-    stageHeight: number
+    _stageWidth: number,
+    _stageHeight: number
   ) {
     this.sunx = sunx;
     this.suny = suny;

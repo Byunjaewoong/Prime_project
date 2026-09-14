@@ -19,7 +19,11 @@ const FOOTPRINT_SVG = `
 </svg>
 `;
 
+import { disposeObject } from "@/app/lib/disposeObject";
+
 export class App {
+  private destroyed = false;
+  private readonly resizeHandler = () => this.resize();
   private canvas: HTMLCanvasElement;
   private renderer: THREE.WebGLRenderer;
   private scene: THREE.Scene;
@@ -102,7 +106,7 @@ export class App {
     this.animate();
     this.startLogicLoop();
 
-    window.addEventListener("resize", this.resize.bind(this));
+    window.addEventListener("resize", this.resizeHandler);
     // 클릭 이벤트 리스너 등록
     this.clickHandler = (event: MouseEvent) => this.addTreeOnClick(event);
     this.canvas.addEventListener("click", this.clickHandler);
@@ -240,6 +244,7 @@ export class App {
     loader.load(
       "/walking_v1.glb",
       (gltf) => {
+        if (this.destroyed) { disposeObject(gltf.scene); return; }
         const model = gltf.scene;
 
         model.traverse((child) => {
@@ -290,6 +295,7 @@ export class App {
     loader.load(
       `/${modelName}`,
       (gltf) => {
+        if (this.destroyed) { disposeObject(gltf.scene); return; }
         const model = gltf.scene;
 
         model.traverse((child) => {
@@ -546,10 +552,17 @@ export class App {
   }
 
   public destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
     if (this.animationId) cancelAnimationFrame(this.animationId);
     if (this.logicIntervalId) clearInterval(this.logicIntervalId);
-    window.removeEventListener("resize", this.resize.bind(this));
+    window.removeEventListener("resize", this.resizeHandler);
     this.canvas.removeEventListener("click", this.clickHandler);
+    this.mixer?.stopAllAction();
+    if (this.mixer) this.mixer.uncacheRoot(this.mixer.getRoot());
+    disposeObject(this.scene);
+    this.leftFootGeometry?.dispose();
+    this.rightFootGeometry?.dispose();
     this.renderer.dispose();
   }
 }

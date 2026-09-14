@@ -119,7 +119,6 @@ export default function EmergencePage() {
   // Poll params while FAB is open on grayscott so values stay fresh
   useEffect(() => {
     if (!fabOpen || currentSim !== "grayscott") return;
-    setGsParams(appRef.current?.getSimParams() ?? null);
     const id = setInterval(() => {
       setGsParams(appRef.current?.getSimParams() ?? null);
     }, 200);
@@ -129,7 +128,6 @@ export default function EmergencePage() {
   // Poll params while FAB is open on lenia
   useEffect(() => {
     if (!fabOpen || currentSim !== "lenia") return;
-    setLeniaParams(appRef.current?.getSimParams() ?? null);
     const id = setInterval(() => {
       setLeniaParams(appRef.current?.getSimParams() ?? null);
     }, 200);

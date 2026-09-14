@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import NextImage from "next/image";
 import { App as FluidApp } from "./core/App";
 
 // ✨ 사용할 이미지들의 파일명 목록
@@ -42,7 +43,7 @@ export default function CanvasApp() {
     });
   }, []);
 
-  // 1. 캔버스 앱 초기화 & 애니메이션 제어
+  // Mount the renderer once and release its animation loop on navigation.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -52,9 +53,14 @@ export default function CanvasApp() {
     }
     const app = appRef.current;
 
-    // isPlaying 상태에 따라 App.ts 내부 루프 제어
-    app.setIsRunning(isPlaying);
+    return () => {
+      app.destroy();
+      appRef.current = null;
+    };
+  }, []);
 
+  useEffect(() => {
+    appRef.current?.setIsRunning(isPlaying);
   }, [isPlaying]);
 
   // 2. 배경 이미지 랜덤 변경 로직
@@ -123,7 +129,9 @@ export default function CanvasApp() {
             transformOrigin: "center center"
           }}
         >
-          <img
+          <NextImage
+            fill
+            sizes="100vw"
             src={currentBg} 
             alt="Pot Background"
             style={{

@@ -4,11 +4,13 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
-import { FilmPass } from 'three/examples/jsm/postprocessing/FilmPass.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 
+import { disposeObject } from "@/app/lib/disposeObject";
+
 export class App {
+  private destroyed = false;
+  private readonly resizeHandler = () => this.resize();
   private canvas: HTMLCanvasElement;
   private renderer: THREE.WebGLRenderer;
   private scene: THREE.Scene;
@@ -76,7 +78,7 @@ export class App {
   this.setupPostProcessing();
   this.animate();
 
-  window.addEventListener('resize', this.resize.bind(this));
+  window.addEventListener('resize', this.resizeHandler);
   }
 
   private init() {
@@ -316,10 +318,13 @@ private addFloor() {
   loader.load(
     modelPath,
     (fbx) => {
+      if (this.destroyed) { disposeObject(fbx); return; }
       // 검은 실루엣으로 변경
       fbx.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
+          const oldMaterials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          for (const material of oldMaterials) material.dispose();
           mesh.material = new THREE.MeshStandardMaterial({
             color: 0x000000,
             roughness: 1.0,
@@ -380,6 +385,7 @@ private addFloor() {
   );
   }
   private checkAllLoaded() {
+    if (this.destroyed) return;
     this.loadedCount++;
     if (this.loadedCount >= this.totalToLoad && this.onReadyCallback) {
       this.onReadyCallback();
@@ -777,8 +783,15 @@ private addFloor() {
   }
 
   public destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
     if (this.animationId) cancelAnimationFrame(this.animationId);
-    window.removeEventListener('resize', this.resize.bind(this));
+    window.removeEventListener('resize', this.resizeHandler);
+    this.onReadyCallback = null;
+    for (const mixer of this.mixers) { mixer.stopAllAction(); mixer.uncacheRoot(mixer.getRoot()); }
+    this.composer?.passes.forEach(pass => pass.dispose());
+    this.composer?.dispose();
+    disposeObject(this.scene);
     this.renderer.dispose();
   }
 }

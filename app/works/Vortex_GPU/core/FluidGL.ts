@@ -340,6 +340,9 @@ interface Program {
 
 export class FluidGL {
   private gl: WebGL2RenderingContext;
+  private framebuffers: FBO[] = [];
+  private programs: WebGLProgram[] = [];
+  private quadBuffer: WebGLBuffer | null = null;
   private canvas: HTMLCanvasElement;
 
   // simulation textures
@@ -386,6 +389,7 @@ export class FluidGL {
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     const gl = canvas.getContext("webgl2", { alpha: false, antialias: false })!;
+    if (!gl) throw new Error("WebGL2 is not supported by this browser.");
     this.gl = gl;
 
     gl.getExtension("EXT_color_buffer_float");
@@ -414,6 +418,7 @@ export class FluidGL {
   private initQuad(): void {
     const gl = this.gl;
     const buf = gl.createBuffer()!;
+    this.quadBuffer = buf;
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(
       gl.ARRAY_BUFFER,
@@ -425,6 +430,7 @@ export class FluidGL {
   }
 
   initFBOs(): void {
+    this.releaseFBOs();
     const gl = this.gl;
     const w = gl.drawingBufferWidth;
     const h = gl.drawingBufferHeight;
@@ -658,7 +664,19 @@ export class FluidGL {
   }
 
   destroy(): void {
-    // WebGL resources are released when canvas is removed from DOM
+    this.releaseFBOs();
+    for (const program of this.programs) this.gl.deleteProgram(program);
+    this.programs = [];
+    this.gl.deleteBuffer(this.quadBuffer);
+    this.quadBuffer = null;
+  }
+
+  private releaseFBOs(): void {
+    for (const target of this.framebuffers) {
+      this.gl.deleteTexture(target.texture);
+      this.gl.deleteFramebuffer(target.fbo);
+    }
+    this.framebuffers = [];
   }
 
   // ── GL Helpers ──────────────────────────────────────────────────────────────
@@ -672,6 +690,9 @@ export class FluidGL {
     gl.attachShader(prog, fs);
     gl.bindAttribLocation(prog, 0, "aPosition");
     gl.linkProgram(prog);
+    gl.deleteShader(vs);
+    gl.deleteShader(fs);
+    this.programs.push(prog);
 
     const uniforms: Record<string, WebGLUniformLocation> = {};
     const count = gl.getProgramParameter(prog, gl.ACTIVE_UNIFORMS);
@@ -712,7 +733,9 @@ export class FluidGL {
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
-    return { texture: tex, fbo, w, h };
+    const target = { texture: tex, fbo, w, h };
+    this.framebuffers.push(target);
+    return target;
   }
 
   private createDoubleFBO(

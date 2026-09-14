@@ -1,7 +1,7 @@
 // app/works/FluidSim_cpu/page.tsx
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import CanvasApp from "./CanvasApp";
 import type { App as FluidCpuApp } from "./core/App";
@@ -9,7 +9,7 @@ import type { App as FluidCpuApp } from "./core/App";
 export default function FluidSimCpuPage() {
   const [showPanel, setShowPanel] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
-  const [app, setApp] = useState<FluidCpuApp | null>(null);
+  const appRef = useRef<FluidCpuApp | null>(null);
 
   const [vorticity, setVorticity] = useState(9);
   const [dyeDecay, setDyeDecay] = useState(0.981);
@@ -30,10 +30,10 @@ export default function FluidSimCpuPage() {
     return () => window.removeEventListener("mousemove", handleMove);
   }, []);
 
-  const onReady = useCallback((a: FluidCpuApp | null) => { setApp(a); }, []);
+  const onReady = useCallback((a: FluidCpuApp | null) => { appRef.current = a; }, []);
 
   const updateParam = (key: string, value: number) => {
-    app?.setParam(key, value);
+    appRef.current?.setParam(key, value);
     switch (key) {
       case "vorticity": setVorticity(value); break;
       case "dyeDecay": setDyeDecay(value); break;
@@ -133,7 +133,7 @@ export default function FluidSimCpuPage() {
                         e.stopPropagation();
                         const next = !showVectors;
                         setShowVectors(next);
-                        if (app) app.showVectors = next;
+                        if (appRef.current) appRef.current.showVectors = next;
                       }}
                       style={{
                         fontSize: 11, padding: "4px 10px",
@@ -145,7 +145,7 @@ export default function FluidSimCpuPage() {
                       {showVectors ? "⇢ vectors ON" : "⇢ vectors"}
                     </button>
                     <button
-                      onClick={(e) => { e.stopPropagation(); app?.reset(); }}
+                      onClick={(e) => { e.stopPropagation(); appRef.current?.reset(); }}
                       style={{
                         fontSize: 11, padding: "4px 10px",
                         background: "rgba(255,255,255,0.07)",

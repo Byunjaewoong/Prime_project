@@ -34,8 +34,8 @@ export default function CanvasApp({ onReady }: CanvasAppProps) {
       className="full-canvas"
       style={{
         display: "block",
-        width: "100",
-        height: "100",
+        width: "100%",
+        height: "100%",
       }}
     />
   );

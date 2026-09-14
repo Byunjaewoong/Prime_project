@@ -18,7 +18,7 @@ const ASCII_PRESETS = {
   DNA_4: ["A", "", "T", "", "", "", "", "G", "", "", "C", "", ""],
 } as const;
 
-type AsciiPresetKey = keyof typeof ASCII_PRESETS;
+export type AsciiPresetKey = keyof typeof ASCII_PRESETS;
 
 export class Donut {
   canvas: HTMLCanvasElement;
@@ -42,7 +42,7 @@ export class Donut {
 
   dotStack: number[][][] = [];
   luminStack: number[][][] = [];
-  comboStack: any[] = [];
+  comboStack: [number[][], number[][]][] = [];
 
   xAngle: number;
   yAngle: number;
@@ -360,7 +360,7 @@ export class Donut {
         continue;
       }
 
-      let L = Calculate.vectorProduct(
+      const L = Calculate.vectorProduct(
         n[0],
         n[1],
         n[2],
