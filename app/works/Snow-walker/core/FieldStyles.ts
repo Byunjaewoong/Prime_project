@@ -2,8 +2,8 @@ import * as THREE from "three";
 
 export const FIELD_STYLES = [
   { name: "Snow", ground: 0xffffff, background: 0xffffff, fog: 0.035, ambient: 1, sun: 0xffffff, intensity: 1.2, sunHeight: 13, footprint: 0x555555, grass: 0, bump: 0.08 },
-  { name: "Green grass", ground: 0xd5f3bd, background: 0xb0c995, fog: 0.035, ambient: 1.1, sun: 0xffffff, intensity: 2, sunHeight: 14, footprint: 0x243615, grass: 1, bump: 0.055 },
-  { name: "Golden grass", ground: 0xffebc9, background: 0xe0c58d, fog: 0.035, ambient: 0.8, sun: 0xffe5b0, intensity: 2, sunHeight: 8, footprint: 0x67441c, grass: 1, bump: 0.045 },
+  { name: "Green grass", ground: 0xd5f3bd, background: 0xb0c995, fog: 0.0175, ambient: 1.1, sun: 0xffffff, intensity: 2, sunHeight: 14, footprint: 0x243615, grass: 1, bump: 0.055 },
+  { name: "Golden grass", ground: 0xffebc9, background: 0xe0c58d, fog: 0.0175, ambient: 0.8, sun: 0xffe5b0, intensity: 2, sunHeight: 8, footprint: 0x67441c, grass: 1, bump: 0.045 },
 ] as const;
 
 /** Distinct, seamless vegetation tiles; large patches are generated in the shader. */

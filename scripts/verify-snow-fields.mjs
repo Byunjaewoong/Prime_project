@@ -90,7 +90,7 @@ try {
       await page.evaluate(() => window.app.updateField(1));
       const fog = await page.evaluate(() => ({ exponential: window.app.scene.fog.isFogExp2, density: window.app.scene.fog.density, color: window.app.scene.fog.color.getHex(), background: window.app.scene.background.getHex() }));
       assert.equal(fog.exponential, true);
-      assert.ok(Math.abs(fog.density - 0.035) < 0.00001);
+      assert.ok(Math.abs(fog.density - (index === 0 ? 0.035 : 0.0175)) < 0.00001);
       assert.equal(fog.color, fog.background);
       await page.waitForTimeout(150);
       await page.screenshot({ path: path.join(out, `${label}-${name}.png`) });
