@@ -591,12 +591,17 @@ export class App {
 
   private animate() {
     this.animationId = requestAnimationFrame(this.animate.bind(this));
-    this.renderer.render(this.scene, this.camera);
     if (this.grainEnabled && this.fieldIndex !== 0) {
-      this.grain.material.uniforms.frame.value = Math.floor(performance.now() * 0.024);
-      this.renderer.autoClear = false;
+      this.renderer.getDrawingBufferSize(this.grain.size);
+      this.grain.target.samples = Math.min(4, this.renderer.capabilities.maxSamples);
+      this.grain.target.setSize(this.grain.size.x, this.grain.size.y);
+      this.grain.material.uniforms.time.value = performance.now() * 0.001;
+      this.renderer.setRenderTarget(this.grain.target);
+      this.renderer.render(this.scene, this.camera);
+      this.renderer.setRenderTarget(null);
       this.renderer.render(this.grain.scene, this.camera);
-      this.renderer.autoClear = true;
+    } else {
+      this.renderer.render(this.scene, this.camera);
     }
   }
 
@@ -616,7 +621,7 @@ export class App {
     this.groundMaterial.roughness = blend(this.groundMaterial.roughness, style.grass ? 0.95 : 0.6);
     this.groundMaterial.metalness = blend(this.groundMaterial.metalness, style.grass ? 0 : 0.1);
     this.grassMix.value = blend(this.grassMix.value, style.grass);
-    this.grain.material.uniforms.strength.value = 0.055 * this.grassMix.value;
+    this.grain.material.uniforms.strength.value = this.grassMix.value;
     this.goldenMix.value = blend(this.goldenMix.value, this.fieldIndex === 2 ? 1 : 0);
     (this.scene.background as THREE.Color).lerp(new THREE.Color(style.background), alpha);
     const fog = this.scene.fog as THREE.FogExp2;
@@ -666,6 +671,7 @@ export class App {
     skeletons.forEach(skeleton => skeleton.dispose());
     disposeObject(this.scene);
     disposeObject(this.grain.scene);
+    this.grain.target.dispose();
     this.grassTexture.dispose();
     this.goldenTexture.dispose();
     this.leftFootGeometry?.dispose();

@@ -84,7 +84,7 @@ export default function SnowWalkPage() {
                   </ul>
                   <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 12 }}>
                     <input type="checkbox" checked={grainEnabled} onChange={(e) => setGrainEnabled(e.target.checked)} />
-                    Grain
+                    Camera filter
                   </label>
                 </div>
               </div>

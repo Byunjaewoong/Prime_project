@@ -162,7 +162,7 @@ try {
     }
     await page.getByRole('button', { name: '메뉴 열기' }).click();
     await page.getByText('Left click / tap: change field', { exact: true }).waitFor();
-    const grainControl = page.getByRole('checkbox', { name: 'Grain', exact: true });
+    const grainControl = page.getByRole('checkbox', { name: 'Camera filter', exact: true });
     assert.equal(await grainControl.isChecked(), true);
     await grainControl.uncheck();
     assert.equal(await grainControl.isChecked(), false);
