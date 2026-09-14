@@ -33,8 +33,8 @@ try {
         if (!file.startsWith(root + path.sep)) throw new Error('Invalid module path');
         body = fs.readFileSync(file, 'utf8');
       } else {
-        const files = { '/__snow/App.js': 'app/works/Snow-walker/core/App.ts', '/__snow/FieldStyles.js': 'app/works/Snow-walker/core/FieldStyles.ts', '/__snow/disposeObject.js': 'app/lib/disposeObject.ts' };
-        body = compile(files[pathname]).replace('"@/app/lib/disposeObject"', '"/__snow/disposeObject.js"').replace('"./FieldStyles"', '"./FieldStyles.js"');
+        const files = { '/__snow/App.js': 'app/works/Snow-walker/core/App.ts', '/__snow/FieldStyles.js': 'app/works/Snow-walker/core/FieldStyles.ts', '/__snow/Grain.js': 'app/works/Snow-walker/core/Grain.ts', '/__snow/disposeObject.js': 'app/lib/disposeObject.ts' };
+        body = compile(files[pathname]).replace('"@/app/lib/disposeObject"', '"/__snow/disposeObject.js"').replace('"./FieldStyles"', '"./FieldStyles.js"').replace('"./Grain"', '"./Grain.js"');
       }
       await route.fulfill({ contentType: 'text/javascript', body });
     });
@@ -116,6 +116,14 @@ try {
     assert.equal(treeRetained, true);
     await page.evaluate(() => { window.app.updateField(1); });
     await page.screenshot({ path: path.join(out, `${label}-tree.png`) });
+    const grainToggle = await page.evaluate(() => {
+      const a = window.app, player = a.playerGroup, curve = a.curve, count = a.footprints.length;
+      a.setGrainEnabled(false);
+      const hidden = !a.grainEnabled;
+      a.setGrainEnabled(true);
+      return hidden && a.grainEnabled && a.playerGroup === player && a.curve === curve && a.footprints.length === count;
+    });
+    assert.equal(grainToggle, true);
     // Walking resumes from the saved point rather than restarting.
     const resumed = await page.evaluate(() => {
       const a = window.app, progress = a.curveProgress, time = a.mixer.time;
@@ -154,6 +162,11 @@ try {
     }
     await page.getByRole('button', { name: '메뉴 열기' }).click();
     await page.getByText('Left click / tap: change field', { exact: true }).waitFor();
+    const grainControl = page.getByRole('checkbox', { name: 'Grain', exact: true });
+    assert.equal(await grainControl.isChecked(), true);
+    await grainControl.uncheck();
+    assert.equal(await grainControl.isChecked(), false);
+    await grainControl.check();
     await page.screenshot({ path: path.join(out, `${label}-menu.png`) });
     await page.getByRole('link', { name: '메인으로 돌아가기' }).click();
     await page.waitForURL(`${base}/`);

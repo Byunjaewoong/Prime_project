@@ -5,11 +5,12 @@ import { useEffect, useRef } from "react";
 import { App as snow_walkApp } from "./core/App";
 
 type CanvasAppProps = {
+  grainEnabled?: boolean;
   // 나중에 컨트롤 하고 싶으면 onReady로 App 인스턴스 받아갈 수 있게
   onReady?: (app: snow_walkApp | null) => void;
 };
 
-export default function CanvasApp({ onReady }: CanvasAppProps) {
+export default function CanvasApp({ onReady, grainEnabled = true }: CanvasAppProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const appRef = useRef<snow_walkApp | null>(null);
 
@@ -27,6 +28,10 @@ export default function CanvasApp({ onReady }: CanvasAppProps) {
       onReady?.(null);
     };
   }, [onReady]);
+
+  useEffect(() => {
+    appRef.current?.setGrainEnabled(grainEnabled);
+  }, [grainEnabled]);
 
   return (
     <canvas

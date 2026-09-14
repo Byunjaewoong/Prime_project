@@ -40,3 +40,4 @@ backup-260914-before-vortex-4k preserves 58afedf before the Vortex display chang
 Avoid committing .env, dependency folders, generated build output or browser screenshots.
 backup-260914-before-snow-fields preserves f19b283; snow-fields-260914 contains field switching. scripts/verify-snow-fields.mjs runs state-identity, repeated-switching, tree, cleanup and desktop/mobile React-page checks with a temporary Playwright installation and VERIFY_BASE_URL (default localhost:3000).
 Snow-walker uses FogExp2 with density 0.035 for snow and 0.0175 for green/gold grass. Green/gold fog matches a pale field-colored background. Ground smog and its checkbox were removed.
+Snow-walker core/Grain.ts adds a screen-space grain overlay after the main scene render, without offscreen buffers. Only green/gold fields use it. The Grain checkbox changes the existing App flag; it must not recreate App or affect walking state. Dispose the separate overlay scene on cleanup.

@@ -21,6 +21,7 @@ const FOOTPRINT_SVG = `
 
 import { disposeObject } from "@/app/lib/disposeObject";
 import { FIELD_STYLES, createGrassTexture, VEGETATION_SHADER } from "./FieldStyles";
+import { createGrain } from "./Grain";
 
 export class App {
   private destroyed = false;
@@ -39,6 +40,8 @@ export class App {
   private goldenTexture!: THREE.CanvasTexture;
   private grassMix = { value: 0 };
   private goldenMix = { value: 0 };
+  private grain = createGrain();
+  private grainEnabled = true;
   private ambientLight!: THREE.AmbientLight;
   private sunLight!: THREE.DirectionalLight;
   private fieldIndex = 0;
@@ -589,6 +592,12 @@ export class App {
   private animate() {
     this.animationId = requestAnimationFrame(this.animate.bind(this));
     this.renderer.render(this.scene, this.camera);
+    if (this.grainEnabled && this.fieldIndex !== 0) {
+      this.grain.material.uniforms.frame.value = Math.floor(performance.now() * 0.024);
+      this.renderer.autoClear = false;
+      this.renderer.render(this.grain.scene, this.camera);
+      this.renderer.autoClear = true;
+    }
   }
 
   public nextField(): void {
@@ -596,6 +605,7 @@ export class App {
   }
 
   public getFieldName(): string { return FIELD_STYLES[this.fieldIndex].name; }
+  public setGrainEnabled(enabled: boolean): void { this.grainEnabled = enabled; }
 
   private updateField(delta: number): void {
     const style = FIELD_STYLES[this.fieldIndex];
@@ -606,6 +616,7 @@ export class App {
     this.groundMaterial.roughness = blend(this.groundMaterial.roughness, style.grass ? 0.95 : 0.6);
     this.groundMaterial.metalness = blend(this.groundMaterial.metalness, style.grass ? 0 : 0.1);
     this.grassMix.value = blend(this.grassMix.value, style.grass);
+    this.grain.material.uniforms.strength.value = 0.055 * this.grassMix.value;
     this.goldenMix.value = blend(this.goldenMix.value, this.fieldIndex === 2 ? 1 : 0);
     (this.scene.background as THREE.Color).lerp(new THREE.Color(style.background), alpha);
     const fog = this.scene.fog as THREE.FogExp2;
@@ -654,6 +665,7 @@ export class App {
     });
     skeletons.forEach(skeleton => skeleton.dispose());
     disposeObject(this.scene);
+    disposeObject(this.grain.scene);
     this.grassTexture.dispose();
     this.goldenTexture.dispose();
     this.leftFootGeometry?.dispose();

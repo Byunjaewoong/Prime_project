@@ -9,6 +9,7 @@ import CanvasApp from "./CanvasApp";
 export default function SnowWalkPage() {
   const [showPanel, setShowPanel] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
+  const [grainEnabled, setGrainEnabled] = useState(true);
 
   // 왼쪽 끝으로 마우스 가면 go to main 슬라이드
   useEffect(() => {
@@ -32,7 +33,7 @@ export default function SnowWalkPage() {
   return (
     <main className="full-canvas-page">
       {/* 전체 화면 캔버스 */}
-      <CanvasApp />
+      <CanvasApp grainEnabled={grainEnabled} />
 
       {/* 🔹 왼쪽 슬라이드 패널 (메인으로) */}
       <div
@@ -81,6 +82,10 @@ export default function SnowWalkPage() {
                     <li>Snow → Green grass → Golden grass</li>
                     <li>Right click: plant a tree</li>
                   </ul>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 12 }}>
+                    <input type="checkbox" checked={grainEnabled} onChange={(e) => setGrainEnabled(e.target.checked)} />
+                    Grain
+                  </label>
                 </div>
               </div>
             </div>
