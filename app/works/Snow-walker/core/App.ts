@@ -643,6 +643,5 @@ export class App {
     this.leftFootGeometry?.dispose();
     this.rightFootGeometry?.dispose();
     this.renderer.dispose();
-    this.renderer.forceContextLoss();
   }
 }

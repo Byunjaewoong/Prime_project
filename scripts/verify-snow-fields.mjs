@@ -123,10 +123,17 @@ try {
       const a = window.app; a.destroy();
       return { ...a.renderer.info.memory, contextLost: a.renderer.getContext().isContextLost(), remaining: [...window.uploaded].map(t => ({ type: t.type, format: t.format, width: t.image?.width, height: t.image?.height })) };
     });
-    // Three.js keeps its shared 32px DFG lookup in its module cache. Losing
-    // the dedicated renderer context releases its GPU copy on unmount.
-    assert.equal(disposed.geometries, 0); assert.equal(disposed.contextLost, true);
+    // Three.js keeps its shared 32px DFG lookup in its module cache.
+    // Keep the canvas context usable for React Strict Mode effect replay.
+    assert.equal(disposed.geometries, 0); assert.equal(disposed.contextLost, false);
     assert.ok(disposed.remaining.every(t => t.type === 1016 && t.format === 1030 && t.width === 32 && t.height === 32));
+    await page.evaluate(() => {
+      window.app = new window.app.constructor(document.querySelector('canvas'));
+      window.app.destroy();
+      window.app = new window.app.constructor(document.querySelector('canvas'));
+    });
+    await page.waitForFunction(() => window.app?.mixer);
+    await page.evaluate(() => window.app.destroy());
     assert.deepEqual(errors, []);
     const result = { viewport: label, stable, rightClickTree: true, statePreserved: true, resumed, disposed, errors };
     results.push(result); console.log(JSON.stringify(result));
