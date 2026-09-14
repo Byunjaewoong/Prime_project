@@ -20,7 +20,7 @@ const FOOTPRINT_SVG = `
 `;
 
 import { disposeObject } from "@/app/lib/disposeObject";
-import { FIELD_STYLES, createGrassTexture } from "./FieldStyles";
+import { FIELD_STYLES, createGrassTexture, VEGETATION_SHADER } from "./FieldStyles";
 
 export class App {
   private destroyed = false;
@@ -36,7 +36,9 @@ export class App {
   private ground: THREE.Mesh | null = null;
   private groundMaterial!: THREE.MeshStandardMaterial;
   private grassTexture!: THREE.CanvasTexture;
+  private goldenTexture!: THREE.CanvasTexture;
   private grassMix = { value: 0 };
+  private goldenMix = { value: 0 };
   private ambientLight!: THREE.AmbientLight;
   private sunLight!: THREE.DirectionalLight;
   private fieldIndex = 0;
@@ -234,7 +236,9 @@ export class App {
 
     const snowTexture = createBrightSnowTexture();
     this.grassTexture = createGrassTexture();
+    this.goldenTexture = createGrassTexture(true);
     this.grassTexture.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
+    this.goldenTexture.anisotropy = this.grassTexture.anisotropy;
 
     const geometry = new THREE.PlaneGeometry(120, 120, 128, 128);
     const material = new THREE.MeshStandardMaterial({
@@ -249,11 +253,14 @@ export class App {
     // Blend cached texture samples without recreating the ground or scene.
     material.onBeforeCompile = (shader) => {
       shader.uniforms.grassMap = { value: this.grassTexture };
+      shader.uniforms.goldenMap = { value: this.goldenTexture };
       shader.uniforms.grassMix = this.grassMix;
-      shader.fragmentShader = "uniform sampler2D grassMap;\nuniform float grassMix;\n" + shader.fragmentShader;
+      shader.uniforms.goldenMix = this.goldenMix;
+      shader.fragmentShader = VEGETATION_SHADER + shader.fragmentShader;
       shader.fragmentShader = shader.fragmentShader.replace("#include <map_fragment>", `
         #ifdef USE_MAP
-          vec4 fieldGrain = mix(texture2D(map, vMapUv), texture2D(grassMap, vMapUv), grassMix);
+          vec4 fieldGrain = texture2D(map, vMapUv);
+          if (grassMix > 0.001) fieldGrain = mix(fieldGrain, vegetation(vMapUv), grassMix);
           diffuseColor *= fieldGrain;
         #endif
       `);
@@ -264,10 +271,12 @@ export class App {
           .replace("texture2D( bumpMap, vBumpMapUv + dSTdy ).x", "fieldHeight(vBumpMapUv + dSTdy)")
           .replace("uniform float bumpScale;", `uniform float bumpScale;
           float fieldHeight(vec2 uv) {
-            return mix(texture2D(bumpMap, uv).x, texture2D(grassMap, uv).x, grassMix);
+            float snow = texture2D(bumpMap, uv).x;
+            if (grassMix < 0.001) return snow;
+            return mix(snow, dot(vegetation(uv).rgb, vec3(0.299, 0.587, 0.114)), grassMix);
           }`));
     };
-    material.customProgramCacheKey = () => "snow-walker-fields-v1";
+    material.customProgramCacheKey = () => "snow-walker-fields-v2";
 
     this.ground = new THREE.Mesh(geometry, material);
     this.ground.rotation.x = -Math.PI / 2;
@@ -597,6 +606,7 @@ export class App {
     this.groundMaterial.roughness = blend(this.groundMaterial.roughness, style.grass ? 0.95 : 0.6);
     this.groundMaterial.metalness = blend(this.groundMaterial.metalness, style.grass ? 0 : 0.1);
     this.grassMix.value = blend(this.grassMix.value, style.grass);
+    this.goldenMix.value = blend(this.goldenMix.value, this.fieldIndex === 2 ? 1 : 0);
     (this.scene.background as THREE.Color).lerp(new THREE.Color(style.background), alpha);
     const fog = this.scene.fog as THREE.FogExp2;
     fog.color.copy(this.scene.background as THREE.Color);
@@ -640,6 +650,7 @@ export class App {
     skeletons.forEach(skeleton => skeleton.dispose());
     disposeObject(this.scene);
     this.grassTexture.dispose();
+    this.goldenTexture.dispose();
     this.leftFootGeometry?.dispose();
     this.rightFootGeometry?.dispose();
     this.renderer.dispose();
