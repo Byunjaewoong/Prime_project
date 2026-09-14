@@ -33,8 +33,8 @@ try {
         if (!file.startsWith(root + path.sep)) throw new Error('Invalid module path');
         body = fs.readFileSync(file, 'utf8');
       } else {
-        const files = { '/__snow/App.js': 'app/works/Snow-walker/core/App.ts', '/__snow/FieldStyles.js': 'app/works/Snow-walker/core/FieldStyles.ts', '/__snow/Smog.js': 'app/works/Snow-walker/core/Smog.ts', '/__snow/disposeObject.js': 'app/lib/disposeObject.ts' };
-        body = compile(files[pathname]).replace('"@/app/lib/disposeObject"', '"/__snow/disposeObject.js"').replace('"./FieldStyles"', '"./FieldStyles.js"').replace('"./Smog"', '"./Smog.js"');
+        const files = { '/__snow/App.js': 'app/works/Snow-walker/core/App.ts', '/__snow/FieldStyles.js': 'app/works/Snow-walker/core/FieldStyles.ts', '/__snow/disposeObject.js': 'app/lib/disposeObject.ts' };
+        body = compile(files[pathname]).replace('"@/app/lib/disposeObject"', '"/__snow/disposeObject.js"').replace('"./FieldStyles"', '"./FieldStyles.js"');
       }
       await route.fulfill({ contentType: 'text/javascript', body });
     });
@@ -88,6 +88,10 @@ try {
       assert.equal(state.sameObjects, true);
       for (const [a, b] of [['position', 'savedPosition'], ['footprintPositions', 'savedFootprintPositions'], ['opacity', 'savedOpacity'], ['progress', 'savedProgress'], ['mixerTime', 'savedMixerTime'], ['camera', 'savedCamera']]) assert.deepEqual(state[a], state[b]);
       await page.evaluate(() => window.app.updateField(1));
+      const fog = await page.evaluate(() => ({ exponential: window.app.scene.fog.isFogExp2, density: window.app.scene.fog.density, color: window.app.scene.fog.color.getHex(), background: window.app.scene.background.getHex() }));
+      assert.equal(fog.exponential, true);
+      assert.ok(Math.abs(fog.density - 0.035) < 0.00001);
+      assert.equal(fog.color, fog.background);
       await page.waitForTimeout(150);
       await page.screenshot({ path: path.join(out, `${label}-${name}.png`) });
     }
@@ -112,14 +116,6 @@ try {
     assert.equal(treeRetained, true);
     await page.evaluate(() => { window.app.updateField(1); });
     await page.screenshot({ path: path.join(out, `${label}-tree.png`) });
-    const smogToggle = await page.evaluate(() => {
-      const a = window.app, player = a.playerGroup, curve = a.curve, count = a.footprints.length;
-      a.setSmogEnabled(false);
-      const hidden = !a.smog.visible;
-      a.setSmogEnabled(true);
-      return hidden && a.smog.visible && a.playerGroup === player && a.curve === curve && a.footprints.length === count;
-    });
-    assert.equal(smogToggle, true);
     // Walking resumes from the saved point rather than restarting.
     const resumed = await page.evaluate(() => {
       const a = window.app, progress = a.curveProgress, time = a.mixer.time;
@@ -158,11 +154,6 @@ try {
     }
     await page.getByRole('button', { name: '메뉴 열기' }).click();
     await page.getByText('Left click / tap: change field', { exact: true }).waitFor();
-    const smogControl = page.getByRole('checkbox', { name: 'Smog', exact: true });
-    assert.equal(await smogControl.isChecked(), true);
-    await smogControl.uncheck();
-    assert.equal(await smogControl.isChecked(), false);
-    await smogControl.check();
     await page.screenshot({ path: path.join(out, `${label}-menu.png`) });
     await page.getByRole('link', { name: '메인으로 돌아가기' }).click();
     await page.waitForURL(`${base}/`);

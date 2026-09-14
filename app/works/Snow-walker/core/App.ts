@@ -21,7 +21,6 @@ const FOOTPRINT_SVG = `
 
 import { disposeObject } from "@/app/lib/disposeObject";
 import { FIELD_STYLES, createGrassTexture, VEGETATION_SHADER } from "./FieldStyles";
-import { createSmog } from "./Smog";
 
 export class App {
   private destroyed = false;
@@ -40,7 +39,6 @@ export class App {
   private goldenTexture!: THREE.CanvasTexture;
   private grassMix = { value: 0 };
   private goldenMix = { value: 0 };
-  private smog!: ReturnType<typeof createSmog>;
   private ambientLight!: THREE.AmbientLight;
   private sunLight!: THREE.DirectionalLight;
   private fieldIndex = 0;
@@ -134,8 +132,6 @@ export class App {
   private init() {
     this.addLights();
     this.addGround();
-    this.smog = createSmog();
-    this.scene.add(this.smog);
 
     // 4. 발자국 Geometry 분리 생성
     this.initFootprintGeometries();
@@ -600,15 +596,11 @@ export class App {
   }
 
   public getFieldName(): string { return FIELD_STYLES[this.fieldIndex].name; }
-  public setSmogEnabled(enabled: boolean): void { this.smog.visible = enabled; }
 
   private updateField(delta: number): void {
     const style = FIELD_STYLES[this.fieldIndex];
-    this.time += Math.max(0, delta);
-    this.smog.material.uniforms.time.value = this.time;
     const alpha = 1 - Math.exp(-Math.max(0, delta) * 5 / this.transitionDuration);
     const blend = (a: number, b: number) => THREE.MathUtils.lerp(a, b, alpha);
-    (this.smog.material.uniforms.tint.value as THREE.Color).lerp(new THREE.Color(this.fieldIndex === 2 ? 0xf1e6cf : 0xe6ece5), alpha);
     this.groundMaterial.color.lerp(new THREE.Color(style.ground), alpha);
     this.groundMaterial.bumpScale = blend(this.groundMaterial.bumpScale, style.bump);
     this.groundMaterial.roughness = blend(this.groundMaterial.roughness, style.grass ? 0.95 : 0.6);
