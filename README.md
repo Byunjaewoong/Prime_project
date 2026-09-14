@@ -24,7 +24,7 @@ http://localhost:3000 에서 실행합니다. 프로덕션은 npm run build 후 
 | /works/Perlin-noise | Canvas 2D, 절차적 파형 |
 | /works/Snow-walker | Three.js, 보행 모델·발자국·나무 |
 | /works/Emergence | Lenia, Boids, Gray-Scott, Physarum 시뮬레이션 |
-| /works/Vortex | CPU 유체 시뮬레이션 |
+| /works/Vortex | CPU 유체 계산, GPU 고해상도 색상 표현 |
 | /works/Vortex_GPU | WebGL2 GPU 유체 시뮬레이션 |
 | /works/Fluid | Canvas 2D, 이미지·블렌드·사운드 |
 | /works/weatherProject | Three.js, 인물·태양·후처리 |
@@ -54,3 +54,9 @@ GitHub Actions에서도 lint, build, typecheck를 실행합니다.
 기존 버전은 git switch backup-260914로 확인할 수 있습니다. 작업 중 변경 사항이 있으면 먼저 커밋하거나 보관해야 합니다.
 
 초기 점검은 [PROJECT_AUDIT.md](PROJECT_AUDIT.md), 수정과 브라우저 검증 결과는 [MAINTENANCE_260914.md](MAINTENANCE_260914.md)를 참고하세요.
+
+## Vortex 4K 개선
+
+Vortex는 기존 CPU 흐름을 유지하고 색상 표현을 GPU로 처리합니다. 4K 화면에서도 움직임 격자는 1080p 기준 크기로 유지하며 색상은 최대 2048×1152(16:9), 출력은 3840×2160까지 사용합니다. WebGL2/부동소수점 framebuffer 미지원 또는 context loss 시 기존 Canvas 출력으로 전환합니다.
+
+구현 전 백업: `backup-260914-before-vortex-4k` (`58afedf`). 구현 브랜치: `vortex-4k-260914`. 비교 결과와 되돌리는 방법은 [VORTEX_4K_260914.md](VORTEX_4K_260914.md)에 기록합니다.

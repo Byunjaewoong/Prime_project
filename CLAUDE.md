@@ -19,7 +19,7 @@ Each work follows page.tsx (UI), CanvasApp.tsx (React mount/cleanup), core/App.t
 Canvas 2D: Geo-centr, Helio-centr, ASCII-Donut, Perlin-noise, Fluid.
 Three.js: Snow-walker (GLTFLoader, SVGLoader, footprints), weatherProject (FBXLoader, mixers, EffectComposer, ShaderPass).
 Emergence: Lenia, Boids, GrayScott, Physarum implementations in core/.
-Vortex: CPU solver and renderer. Vortex_GPU: WebGL2 shader solver in core/FluidGL.ts; explicitly release FBOs on resize and destruction.
+Vortex: original CPU solver with reference swaps, a CPU reference dye field, and GPU high-resolution dye presentation in core/DyeRenderer.ts. core/resolution.ts caps the physics domain to a 1920px reference long edge, scales pointer displacement, and budgets output to 4K pixels. Canvas 2D handles input/vector overlay and is also the fallback when GPU dye is unavailable. Keep the original tone curve and the reference-field correction when changing the presentation layer. Vortex_GPU: independent WebGL2 shader solver in core/FluidGL.ts; explicitly release FBOs on resize and destruction.
 
 app/lib/disposeObject.ts releases Three.js scene geometry, materials, textures and shadow resources.
 Shared layout, slide panels and FAB controls are in app/globals.css. Preserve case-sensitive route names for Linux deployment.
@@ -35,4 +35,5 @@ There is no unit test suite. GitHub Actions runs lint, build and typecheck. scri
 
 origin: https://github.com/Byunjaewoong/Prime_project.git
 backup-260914 preserves the pre-maintenance commit 405495f. It includes tracked files only.
+backup-260914-before-vortex-4k preserves 58afedf before the Vortex display changes; vortex-4k-260914 is the implementation branch. Verification scripts compare the solver exactly and run deterministic 1080p/4K/mobile screenshots against this backup.
 Avoid committing .env, dependency folders, generated build output or browser screenshots.

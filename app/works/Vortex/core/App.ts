@@ -3,6 +3,8 @@
 
 import { FluidSolver } from "./FluidSolver";
 import { Renderer } from "./Renderer";
+import { DyeRenderer } from "./DyeRenderer";
+import { vortexResolution } from "./resolution";
 
 function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   const c = (1 - Math.abs(2 * l - 1)) * s;
@@ -18,15 +20,13 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   return [r + m, g + m, b + m];
 }
 
-const CELLS_PER_PX = 0.133; // 1920px → ~256 cells
-const MIN_GRID = 64;
-const MAX_GRID = 512;
-
 export class App {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private solver!: FluidSolver;
   private renderer: Renderer;
+  private dyeRenderer: DyeRenderer | null;
+  private hadVectors = false;
   private animationId: number | null = null;
 
   private prevX = -1;
@@ -48,10 +48,12 @@ export class App {
   private pointerDown = false;
   private resizeDebounce: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, dyeCanvas?: HTMLCanvasElement) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d")!;
     this.renderer = new Renderer();
+    this.dyeRenderer = dyeCanvas ? DyeRenderer.create(dyeCanvas) : null;
+    if (dyeCanvas && !this.dyeRenderer) dyeCanvas.style.display = "none";
 
     this.fitCanvas();
     this.createSolver();
@@ -101,8 +103,7 @@ export class App {
 
   private createSolver(): void {
     const w = window.innerWidth, h = window.innerHeight;
-    const gridW = Math.max(MIN_GRID, Math.min(MAX_GRID, Math.round(w * CELLS_PER_PX)));
-    const gridH = Math.max(MIN_GRID, Math.min(MAX_GRID, Math.round(h * CELLS_PER_PX)));
+    const { gridW, gridH, outputW, outputH } = vortexResolution(w, h, window.devicePixelRatio || 1);
 
     const old = this.solver;
     this.solver = new FluidSolver(gridW, gridH);
@@ -112,6 +113,7 @@ export class App {
       this.solver.diffusion = old.diffusion;
       this.solver.velocityDecay = old.velocityDecay;
     }
+    this.dyeRenderer?.resize(this.solver, outputW, outputH);
   }
 
   private injectAt(cx: number, cy: number, dx: number, dy: number): void {
@@ -125,7 +127,8 @@ export class App {
     const velR = Math.max(1, Math.round(this.baseVelRadius * scale));
     const dyeR = Math.max(1, Math.round(this.baseDyeRadius * scale));
     const invScale2 = 1 / (scale * scale);
-    this.solver.addVelocity(gx, gy, dx * this.forceMultiplier * invScale2, dy * this.forceMultiplier * invScale2, velR);
+    const { inputScale } = vortexResolution(cssW, cssH, window.devicePixelRatio || 1);
+    this.solver.addVelocity(gx, gy, dx * inputScale * this.forceMultiplier * invScale2, dy * inputScale * this.forceMultiplier * invScale2, velR);
     const [r, g, b] = hslToRgb(this.hueAngle % 360, 1.0, 0.5);
     this.solver.addDye(gx, gy, r * 80 * invScale2, g * 80 * invScale2, b * 80 * invScale2, dyeR);
   }
@@ -133,27 +136,45 @@ export class App {
   private animate = (_timestamp: number): void => {
     this.animationId = requestAnimationFrame(this.animate);
     this.hueAngle += 4.0;
+    this.dyeRenderer?.captureSources(this.solver);
     this.solver.step();
     const w = window.innerWidth, h = window.innerHeight;
-    this.renderer.render(this.ctx, this.solver.W, this.solver.H, this.solver.W + 2,
-      this.solver.dR, this.solver.dG, this.solver.dB, w, h);
+    const gpuDye = this.dyeRenderer?.render(this.solver, this.renderer.saturation, this.renderer.brightness) ?? false;
+    if (gpuDye) {
+      // The input canvas is also the transparent vector overlay. Avoid touching
+      // its 4K backing store every frame when the overlay is disabled.
+      if (this.showVectors || this.hadVectors) this.ctx.clearRect(0, 0, w, h);
+    } else {
+      this.renderer.render(this.ctx, this.solver.W, this.solver.H, this.solver.W + 2,
+        this.solver.dR, this.solver.dG, this.solver.dB, w, h);
+    }
     if (this.showVectors) {
       this.renderer.renderVectors(this.ctx, this.solver.W, this.solver.H, this.solver.W + 2,
         this.solver.u, this.solver.v, w, h);
     }
+    this.hadVectors = this.showVectors;
   };
 
   private fitCanvas(): void {
-    const dpr = window.devicePixelRatio || 1;
     const w = window.innerWidth, h = window.innerHeight;
-    this.canvas.width = w * dpr;
-    this.canvas.height = h * dpr;
+    const { outputW, outputH } = vortexResolution(w, h, window.devicePixelRatio || 1);
+    this.canvas.width = outputW;
+    this.canvas.height = outputH;
     this.canvas.style.width = w + "px";
     this.canvas.style.height = h + "px";
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.ctx.setTransform(outputW / w, 0, 0, outputH / h, 0, 0);
   }
 
-  reset(): void { this.solver.reset(); }
+  reset(): void { this.solver.reset(); this.dyeRenderer?.reset(); }
+
+  getResolutionInfo() {
+    return {
+      grid: { width: this.solver.W, height: this.solver.H },
+      dye: this.dyeRenderer?.available ? this.dyeRenderer.resolution : { width: this.solver.W, height: this.solver.H },
+      output: { width: this.canvas.width, height: this.canvas.height },
+      rendering: this.dyeRenderer?.available ? "gpu-dye" : "canvas",
+    };
+  }
 
   getParams(): Record<string, number> {
     return { vorticity: this.solver.vorticityEps, dyeDecay: this.solver.dyeDecay, force: this.forceMultiplier, drag: this.solver.velocityDecay, viscosity: this.solver.diffusion, saturation: this.renderer.saturation, brightness: this.renderer.brightness };
@@ -174,6 +195,7 @@ export class App {
   destroy(): void {
     if (this.animationId !== null) cancelAnimationFrame(this.animationId);
     if (this.resizeDebounce) clearTimeout(this.resizeDebounce);
+    this.dyeRenderer?.destroy();
     window.removeEventListener("resize", this.resizeHandler);
     this.canvas.removeEventListener("pointerdown", this.ptrDownHandler);
     this.canvas.removeEventListener("pointermove", this.ptrMoveHandler);

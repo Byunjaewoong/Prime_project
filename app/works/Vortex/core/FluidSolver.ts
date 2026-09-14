@@ -101,14 +101,14 @@ export class FluidSolver {
     this.addSource(this.v, this.v0);
     this.vorticityConfinement();
 
-    this.swap(this.u0, this.u);
+    this.swap("u0", "u");
     this.diffuse(1, this.u, this.u0, this.diffusion);
-    this.swap(this.v0, this.v);
+    this.swap("v0", "v");
     this.diffuse(2, this.v, this.v0, this.diffusion);
     this.project(this.u, this.v, this.u0, this.v0);
 
-    this.swap(this.u0, this.u);
-    this.swap(this.v0, this.v);
+    this.swap("u0", "u");
+    this.swap("v0", "v");
     this.advect(1, this.u, this.u0, this.u0, this.v0);
     this.advect(2, this.v, this.v0, this.u0, this.v0);
     this.project(this.u, this.v, this.u0, this.v0);
@@ -117,18 +117,18 @@ export class FluidSolver {
     this.addSource(this.dG, this.dG0);
     this.addSource(this.dB, this.dB0);
 
-    this.swap(this.dR0, this.dR);
+    this.swap("dR0", "dR");
     this.diffuse(0, this.dR, this.dR0, this.dyeDiff);
-    this.swap(this.dG0, this.dG);
+    this.swap("dG0", "dG");
     this.diffuse(0, this.dG, this.dG0, this.dyeDiff);
-    this.swap(this.dB0, this.dB);
+    this.swap("dB0", "dB");
     this.diffuse(0, this.dB, this.dB0, this.dyeDiff);
 
-    this.swap(this.dR0, this.dR);
+    this.swap("dR0", "dR");
     this.advect(0, this.dR, this.dR0, this.u, this.v);
-    this.swap(this.dG0, this.dG);
+    this.swap("dG0", "dG");
     this.advect(0, this.dG, this.dG0, this.u, this.v);
-    this.swap(this.dB0, this.dB);
+    this.swap("dB0", "dB");
     this.advect(0, this.dB, this.dB0, this.u, this.v);
 
     this.applyDyeDecay();
@@ -145,8 +145,12 @@ export class FluidSolver {
     for (let i = 0; i < this.size; i++) target[i] += dt * source[i];
   }
 
-  private swap(a: Float64Array, b: Float64Array): void {
-    const tmp = new Float64Array(a); a.set(b); b.set(tmp);
+  private swap(a: "u" | "u0" | "v" | "v0" | "dR" | "dR0" | "dG" | "dG0" | "dB" | "dB0",
+    b: typeof a): void {
+    // Exchange field references; the numerical operations and their order stay identical.
+    const tmp = this[a];
+    this[a] = this[b];
+    this[b] = tmp;
   }
 
   private diffuse(b: number, x: Float64Array, x0: Float64Array, diff: number): void {
