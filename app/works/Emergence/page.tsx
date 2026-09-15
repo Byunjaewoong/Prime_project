@@ -104,6 +104,12 @@ const SIMS: {
     sub: "slime mold",
     desc: "trail-following → optimal networks",
   },
+  {
+    type: "atoms",
+    label: "Atoms",
+    sub: "particle forces",
+    desc: "directed attraction · repulsion",
+  },
 ];
 
 export default function EmergencePage() {
@@ -115,6 +121,7 @@ export default function EmergencePage() {
   const [hovered, setHovered] = useState<SimType | null>(null);
   const [gsParams, setGsParams] = useState<Record<string, number> | null>(null);
   const [leniaParams, setLeniaParams] = useState<Record<string, number> | null>(null);
+  const [atomParams, setAtomParams] = useState<Record<string, number> | null>(null);
 
   // Poll params while FAB is open on grayscott so values stay fresh
   useEffect(() => {
@@ -135,6 +142,14 @@ export default function EmergencePage() {
   }, [fabOpen, currentSim]);
 
   // Toggle H-value debug overlay on the canvas when FAB is open on grayscott
+  useEffect(() => {
+    if (!fabOpen || currentSim !== "atoms") return;
+    const id = setInterval(() => {
+      setAtomParams(appRef.current?.getSimParams() ?? null);
+    }, 200);
+    return () => clearInterval(id);
+  }, [fabOpen, currentSim]);
+
   useEffect(() => {
     if (currentSim !== "grayscott") return;
     appRef.current?.setDebugOverlay(fabOpen);
@@ -359,7 +374,9 @@ export default function EmergencePage() {
 
                 {/* Lenia params — scroll / drag to adjust */}
                 {currentSim === "lenia" && leniaParams && (() => {
-                  const isExpanded = (leniaParams._mode ?? 0) === 1;
+                  const mode = leniaParams._mode ?? 0;
+                  const isExpanded = mode === 1;
+                  const isLifeforms = mode === 2;
                   const PARAMS_STD: { key: string; label: string; min: number; max: number; step: number; fmt: (v: number) => string }[] = [
                     { key: "R",       label: "kernel radius",  min: 8,    max: 20,   step: 1,     fmt: v => v.toFixed(0)  },
                     { key: "SIGMA_K", label: "kernel width",   min: 0.03, max: 0.22, step: 0.005, fmt: v => v.toFixed(3)  },
@@ -377,10 +394,18 @@ export default function EmergencePage() {
                     { key: "UI_THR",  label: "Ui threshold",   min: 0.20, max: 0.80, step: 0.01,  fmt: v => v.toFixed(2)  },
                     { key: "DT",      label: "time step",      min: 0.04, max: 0.18, step: 0.005, fmt: v => v.toFixed(3)  },
                   ];
-                  const PARAMS = isExpanded ? PARAMS_EXP : PARAMS_STD;
+                  const PARAMS = isLifeforms ? [] : isExpanded ? PARAMS_EXP : PARAMS_STD;
                   return (
                     <div className="orbit-panel-section" style={{ marginTop: 8 }}>
                       {isExpanded && <LeniaPhaseChart params={leniaParams} />}
+                      {isLifeforms && (
+                        <div style={{ marginBottom: 10, padding: "8px 9px", border: "1px solid rgba(170,238,255,0.25)", borderRadius: 5, background: "rgba(170,238,255,0.06)" }}>
+                          <div style={{ fontSize: 11, color: "#aef", marginBottom: 3 }}>Lenia lifeforms</div>
+                          <div style={{ fontSize: 10, lineHeight: 1.45, opacity: 0.55 }}>
+                            right-click the field to add one organism with a random heading
+                          </div>
+                        </div>
+                      )}
                       {/* Alive % monitor */}
                       {(() => {
                         const pct = leniaParams._alivePct ?? 0;
@@ -394,7 +419,7 @@ export default function EmergencePage() {
                       })()}
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                         <p style={{ fontSize: 10, letterSpacing: "0.15em", opacity: 0.4, textTransform: "uppercase", margin: 0 }}>
-                          parameters · scroll to adjust
+                          {isLifeforms ? "shared-rule organisms" : "parameters · scroll to adjust"}
                         </p>
                         <div style={{ display: "flex", gap: 4 }}>
                           <button
@@ -414,9 +439,9 @@ export default function EmergencePage() {
                               setLeniaParams(appRef.current?.getSimParams() ?? null);
                             }}
                           >
-                            random
+                            {isLifeforms ? "reset" : "random"}
                           </button>
-                          {(() => {
+                          {!isLifeforms && (() => {
                             const isDelta = (leniaParams._deltaActive ?? 0) === 1;
                             return (
                               <button
@@ -440,26 +465,38 @@ export default function EmergencePage() {
                               </button>
                             );
                           })()}
-                          <button
-                            style={{
-                              fontSize: 10,
-                              padding: "3px 8px",
-                              background: isExpanded ? "rgba(170,238,255,0.15)" : "rgba(255,255,255,0.07)",
-                              border: `1px solid ${isExpanded ? "rgba(170,238,255,0.5)" : "rgba(255,255,255,0.2)"}`,
-                              borderRadius: 4,
-                              color: isExpanded ? "#aef" : "inherit",
-                              cursor: "pointer",
-                              letterSpacing: "0.05em",
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              appRef.current?.toggleLeniaMode();
-                              setLeniaParams(appRef.current?.getSimParams() ?? null);
-                            }}
-                          >
-                            {isExpanded ? "expanded" : "standard"}
-                          </button>
                         </div>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 4, marginBottom: 12 }}>
+                        {[
+                          { value: 1, label: "expanded" },
+                          { value: 0, label: "standard" },
+                          { value: 2, label: "lifeforms" },
+                        ].map(option => {
+                          const active = mode === option.value;
+                          return (
+                            <button
+                              key={option.value}
+                              style={{
+                                fontSize: 10,
+                                padding: "5px 4px",
+                                background: active ? "rgba(170,238,255,0.15)" : "rgba(255,255,255,0.07)",
+                                border: `1px solid ${active ? "rgba(170,238,255,0.5)" : "rgba(255,255,255,0.2)"}`,
+                                borderRadius: 4,
+                                color: active ? "#aef" : "inherit",
+                                cursor: "pointer",
+                                letterSpacing: "0.04em",
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                appRef.current?.setLeniaMode(option.value);
+                                setLeniaParams(appRef.current?.getSimParams() ?? null);
+                              }}
+                            >
+                              {option.label}
+                            </button>
+                          );
+                        })}
                       </div>
                       {PARAMS.map(({ key, label, min, max, step, fmt }) => {
                         const val = leniaParams[key] ?? 0;
@@ -503,6 +540,89 @@ export default function EmergencePage() {
                               </div>
                             </div>
                           </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
+                {currentSim === "atoms" && atomParams && (() => {
+                  const colors = ["#ff5d73", "#59d9ff", "#ffd45c", "#8cff79", "#bd7bff"];
+                  const controls = [
+                    { key: "distanceX", label: "distance X", min: 20, max: 90, step: 1 },
+                    { key: "attraction", label: "attraction", min: 5, max: 120, step: 1 },
+                    { key: "repulsion", label: "repulsion", min: 100, max: 800, step: 10 },
+                    { key: "damping", label: "damping", min: 0.2, max: 3, step: 0.05 },
+                  ];
+                  return (
+                    <div className="orbit-panel-section" style={{ marginTop: 8 }}>
+                      <div style={{ padding: "8px 9px", marginBottom: 12, borderRadius: 5, background: "rgba(255,255,255,0.04)", fontSize: 10, lineHeight: 1.55, opacity: 0.65 }}>
+                        <div>d &lt; X · linear repulsion</div>
+                        <div>X &lt; d &lt; 3X · triangular attraction</div>
+                        <div>A · mixed forces / B · repulsion only</div>
+                        <div>matrix direction · row reacts to column</div>
+                        <div style={{ marginTop: 3 }}>left-click · add particles</div>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 10 }}>
+                        <span style={{ opacity: 0.5 }}>particles</span>
+                        <span style={{ color: "#aef", fontFamily: "monospace" }}>{atomParams.particles?.toFixed(0)}</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                        <span style={{ fontSize: 10, letterSpacing: "0.12em", opacity: 0.45, textTransform: "uppercase" }}>directed force matrix</span>
+                        <button
+                          style={{ fontSize: 10, padding: "3px 7px", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 4, color: "inherit", cursor: "pointer" }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            appRef.current?.randomiseParams();
+                            setAtomParams(appRef.current?.getSimParams() ?? null);
+                          }}
+                        >
+                          randomize
+                        </button>
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "20px repeat(5, 1fr)", gap: 3, marginBottom: 12 }}>
+                        <span />
+                        {colors.map(color => <span key={`head-${color}`} style={{ width: 8, height: 8, borderRadius: "50%", background: color, boxShadow: `0 0 6px ${color}`, justifySelf: "center", alignSelf: "center" }} />)}
+                        {colors.flatMap((rowColor, i) => [
+                          <span key={`row-${rowColor}`} style={{ width: 8, height: 8, borderRadius: "50%", background: rowColor, boxShadow: `0 0 6px ${rowColor}`, alignSelf: "center" }} />,
+                          ...colors.map((_, j) => {
+                            const mixed = atomParams[`matrixMode_${i}_${j}`] === 1;
+                            const a = atomParams[`matrixA_${i}_${j}`] ?? 0;
+                            const r = atomParams[`matrixR_${i}_${j}`] ?? 0;
+                            return (
+                              <span
+                                key={`${i}-${j}`}
+                                title={mixed ? `A: attraction ${a.toFixed(2)}, repulsion ${r.toFixed(2)}` : `B: repulsion only ${r.toFixed(2)}`}
+                                style={{ minWidth: 34, padding: "3px 1px", borderRadius: 3, textAlign: "center", fontFamily: "monospace", fontSize: 8, lineHeight: 1.15, color: mixed ? "#9ddcff" : "#ff9dab", background: mixed ? "rgba(80,170,255,0.10)" : "rgba(255,80,105,0.11)", border: `1px solid ${mixed ? "rgba(100,190,255,0.20)" : "rgba(255,100,120,0.22)"}` }}
+                              >
+                                <b>{mixed ? "A" : "B"}</b><br />{mixed ? a.toFixed(1) : "—"}/{r.toFixed(1)}
+                              </span>
+                            );
+                          }),
+                        ])}
+                      </div>
+                      {controls.map(({ key, label, min, max, step }) => {
+                        const value = atomParams[key] ?? min;
+                        return (
+                          <label key={key} style={{ display: "block", marginBottom: 10 }}>
+                            <span style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>
+                              <span style={{ opacity: 0.5 }}>{label}</span>
+                              <span style={{ color: "#aef", fontFamily: "monospace" }}>{value.toFixed(key === "damping" ? 2 : 0)}</span>
+                            </span>
+                            <input
+                              type="range"
+                              min={min}
+                              max={max}
+                              step={step}
+                              value={value}
+                              style={{ width: "100%", accentColor: "#aef" }}
+                              onChange={(e) => {
+                                const next = Number(e.target.value);
+                                appRef.current?.setSimParam(key, next);
+                                setAtomParams(prev => prev ? { ...prev, [key]: next } : prev);
+                              }}
+                            />
+                          </label>
                         );
                       })}
                     </div>

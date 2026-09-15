@@ -3,6 +3,11 @@ import { Simulation } from "./types";
 
 const MAX_K   = 128;  // outer kernel max samples
 const MAX_K_I =  64;  // inner kernel max samples (expanded mode)
+type LeniaMode = "standard" | "expanded" | "lifeforms";
+
+// Orbium unicaudatus (O2u), the classic moving Lenia soliton.
+// Source parameters: R=13, T=10, beta=[1], mu=0.15, sigma=0.015.
+const ORBIUM_RLE = "7.MD6.qL$6.pKqEqFURpApBRAqQ$5.VqTrSsBrOpXpWpTpWpUpCrQ$4.CQrQsTsWsApITNPpGqGvL$3.IpIpWrOsGsBqXpJ4.LsFrL$A.DpKpSpJpDqOqUqSqE5.ExD$qL.pBpTT2.qCrGrVrWqM5.sTpP$.pGpWpD3.qUsMtItQtJ6.tL$.uFqGH3.pXtOuR2vFsK5.sM$.tUqL4.GuNwAwVxBwNpC4.qXpA$2.uH5.vBxGyEyMyHtW4.qIpL$2.wV5.tIyG3yOxQqW2.FqHpJ$2.tUS4.rM2yOyJyOyHtVpPMpFqNV$2.HsR4.pUxAyOxLxDxEuVrMqBqGqKJ$3.sLpE3.pEuNxHwRwGvUuLsHrCqTpR$3.TrMS2.pFsLvDvPvEuPtNsGrGqIP$4.pRqRpNpFpTrNtGtVtStGsMrNqNpF$5.pMqKqLqRrIsCsLsIrTrFqJpHE$6.RpSqJqPqVqWqRqKpRXE$8.OpBpIpJpFTK!";
 
 // ─── Per-instance randomised parameters ──────────────────────────────────────
 interface LeniaParams {
@@ -38,6 +43,14 @@ function randParams(): LeniaParams {
     UO_LO2: Math.max(0.05, ctr2 - w2 / 2),
     UO_HI2: Math.min(0.90, ctr2 + w2 / 2),
     UI_THR: 0.40 + Math.random() * 0.20,
+  };
+}
+
+function lifeformParams(): LeniaParams {
+  return {
+    R: 13, SIGMA_K: 0, MU: 0.15, SIGMA_G: 0.015, DT: 0.1,
+    R_I: 6, SIGMA_K_I: 0.15,
+    UO_LO1: 0.2, UO_HI1: 0.4, UO_LO2: 0.2, UO_HI2: 0.4, UI_THR: 0.5,
   };
 }
 
@@ -79,7 +92,43 @@ in  vec2 v_uv;
 out vec4 o;
 void main(){ o = texture(u_state, v_uv); }`;
 
-function makeComputeFrag(p: LeniaParams, mode: "standard" | "expanded"): string {
+function makeOrbiumComputeFrag(p: LeniaParams): string {
+  const samples: { x: number; y: number; w: number }[] = [];
+  let sum = 0;
+  for (let y = -p.R; y <= p.R; y++) {
+    for (let x = -p.R; x <= p.R; x++) {
+      const r = Math.hypot(x, y) / p.R;
+      if (r <= 0 || r >= 1) continue;
+      const w = Math.exp(4 - 1 / (r * (1 - r)));
+      // Removes numerically irrelevant edge taps while retaining >99.9% of mass.
+      if (w < 0.01) continue;
+      samples.push({ x, y, w });
+      sum += w;
+    }
+  }
+  const convolution = samples.map(({ x, y, w }) =>
+    `u += texture(u_state, fract(v_uv + vec2(${x}.0, ${y}.0) * px)).r * ${(w / sum).toPrecision(9)};`
+  ).join("\n  ");
+  const sig2 = 2 * p.SIGMA_G * p.SIGMA_G;
+  return /* glsl */`#version 300 es
+precision highp float;
+uniform sampler2D u_state;
+uniform vec2 u_res;
+in vec2 v_uv;
+out vec4 o;
+void main(){
+  vec2 px = 1.0 / u_res;
+  float u = 0.0;
+  ${convolution}
+  float c = texture(u_state, v_uv).r;
+  float d = u - ${p.MU};
+  float g = 2.0 * exp(-(d * d) / ${sig2}) - 1.0;
+  o = vec4(clamp(c + ${p.DT} * g, 0.0, 1.0), 0.0, 0.0, 1.0);
+}`;
+}
+
+function makeComputeFrag(p: LeniaParams, mode: LeniaMode): string {
+  if (mode === "lifeforms") return makeOrbiumComputeFrag(p);
   if (mode === "standard") {
     const sig2 = 2 * p.SIGMA_G * p.SIGMA_G;
     return /* glsl */`#version 300 es
@@ -219,8 +268,58 @@ function mkFBO(gl: WebGL2RenderingContext, tex: WebGLTexture): WebGLFramebuffer 
   return f;
 }
 
+function decodeOrbiumPattern(): number[][] {
+  const rows: number[][] = [[]];
+  let row = rows[0];
+  let count = "";
+  let prefix = 0;
+
+  const repeat = (value: number) => {
+    const n = count ? Number(count) : 1;
+    for (let i = 0; i < n; i++) row.push(value);
+    count = "";
+  };
+
+  for (const ch of ORBIUM_RLE) {
+    if (ch >= "0" && ch <= "9") { count += ch; continue; }
+    if (ch === ".") { repeat(0); prefix = 0; continue; }
+    if (ch === "$" || ch === "!") {
+      const n = count ? Number(count) : 1;
+      count = ""; prefix = 0;
+      if (ch === "!") break;
+      for (let i = 0; i < n; i++) { row = []; rows.push(row); }
+      continue;
+    }
+    if (ch >= "p" && ch <= "y") {
+      prefix = (ch.charCodeAt(0) - 112 + 1) * 24;
+      continue;
+    }
+    if (ch >= "A" && ch <= "X") {
+      repeat((prefix + ch.charCodeAt(0) - 64) / 255);
+      prefix = 0;
+    }
+  }
+
+  return rows;
+}
+
+function makeLifeformSeed(w: number, h: number): Float32Array {
+  const rows = decodeOrbiumPattern();
+  const data = new Float32Array(w * h * 4);
+  for (let i = 3; i < data.length; i += 4) data[i] = 1;
+  const patternW = Math.max(...rows.map(r => r.length));
+  const ox = Math.floor((w - patternW) / 2);
+  const oy = Math.floor((h - rows.length) / 2);
+  rows.forEach((values, y) => values.forEach((value, x) => {
+    data[((oy + y) * w + ox + x) * 4] = value;
+  }));
+  return data;
+}
+
 // ─── Simulation ───────────────────────────────────────────────────────────────
 export class Lenia implements Simulation {
+  private viewW: number;
+  private viewH: number;
   private gsW: number;
   private gsH: number;
   private gl:       WebGL2RenderingContext;
@@ -232,7 +331,7 @@ export class Lenia implements Simulation {
   private vao:      WebGLVertexArrayObject;
   private ping = 0;
   private p:        LeniaParams;
-  private mode:     "standard" | "expanded" = "expanded";
+  private mode:     LeniaMode = "expanded";
 
   // ── Census (alive %) ──────────────────────────────────────────────────────
   private sampleProg: WebGLProgram;
@@ -257,11 +356,14 @@ export class Lenia implements Simulation {
   private hueScaleTgt = 5.0 / 6.0;
   private colorT   = 1.0;
   private colorDur = 1.5;
+  private lifeformHeading = 0;
 
   private uHueShiftLoc: WebGLUniformLocation | null = null;
   private uHueScaleLoc: WebGLUniformLocation | null = null;
 
   constructor(w: number, h: number) {
+    this.viewW = w;
+    this.viewH = h;
     this.gsW = w;
     this.gsH = h;
     this.p = randParams();
@@ -324,6 +426,7 @@ export class Lenia implements Simulation {
   }
 
   private makeSeed(): Float32Array {
+    if (this.mode === "lifeforms") return makeLifeformSeed(this.gsW, this.gsH);
     const { gsW, gsH } = this;
     const freq = Math.PI / this.p.R;
     const phaseX = Math.random() * Math.PI * 2;
@@ -359,8 +462,9 @@ export class Lenia implements Simulation {
     const { gl, cProg, tex, fbo, vao } = this;
 
     this.stepAcc += delta;
-    if (this.stepAcc >= 1 / 40) {
-      this.stepAcc -= 1 / 40;
+    const stepInterval = this.mode === "lifeforms" ? 1 / 30 : 1 / 40;
+    if (this.stepAcc >= stepInterval) {
+      this.stepAcc -= stepInterval;
       const src = this.ping, dst = 1 - src;
       gl.useProgram(cProg);
       gl.bindVertexArray(vao);
@@ -480,8 +584,63 @@ export class Lenia implements Simulation {
     gl.bindTexture(gl.TEXTURE_2D, null);
   }
 
+  // Adds one Orbium at a random heading without clearing the existing field.
+  private spawnLifeform(viewX: number, viewY: number) {
+    const { gl, gsW: w, gsH: h } = this;
+    const data = new Float32Array(w * h * 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo[this.ping]);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.FLOAT, data);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    const rows = decodeOrbiumPattern();
+    const patternW = Math.max(...rows.map(row => row.length));
+    const patternH = rows.length;
+    const gx = (viewX / Math.max(1, this.viewW)) * w;
+    const gy = (1 - viewY / Math.max(1, this.viewH)) * h;
+    const angle = Math.random() * Math.PI * 2;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+
+    rows.forEach((values, py) => values.forEach((value, px) => {
+      if (value <= 0) return;
+      const dx = px - patternW / 2;
+      const dy = py - patternH / 2;
+      const rx = dx * cos - dy * sin;
+      const ry = dx * sin + dy * cos;
+      const x = ((Math.round(gx + rx) % w) + w) % w;
+      const y = ((Math.round(gy + ry) % h) + h) % h;
+      const i = (y * w + x) * 4;
+      data[i] = Math.max(data[i], value);
+      data[i + 3] = 1;
+    }));
+
+    this.lifeformHeading = Math.round((angle / (Math.PI * 2)) * 359);
+
+    gl.bindTexture(gl.TEXTURE_2D, this.tex[this.ping]);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, w, h, gl.RGBA, gl.FLOAT, data);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+  }
+
   onPointerMove(x: number, y: number, buttons: number) {
+    if (this.mode === "lifeforms") return;
     if (buttons & 1) this.spawnCircle(x, y);
+  }
+
+  private replaceState(w: number, h: number, data: Float32Array) {
+    const { gl } = this;
+    this.tex.forEach(t => gl.deleteTexture(t));
+    this.fbo.forEach(f => gl.deleteFramebuffer(f));
+    this.gsW = w;
+    this.gsH = h;
+    this.glCanvas.width = w;
+    this.glCanvas.height = h;
+    const t0 = mkTex(gl, w, h, data);
+    const t1 = mkTex(gl, w, h);
+    this.tex = [t0, t1];
+    this.fbo = [mkFBO(gl, t0), mkFBO(gl, t1)];
+    this.ping = 0;
+    this.computeSteps = 0;
+    this.stepAcc = 0;
   }
 
   // ── Rebuild compute shader from current this.p + this.mode ───────────────
@@ -507,14 +666,25 @@ export class Lenia implements Simulation {
 
   // ── Mode toggle ───────────────────────────────────────────────────────────
   toggleMode() {
-    this.mode = this.mode === "standard" ? "expanded" : "standard";
+    this.setMode(this.mode === "expanded" ? 0 : this.mode === "standard" ? 2 : 1);
+  }
+
+  setMode(modeIndex: number) {
+    const next: LeniaMode = modeIndex === 2 ? "lifeforms" : modeIndex === 1 ? "expanded" : "standard";
+    if (next === this.mode) return;
+    this.mode = next;
+    this.deltaActive = next !== "lifeforms";
+    this.deltaRecovery = false;
+    this.deltaLastAction = performance.now() / 1000;
+    this.p = next === "lifeforms" ? lifeformParams() : randParams();
     this.rebuildCompute();
   }
 
   // ── Expose params for HUD ─────────────────────────────────────────────────
   getParams(): Record<string, number> {
-    const base = { _mode: this.mode === "expanded" ? 1 : 0, _alivePct: this.alivePct, _deltaActive: this.deltaActive ? 1 : 0, R: this.p.R, SIGMA_K: this.p.SIGMA_K, DT: this.p.DT };
-    if (this.mode === "standard") {
+    const modeIndex = this.mode === "lifeforms" ? 2 : this.mode === "expanded" ? 1 : 0;
+    const base = { _mode: modeIndex, _alivePct: this.alivePct, _deltaActive: this.deltaActive ? 1 : 0, _heading: this.lifeformHeading, R: this.p.R, SIGMA_K: this.p.SIGMA_K, DT: this.p.DT };
+    if (this.mode === "standard" || this.mode === "lifeforms") {
       return { ...base, MU: this.p.MU, SIGMA_G: this.p.SIGMA_G };
     } else {
       return { ...base,
@@ -527,6 +697,7 @@ export class Lenia implements Simulation {
   }
 
   setParam(key: string, value: number) {
+    if (this.mode === "lifeforms") return;
     if (key === "R" || key === "R_I") value = Math.round(value);
     (this.p as unknown as Record<string, number>)[key] = value;
     this.rebuildCompute();
@@ -534,6 +705,7 @@ export class Lenia implements Simulation {
 
   // ── Delta system ────────────────────────────────────────────────────────
   toggleDelta() {
+    if (this.mode === "lifeforms") return;
     this.deltaActive = !this.deltaActive;
     if (this.deltaActive) {
       this.deltaLastAction = performance.now() / 1000;
@@ -541,8 +713,12 @@ export class Lenia implements Simulation {
     }
   }
 
-  /** Randomise params + start colour transition (same as right-click) */
+  /** Randomise params, or reset the shared-rule lifeform field. */
   randomiseParams() {
+    if (this.mode === "lifeforms") {
+      this.replaceState(this.gsW, this.gsH, makeLifeformSeed(this.gsW, this.gsH));
+      return;
+    }
     this.p = randParams();
     this.rebuildCompute();
     this.hueShiftSrc = this.hueShiftCur;
@@ -596,14 +772,20 @@ export class Lenia implements Simulation {
     }
   }
 
-  // ── Right-click: randomise parameters + start colour transition (no reset) ──
+  // Right-click adds a lifeform in lifeforms mode; legacy modes keep parameter randomisation.
   onPointerDown(x: number, y: number, button: number) {
+    if (this.mode === "lifeforms") {
+      if (button === 2) this.spawnLifeform(x, y);
+      return;
+    }
     if (button === 0) { this.spawnCircle(x, y); return; }
     if (button !== 2) return;
     this.randomiseParams();
   }
 
   resize(w: number, h: number) {
+    this.viewW = w;
+    this.viewH = h;
     const { gl } = this;
     const oldW = this.gsW, oldH = this.gsH;
 

@@ -1,6 +1,6 @@
 // app/works/emergence/core/types.ts
 
-export type SimType = "lenia" | "boids" | "grayscott" | "physarum";
+export type SimType = "lenia" | "boids" | "grayscott" | "physarum" | "atoms";
 
 export interface Simulation {
   update(delta: number): void;

@@ -4,6 +4,7 @@ import { Lenia } from "./Lenia";
 import { Boids } from "./Boids";
 import { GrayScott } from "./GrayScott";
 import { Physarum } from "./Physarum";
+import { Atoms } from "./Atoms";
 
 // ── Zoom config ───────────────────────────────────────────────────────────────
 const ZOOM_MIN        = 0.33;  // zoom out 한계 (field 최대 3× 확장)
@@ -205,6 +206,7 @@ export class App {
       case "boids":     this.sim = new Boids(w, h);      break;
       case "grayscott": this.sim = new GrayScott(w, h);  break;
       case "physarum":  this.sim = new Physarum(w, h);   break;
+      case "atoms":     this.sim = new Atoms(w, h);      break;
     }
 
     this.onSimChange?.(type);
@@ -217,6 +219,11 @@ export class App {
   public toggleLeniaMode(): void {
     if (this.sim && "toggleMode" in this.sim)
       (this.sim as { toggleMode(): void }).toggleMode();
+  }
+
+  public setLeniaMode(mode: number): void {
+    if (this.sim && "setMode" in this.sim)
+      (this.sim as { setMode(mode: number): void }).setMode(mode);
   }
 
   public randomiseParams(): void {
