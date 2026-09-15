@@ -21,7 +21,7 @@ const FOOTPRINT_SVG = `
 
 import { disposeObject } from "@/app/lib/disposeObject";
 import { FIELD_STYLES, createGrassTexture, VEGETATION_SHADER } from "./FieldStyles";
-import { createGrain } from "./Grain";
+import { createCameraFilter, type CameraFilterKey } from "./CameraFilter";
 
 export class App {
   private destroyed = false;
@@ -40,8 +40,8 @@ export class App {
   private goldenTexture!: THREE.CanvasTexture;
   private grassMix = { value: 0 };
   private goldenMix = { value: 0 };
-  private grain = createGrain();
-  private grainEnabled = true;
+  private cameraFilter = createCameraFilter();
+  private cameraFilters = { haze: true, grain: true, vignette: true, tone: true };
   private ambientLight!: THREE.AmbientLight;
   private sunLight!: THREE.DirectionalLight;
   private fieldIndex = 0;
@@ -591,15 +591,15 @@ export class App {
 
   private animate() {
     this.animationId = requestAnimationFrame(this.animate.bind(this));
-    if (this.grainEnabled && this.fieldIndex !== 0) {
-      this.renderer.getDrawingBufferSize(this.grain.size);
-      this.grain.target.samples = Math.min(4, this.renderer.capabilities.maxSamples);
-      this.grain.target.setSize(this.grain.size.x, this.grain.size.y);
-      this.grain.material.uniforms.time.value = performance.now() * 0.001;
-      this.renderer.setRenderTarget(this.grain.target);
+    if (Object.values(this.cameraFilters).some(Boolean) && this.fieldIndex !== 0) {
+      this.renderer.getDrawingBufferSize(this.cameraFilter.size);
+      this.cameraFilter.target.samples = Math.min(4, this.renderer.capabilities.maxSamples);
+      this.cameraFilter.target.setSize(this.cameraFilter.size.x, this.cameraFilter.size.y);
+      this.cameraFilter.material.uniforms.time.value = performance.now() * 0.001;
+      this.renderer.setRenderTarget(this.cameraFilter.target);
       this.renderer.render(this.scene, this.camera);
       this.renderer.setRenderTarget(null);
-      this.renderer.render(this.grain.scene, this.camera);
+      this.renderer.render(this.cameraFilter.scene, this.camera);
     } else {
       this.renderer.render(this.scene, this.camera);
     }
@@ -610,7 +610,11 @@ export class App {
   }
 
   public getFieldName(): string { return FIELD_STYLES[this.fieldIndex].name; }
-  public setGrainEnabled(enabled: boolean): void { this.grainEnabled = enabled; }
+  public setCameraFilter(key: CameraFilterKey, enabled: boolean): void {
+    this.cameraFilters[key] = enabled;
+    const uniform = { haze: "useHaze", grain: "useGrain", vignette: "useVignette", tone: "useTone" }[key];
+    this.cameraFilter.material.uniforms[uniform].value = enabled ? 1 : 0;
+  }
 
   private updateField(delta: number): void {
     const style = FIELD_STYLES[this.fieldIndex];
@@ -621,7 +625,7 @@ export class App {
     this.groundMaterial.roughness = blend(this.groundMaterial.roughness, style.grass ? 0.95 : 0.6);
     this.groundMaterial.metalness = blend(this.groundMaterial.metalness, style.grass ? 0 : 0.1);
     this.grassMix.value = blend(this.grassMix.value, style.grass);
-    this.grain.material.uniforms.strength.value = this.grassMix.value;
+    this.cameraFilter.material.uniforms.strength.value = this.grassMix.value;
     this.goldenMix.value = blend(this.goldenMix.value, this.fieldIndex === 2 ? 1 : 0);
     (this.scene.background as THREE.Color).lerp(new THREE.Color(style.background), alpha);
     const fog = this.scene.fog as THREE.FogExp2;
@@ -670,8 +674,8 @@ export class App {
     });
     skeletons.forEach(skeleton => skeleton.dispose());
     disposeObject(this.scene);
-    disposeObject(this.grain.scene);
-    this.grain.target.dispose();
+    disposeObject(this.cameraFilter.scene);
+    this.cameraFilter.target.dispose();
     this.grassTexture.dispose();
     this.goldenTexture.dispose();
     this.leftFootGeometry?.dispose();

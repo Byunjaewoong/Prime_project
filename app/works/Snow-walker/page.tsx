@@ -5,11 +5,16 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Home } from "lucide-react";
 import CanvasApp from "./CanvasApp";
+import type { CameraFilters } from "./core/CameraFilter";
+
+const FILTER_LABELS: Array<[keyof CameraFilters, string]> = [
+  ["haze", "Haze"], ["grain", "Film grain"], ["vignette", "Vignette"], ["tone", "Tone curve"],
+];
 
 export default function SnowWalkPage() {
   const [showPanel, setShowPanel] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
-  const [grainEnabled, setGrainEnabled] = useState(true);
+  const [cameraFilters, setCameraFilters] = useState<CameraFilters>({ haze: true, grain: true, vignette: true, tone: true });
 
   // 왼쪽 끝으로 마우스 가면 go to main 슬라이드
   useEffect(() => {
@@ -33,7 +38,7 @@ export default function SnowWalkPage() {
   return (
     <main className="full-canvas-page">
       {/* 전체 화면 캔버스 */}
-      <CanvasApp grainEnabled={grainEnabled} />
+      <CanvasApp cameraFilters={cameraFilters} />
 
       {/* 🔹 왼쪽 슬라이드 패널 (메인으로) */}
       <div
@@ -82,10 +87,14 @@ export default function SnowWalkPage() {
                     <li>Snow → Green grass → Golden grass</li>
                     <li>Right click: plant a tree</li>
                   </ul>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 12 }}>
-                    <input type="checkbox" checked={grainEnabled} onChange={(e) => setGrainEnabled(e.target.checked)} />
-                    Camera filter
-                  </label>
+                  <div style={{ marginTop: 12, fontSize: 11, opacity: 0.65 }}>Camera filters</div>
+                  {FILTER_LABELS.map(([key, label]) => (
+                    <label key={key} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 7, fontSize: 12 }}>
+                      <input type="checkbox" checked={cameraFilters[key]}
+                        onChange={(e) => setCameraFilters(current => ({ ...current, [key]: e.target.checked }))} />
+                      {label}
+                    </label>
+                  ))}
                 </div>
               </div>
             </div>
