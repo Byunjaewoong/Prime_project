@@ -11,6 +11,8 @@ export interface Simulation {
   onPointerDown?(x: number, y: number, button: number): void;
   onPointerMove?(x: number, y: number, buttons: number): void;
   onPointerUp?(x: number, y: number, button: number): void;
+  // Return true when the simulation handled its own camera zoom.
+  onWheel?(x: number, y: number, deltaY: number): boolean;
   // Optional: expose current runtime parameters for HUD display
   getParams?(): Record<string, number>;
 }

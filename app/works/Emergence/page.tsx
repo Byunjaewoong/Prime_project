@@ -547,25 +547,26 @@ export default function EmergencePage() {
                 })()}
 
                 {currentSim === "atoms" && atomParams && (() => {
-                  const colors = ["#ff5d73", "#59d9ff", "#ffd45c", "#8cff79", "#bd7bff"];
+                  const colors = ["#f04464", "#20c8e8", "#f2c94c", "#54d66b", "#a56cff"];
                   const controls = [
-                    { key: "distanceX", label: "distance X", min: 20, max: 90, step: 1 },
-                    { key: "attraction", label: "attraction", min: 5, max: 120, step: 1 },
-                    { key: "repulsion", label: "repulsion", min: 100, max: 800, step: 10 },
-                    { key: "damping", label: "damping", min: 0.2, max: 3, step: 0.05 },
+                    { key: "particles", label: "particle number", min: 0, max: 20000, step: 10, decimals: 0 },
+                    { key: "repel", label: "repel force", min: 0.01, max: 4, step: 0.01, decimals: 2 },
+                    { key: "forceFactor", label: "force multiplier", min: 0.01, max: 2, step: 0.01, decimals: 2 },
+                    { key: "friction", label: "friction", min: 0, max: 1, step: 0.01, decimals: 2 },
+                    { key: "particleSize", label: "particle size", min: 1, max: 20, step: 1, decimals: 0 },
                   ];
                   return (
                     <div className="orbit-panel-section" style={{ marginTop: 8 }}>
                       <div style={{ padding: "8px 9px", marginBottom: 12, borderRadius: 5, background: "rgba(255,255,255,0.04)", fontSize: 10, lineHeight: 1.55, opacity: 0.65 }}>
-                        <div>d &lt; X · linear repulsion</div>
-                        <div>X &lt; d &lt; 3X · triangular attraction</div>
-                        <div>A · mixed forces / B · repulsion only</div>
+                        <div>d &lt; min radius · linear repulsion</div>
+                        <div>min–max radius · signed triangular force</div>
                         <div>matrix direction · row reacts to column</div>
-                        <div style={{ marginTop: 3 }}>left-click · add particles</div>
+                        <div style={{ marginTop: 3 }}>wheel · cursor zoom / left-drag · pan</div>
+                        <div>right-click · add 20 particles</div>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 10 }}>
-                        <span style={{ opacity: 0.5 }}>particles</span>
-                        <span style={{ color: "#aef", fontFamily: "monospace" }}>{atomParams.particles?.toFixed(0)}</span>
+                        <span style={{ opacity: 0.5 }}>view</span>
+                        <span style={{ color: "#aef", fontFamily: "monospace" }}>{atomParams.zoom?.toFixed(2)}×</span>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                         <span style={{ fontSize: 10, letterSpacing: "0.12em", opacity: 0.45, textTransform: "uppercase" }}>directed force matrix</span>
@@ -586,28 +587,29 @@ export default function EmergencePage() {
                         {colors.flatMap((rowColor, i) => [
                           <span key={`row-${rowColor}`} style={{ width: 8, height: 8, borderRadius: "50%", background: rowColor, boxShadow: `0 0 6px ${rowColor}`, alignSelf: "center" }} />,
                           ...colors.map((_, j) => {
-                            const mixed = atomParams[`matrixMode_${i}_${j}`] === 1;
-                            const a = atomParams[`matrixA_${i}_${j}`] ?? 0;
-                            const r = atomParams[`matrixR_${i}_${j}`] ?? 0;
+                            const rule = atomParams[`matrixRule_${i}_${j}`] ?? 0;
+                            const minRadius = atomParams[`matrixMin_${i}_${j}`] ?? 0;
+                            const maxRadius = atomParams[`matrixMax_${i}_${j}`] ?? 0;
+                            const positive = rule >= 0;
                             return (
                               <span
                                 key={`${i}-${j}`}
-                                title={mixed ? `A: attraction ${a.toFixed(2)}, repulsion ${r.toFixed(2)}` : `B: repulsion only ${r.toFixed(2)}`}
-                                style={{ minWidth: 34, padding: "3px 1px", borderRadius: 3, textAlign: "center", fontFamily: "monospace", fontSize: 8, lineHeight: 1.15, color: mixed ? "#9ddcff" : "#ff9dab", background: mixed ? "rgba(80,170,255,0.10)" : "rgba(255,80,105,0.11)", border: `1px solid ${mixed ? "rgba(100,190,255,0.20)" : "rgba(255,100,120,0.22)"}` }}
+                                title={`rule ${rule.toFixed(2)}, radius ${minRadius.toFixed(0)}–${maxRadius.toFixed(0)}`}
+                                style={{ minWidth: 34, padding: "4px 1px", borderRadius: 3, textAlign: "center", fontFamily: "monospace", fontSize: 8, lineHeight: 1.15, color: positive ? "#9ddcff" : "#ff9dab", background: positive ? "rgba(80,170,255,0.10)" : "rgba(255,80,105,0.11)", border: `1px solid ${positive ? "rgba(100,190,255,0.20)" : "rgba(255,100,120,0.22)"}` }}
                               >
-                                <b>{mixed ? "A" : "B"}</b><br />{mixed ? a.toFixed(1) : "—"}/{r.toFixed(1)}
+                                <b>{rule >= 0 ? "+" : ""}{rule.toFixed(1)}</b><br />{minRadius.toFixed(0)}–{maxRadius.toFixed(0)}
                               </span>
                             );
                           }),
                         ])}
                       </div>
-                      {controls.map(({ key, label, min, max, step }) => {
+                      {controls.map(({ key, label, min, max, step, decimals }) => {
                         const value = atomParams[key] ?? min;
                         return (
                           <label key={key} style={{ display: "block", marginBottom: 10 }}>
                             <span style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>
                               <span style={{ opacity: 0.5 }}>{label}</span>
-                              <span style={{ color: "#aef", fontFamily: "monospace" }}>{value.toFixed(key === "damping" ? 2 : 0)}</span>
+                              <span style={{ color: "#aef", fontFamily: "monospace" }}>{value.toFixed(decimals)}</span>
                             </span>
                             <input
                               type="range"

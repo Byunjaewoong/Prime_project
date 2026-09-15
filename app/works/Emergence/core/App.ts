@@ -113,6 +113,11 @@ export class App {
     // tx = sw/2*(1-zoom) 으로 항상 파생 → center 고정, txTarget 불필요
     this.wheelHandler = (e: WheelEvent) => {
       e.preventDefault();
+      const r = rect();
+      const wheelX = e.clientX - r.left;
+      const wheelY = e.clientY - r.top;
+      if (this.sim?.onWheel?.(wheelX, wheelY, e.deltaY)) return;
+
       const sw = this.canvas.width, sh = this.canvas.height;
 
       const factor = e.deltaY > 0 ? (1 - ZOOM_STEP) : (1 + ZOOM_STEP);
