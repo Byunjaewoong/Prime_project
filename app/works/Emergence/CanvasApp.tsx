@@ -10,13 +10,15 @@ type CanvasAppProps = {
 
 export default function CanvasApp({ onReady }: CanvasAppProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const gpuCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const appRef = useRef<EmergenceApp | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const gpuCanvas = gpuCanvasRef.current;
+    if (!canvas || !gpuCanvas) return;
 
-    const app = new EmergenceApp(canvas);
+    const app = new EmergenceApp(canvas, gpuCanvas);
     appRef.current = app;
     onReady?.(app);
 
@@ -28,9 +30,16 @@ export default function CanvasApp({ onReady }: CanvasAppProps) {
   }, [onReady]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      style={{ display: "block", width: "100%", height: "100vh" }}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        style={{ display: "block", width: "100%", height: "100vh" }}
+      />
+      <canvas
+        ref={gpuCanvasRef}
+        aria-hidden="true"
+        style={{ display: "none", position: "fixed", zIndex: 1, inset: 0, width: "100%", height: "100vh", pointerEvents: "none" }}
+      />
+    </>
   );
 }

@@ -549,24 +549,28 @@ export default function EmergencePage() {
                 {currentSim === "atoms" && atomParams && (() => {
                   const colors = ["#f04464", "#20c8e8", "#f2c94c", "#54d66b", "#a56cff"];
                   const controls = [
-                    { key: "particles", label: "particle number", min: 0, max: 20000, step: 10, decimals: 0 },
+                    { key: "particles", label: "particle number", min: 16, max: 300000, step: 16, decimals: 0 },
                     { key: "repel", label: "repel force", min: 0.01, max: 4, step: 0.01, decimals: 2 },
                     { key: "forceFactor", label: "force multiplier", min: 0.01, max: 2, step: 0.01, decimals: 2 },
                     { key: "friction", label: "friction", min: 0, max: 1, step: 0.01, decimals: 2 },
-                    { key: "particleSize", label: "particle size", min: 1, max: 20, step: 1, decimals: 0 },
+                    { key: "particleSize", label: "particle size", min: 0.1, max: 6, step: 0.1, decimals: 1 },
                   ];
                   return (
                     <div className="orbit-panel-section" style={{ marginTop: 8 }}>
                       <div style={{ padding: "8px 9px", marginBottom: 12, borderRadius: 5, background: "rgba(255,255,255,0.04)", fontSize: 10, lineHeight: 1.55, opacity: 0.65 }}>
+                        <div>WebGPU compute · spatial bins · instanced render</div>
                         <div>d &lt; min radius · linear repulsion</div>
                         <div>min–max radius · signed triangular force</div>
                         <div>matrix direction · row reacts to column</div>
                         <div style={{ marginTop: 3 }}>wheel · cursor zoom / left-drag · pan</div>
-                        <div>right-click · add 20 particles</div>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 10 }}>
-                        <span style={{ opacity: 0.5 }}>view</span>
-                        <span style={{ color: "#aef", fontFamily: "monospace" }}>{atomParams.zoom?.toFixed(2)}×</span>
+                        <span style={{ opacity: 0.5 }}>
+                          {atomParams.gpu === 1 ? "WebGPU" : atomParams.gpuFailed === 1 || atomParams.gpu === undefined ? "CPU fallback" : "WebGPU loading"}
+                        </span>
+                        <span style={{ color: "#aef", fontFamily: "monospace" }}>
+                          {atomParams.fps ? `${atomParams.fps.toFixed(0)} fps · ` : ""}{atomParams.zoom?.toFixed(2)}×
+                        </span>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                         <span style={{ fontSize: 10, letterSpacing: "0.12em", opacity: 0.45, textTransform: "uppercase" }}>directed force matrix</span>

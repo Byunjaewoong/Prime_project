@@ -15,6 +15,7 @@ const ZOOM_SETTLE_MS  = 500;   // 스크롤 멈춘 후 field resize 대기시간
 
 export class App {
   private canvas: HTMLCanvasElement;
+  private gpuCanvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private sim: Simulation | null = null;
   private currentType: SimType | null = null;
@@ -49,12 +50,15 @@ export class App {
 
   private zoomSettleTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, gpuCanvas: HTMLCanvasElement) {
     this.canvas = canvas;
+    this.gpuCanvas = gpuCanvas;
     this.ctx = canvas.getContext("2d")!;
 
     this.canvas.width  = window.innerWidth;
     this.canvas.height = window.innerHeight;
+    this.gpuCanvas.width = window.innerWidth;
+    this.gpuCanvas.height = window.innerHeight;
     this.fieldW = this.canvas.width;
     this.fieldH = this.canvas.height;
 
@@ -64,6 +68,8 @@ export class App {
       const h = window.innerHeight;
       this.canvas.width  = w;
       this.canvas.height = h;
+      this.gpuCanvas.width = w;
+      this.gpuCanvas.height = h;
 
       if (this.resizeDebounce) clearTimeout(this.resizeDebounce);
       this.resizeDebounce = setTimeout(() => {
@@ -197,6 +203,7 @@ export class App {
 
   public setSim(type: SimType) {
     if (this.sim) { this.sim.destroy(); this.sim = null; }
+    this.gpuCanvas.style.display = "none";
     this.currentType = type;
     const w = this.canvas.width;
     const h = this.canvas.height;
@@ -211,7 +218,7 @@ export class App {
       case "boids":     this.sim = new Boids(w, h);      break;
       case "grayscott": this.sim = new GrayScott(w, h);  break;
       case "physarum":  this.sim = new Physarum(w, h);   break;
-      case "atoms":     this.sim = new Atoms(w, h);      break;
+      case "atoms":     this.sim = new Atoms(w, h, this.gpuCanvas); break;
     }
 
     this.onSimChange?.(type);
@@ -243,6 +250,7 @@ export class App {
 
   public stopSim() {
     if (this.sim) { this.sim.destroy(); this.sim = null; }
+    this.gpuCanvas.style.display = "none";
     this.currentType = null;
     this.onSimChange?.(null);
     const w = this.canvas.width, h = this.canvas.height;
