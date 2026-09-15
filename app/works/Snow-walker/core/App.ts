@@ -41,7 +41,10 @@ export class App {
   private grassMix = { value: 0 };
   private goldenMix = { value: 0 };
   private cameraFilter = createCameraFilter();
-  private cameraFilters = { haze: true, grain: true, vignette: true, tone: true };
+  private cameraFilters = { haze: false, grain: false, vignette: false, tone: true };
+  private cameraFilterPrepared = false;
+  private cameraFilterWarmupId: number | null = null;
+  private cameraFilterWarmupTimer: ReturnType<typeof setTimeout> | null = null;
   private ambientLight!: THREE.AmbientLight;
   private sunLight!: THREE.DirectionalLight;
   private fieldIndex = 0;
@@ -121,6 +124,7 @@ export class App {
 
     this.init();
     this.animate();
+    this.scheduleCameraFilterWarmup();
     this.startLogicLoop();
 
     window.addEventListener("resize", this.resizeHandler);
@@ -592,9 +596,8 @@ export class App {
   private animate() {
     this.animationId = requestAnimationFrame(this.animate.bind(this));
     if (Object.values(this.cameraFilters).some(Boolean) && this.fieldIndex !== 0) {
-      this.renderer.getDrawingBufferSize(this.cameraFilter.size);
-      this.cameraFilter.target.samples = Math.min(4, this.renderer.capabilities.maxSamples);
-      this.cameraFilter.target.setSize(this.cameraFilter.size.x, this.cameraFilter.size.y);
+      if (!this.cameraFilterPrepared) this.prepareCameraFilter();
+      else this.resizeCameraFilterTarget();
       this.cameraFilter.material.uniforms.time.value = performance.now() * 0.001;
       this.renderer.setRenderTarget(this.cameraFilter.target);
       this.renderer.render(this.scene, this.camera);
@@ -602,6 +605,38 @@ export class App {
       this.renderer.render(this.cameraFilter.scene, this.camera);
     } else {
       this.renderer.render(this.scene, this.camera);
+    }
+  }
+
+  private resizeCameraFilterTarget(): void {
+    this.renderer.getDrawingBufferSize(this.cameraFilter.size);
+    this.cameraFilter.target.samples = Math.min(2, this.renderer.capabilities.maxSamples);
+    this.cameraFilter.target.setSize(this.cameraFilter.size.x, this.cameraFilter.size.y);
+  }
+
+  private prepareCameraFilter(): void {
+    if (this.destroyed || this.cameraFilterPrepared) return;
+    this.resizeCameraFilterTarget();
+    // Allocate the full-size framebuffer and compile the display shader while
+    // the initial Snow view is idle, before the first Green-field click.
+    const previousTarget = this.renderer.getRenderTarget();
+    this.renderer.setRenderTarget(this.cameraFilter.target);
+    this.renderer.clear();
+    this.renderer.setRenderTarget(previousTarget);
+    this.renderer.compile(this.cameraFilter.scene, this.camera);
+    this.cameraFilterPrepared = true;
+  }
+
+  private scheduleCameraFilterWarmup(): void {
+    const prepare = () => {
+      this.cameraFilterWarmupId = null;
+      this.cameraFilterWarmupTimer = null;
+      this.prepareCameraFilter();
+    };
+    if ("requestIdleCallback" in window) {
+      this.cameraFilterWarmupId = window.requestIdleCallback(prepare, { timeout: 750 });
+    } else {
+      this.cameraFilterWarmupTimer = setTimeout(prepare, 32);
     }
   }
 
@@ -652,6 +687,7 @@ export class App {
       const width = parent.clientWidth;
       const height = parent.clientHeight;
       this.renderer.setSize(width, height);
+      if (this.cameraFilterPrepared) this.resizeCameraFilterTarget();
       this.camera.aspect = width / height;
       this.camera.updateProjectionMatrix();
       this.calculateVisibleRange();
@@ -663,6 +699,8 @@ export class App {
     this.destroyed = true;
     if (this.animationId) cancelAnimationFrame(this.animationId);
     if (this.logicIntervalId) clearInterval(this.logicIntervalId);
+    if (this.cameraFilterWarmupId !== null) window.cancelIdleCallback(this.cameraFilterWarmupId);
+    if (this.cameraFilterWarmupTimer) clearTimeout(this.cameraFilterWarmupTimer);
     window.removeEventListener("resize", this.resizeHandler);
     this.canvas.removeEventListener("click", this.clickHandler);
     this.canvas.removeEventListener("contextmenu", this.contextMenuHandler);

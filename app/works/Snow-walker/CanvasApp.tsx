@@ -11,7 +11,7 @@ type CanvasAppProps = {
   onReady?: (app: snow_walkApp | null) => void;
 };
 
-const DEFAULT_FILTERS: CameraFilters = { haze: true, grain: true, vignette: true, tone: true };
+const DEFAULT_FILTERS: CameraFilters = { haze: false, grain: false, vignette: false, tone: true };
 
 export default function CanvasApp({ onReady, cameraFilters = DEFAULT_FILTERS }: CanvasAppProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);

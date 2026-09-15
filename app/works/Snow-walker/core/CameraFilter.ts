@@ -7,7 +7,7 @@ export function createCameraFilter() {
     depthWrite: false,
     uniforms: {
       image: { value: null }, time: { value: 0 }, strength: { value: 0 },
-      useHaze: { value: 1 }, useGrain: { value: 1 }, useVignette: { value: 1 }, useTone: { value: 1 },
+      useHaze: { value: 0 }, useGrain: { value: 0 }, useVignette: { value: 0 }, useTone: { value: 1 },
     },
     vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
     fragmentShader: `

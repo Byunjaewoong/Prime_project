@@ -40,6 +40,12 @@ try {
     });
     await page.goto(`${base}/__snow/harness`, { waitUntil: 'networkidle' });
     await page.waitForFunction(() => window.app?.mixer);
+    await page.waitForFunction(() => window.app?.cameraFilterPrepared);
+    const prepared = await page.evaluate(() => {
+      const a = window.app, size = a.renderer.getDrawingBufferSize(a.cameraFilter.size);
+      return a.cameraFilter.target.width === size.x && a.cameraFilter.target.height === size.y;
+    });
+    assert.equal(prepared, true);
     await page.waitForTimeout(3500);
     await page.evaluate(() => {
       clearInterval(window.app.logicIntervalId);
@@ -119,11 +125,12 @@ try {
     const filterToggles = await page.evaluate(() => {
       const a = window.app, player = a.playerGroup, curve = a.curve, count = a.footprints.length;
       const uniforms = { haze: "useHaze", grain: "useGrain", vignette: "useVignette", tone: "useTone" };
+      const defaults = { haze: false, grain: false, vignette: false, tone: true };
       const independent = Object.entries(uniforms).every(([key, uniform]) => {
-        a.setCameraFilter(key, false);
-        const off = !a.cameraFilters[key] && a.cameraFilter.material.uniforms[uniform].value === 0;
-        a.setCameraFilter(key, true);
-        return off && a.cameraFilters[key] && a.cameraFilter.material.uniforms[uniform].value === 1;
+        a.setCameraFilter(key, !defaults[key]);
+        const changed = a.cameraFilters[key] === !defaults[key] && a.cameraFilter.material.uniforms[uniform].value === Number(!defaults[key]);
+        a.setCameraFilter(key, defaults[key]);
+        return changed && a.cameraFilters[key] === defaults[key] && a.cameraFilter.material.uniforms[uniform].value === Number(defaults[key]);
       });
       return independent && a.playerGroup === player && a.curve === curve && a.footprints.length === count;
     });
@@ -166,12 +173,13 @@ try {
     }
     await page.getByRole('button', { name: '메뉴 열기' }).click();
     await page.getByText('Left click / tap: change field', { exact: true }).waitFor();
-    for (const name of ['Haze', 'Film grain', 'Vignette', 'Tone curve']) {
+    const defaultControls = { Haze: false, 'Film grain': false, Vignette: false, 'Tone curve': true };
+    for (const [name, defaultChecked] of Object.entries(defaultControls)) {
       const control = page.getByRole('checkbox', { name, exact: true });
-      assert.equal(await control.isChecked(), true);
-      await control.uncheck();
-      assert.equal(await control.isChecked(), false);
-      await control.check();
+      assert.equal(await control.isChecked(), defaultChecked);
+      await control.setChecked(!defaultChecked);
+      assert.equal(await control.isChecked(), !defaultChecked);
+      await control.setChecked(defaultChecked);
     }
     await page.screenshot({ path: path.join(out, `${label}-menu.png`) });
     await page.getByRole('link', { name: '메인으로 돌아가기' }).click();

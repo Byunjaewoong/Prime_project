@@ -14,7 +14,7 @@ const FILTER_LABELS: Array<[keyof CameraFilters, string]> = [
 export default function SnowWalkPage() {
   const [showPanel, setShowPanel] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
-  const [cameraFilters, setCameraFilters] = useState<CameraFilters>({ haze: true, grain: true, vignette: true, tone: true });
+  const [cameraFilters, setCameraFilters] = useState<CameraFilters>({ haze: false, grain: false, vignette: false, tone: true });
 
   // 왼쪽 끝으로 마우스 가면 go to main 슬라이드
   useEffect(() => {
