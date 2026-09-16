@@ -88,6 +88,7 @@ function buildRingKernel(R: number, sigmaK: number, maxK: number, spread = false
 
 // ─── Shader sources ───────────────────────────────────────────────────────────
 const SAMPLE_W = 64, SAMPLE_H = 64;  // census downsampled resolution
+const MAX_BRUSH_CIRCLES = 7;
 
 const VERT = /* glsl */`#version 300 es
 layout(location=0) in vec2 a_pos;
@@ -101,6 +102,37 @@ uniform sampler2D u_state;
 in  vec2 v_uv;
 out vec4 o;
 void main(){ o = texture(u_state, v_uv); }`;
+
+const BRUSH_FRAG = /* glsl */`#version 300 es
+precision highp float;
+uniform sampler2D u_state;
+uniform vec2 u_res;
+uniform vec3 u_circles[${MAX_BRUSH_CIRCLES}];
+uniform int u_count;
+uniform float u_center;
+uniform float u_seed;
+in vec2 v_uv;
+out vec4 o;
+float noiseAt(vec2 p, float index){
+  return fract(sin(dot(p, vec2(12.9898, 78.233)) + u_seed + index * 37.719) * 43758.5453);
+}
+void main(){
+  vec2 pixel = floor(v_uv * u_res);
+  vec4 state = texture(u_state, v_uv);
+  for(int i = 0; i < ${MAX_BRUSH_CIRCLES}; i++){
+    if(i >= u_count) break;
+    vec3 circle = u_circles[i];
+    float distanceToCenter = distance(pixel, circle.xy);
+    if(distanceToCenter > circle.z) continue;
+    float fadeStart = circle.z * 0.6;
+    float fade = distanceToCenter < fadeStart ? 1.0
+      : 1.0 - (distanceToCenter - fadeStart) / (circle.z - fadeStart);
+    float noise = (noiseAt(pixel, float(i)) - 0.5) * 0.06;
+    state.r = clamp((u_center + noise) * fade, 0.0, 1.0);
+    state.a = 1.0;
+  }
+  o = state;
+}`;
 
 function makeOrbiumComputeFrag(p: LeniaParams): string {
   const samples: { x: number; y: number; w: number }[] = [];
@@ -361,6 +393,7 @@ export class Lenia implements Simulation {
   private useFloatTextures: boolean;
   private cProg:    WebGLProgram;
   private dProg:    WebGLProgram;
+  private brushProg: WebGLProgram;
   private tex:      WebGLTexture[];
   private fbo:      WebGLFramebuffer[];
   private vao:      WebGLVertexArrayObject;
@@ -395,6 +428,7 @@ export class Lenia implements Simulation {
 
   private uHueShiftLoc: WebGLUniformLocation | null = null;
   private uHueScaleLoc: WebGLUniformLocation | null = null;
+  private brushCircles = new Float32Array(MAX_BRUSH_CIRCLES * 3);
 
   private get outerSamples() { return this.mobile ? MOBILE_MAX_K : MAX_K; }
   private get innerSamples() { return this.mobile ? MOBILE_MAX_K_I : MAX_K_I; }
@@ -413,7 +447,7 @@ export class Lenia implements Simulation {
 
     const canvas = document.createElement("canvas");
     canvas.width = w; canvas.height = h;
-    const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: true });
+    const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: !this.mobile });
     if (!gl) throw new Error("WebGL2 not supported");
     this.glCanvas = canvas;
     this.gl = gl;
@@ -426,6 +460,7 @@ export class Lenia implements Simulation {
 
     this.cProg = mkProg(gl, VERT, this.computeSource());
     this.dProg = mkProg(gl, VERT, COLOR_FRAG);
+    this.brushProg = mkProg(gl, VERT, BRUSH_FRAG);
 
     const t0 = mkTex(gl, this.gsW, this.gsH, this.makeSeed(), this.useFloatTextures);
     const t1 = mkTex(gl, this.gsW, this.gsH, undefined, this.useFloatTextures);
@@ -601,66 +636,40 @@ export class Lenia implements Simulation {
     ctx.drawImage(this.glCanvas, 0, 0);
   }
 
-  // ── Left-click / drag: spawn a 100px alive circle ──
-  // Uses mode-aware center value + smooth radial falloff so convolution
-  // result lands inside the growth function's alive zone.
-  private spawnCircle(cx: number, cy: number, radius = 100) {
+  // Paint into the other state texture so rescue and pointer strokes never
+  // synchronously read large floating-point regions back to the CPU.
+  private paintCircles(circles: { x: number; y: number; radius: number }[]) {
     const { gl } = this;
-    const R = radius;
-    const w = this.gsW, h = this.gsH;
-    const texCX = Math.round(cx);
-    const texCY = h - 1 - Math.round(cy);
-    const x0 = Math.max(0, texCX - R);
-    const y0 = Math.max(0, texCY - R);
-    const x1 = Math.min(w - 1, texCX + R);
-    const y1 = Math.min(h - 1, texCY + R);
-    const bw = x1 - x0 + 1;
-    const bh = y1 - y0 + 1;
-    const buf = this.readState(this.fbo[this.ping], x0, y0, bw, bh);
+    const center = this.mode === "standard" ? this.p.MU
+      : (Math.min(this.p.UO_LO1, this.p.UO_LO2) + Math.max(this.p.UO_HI1, this.p.UO_HI2)) / 2;
+    circles.forEach(({ x, y, radius }, index) => {
+      const offset = index * 3;
+      this.brushCircles[offset] = Math.round(x);
+      this.brushCircles[offset + 1] = this.gsH - 1 - Math.round(y);
+      this.brushCircles[offset + 2] = radius;
+    });
 
-    // Target value: center of the growth function's alive zone
-    let ctr: number;
-    if (this.mode === "standard") {
-      ctr = this.p.MU;  // Gaussian growth center
-    } else {
-      // Expanded: midpoint of the Uo alive range (use the wider band)
-      const lo = Math.min(this.p.UO_LO1, this.p.UO_LO2);
-      const hi = Math.max(this.p.UO_HI1, this.p.UO_HI2);
-      ctr = (lo + hi) / 2;
-    }
-
-    const R2 = R * R;
-    const fadeStart = R * 0.6;  // smooth falloff starts at 60% radius
-    for (let row = 0; row < bh; row++) {
-      for (let col = 0; col < bw; col++) {
-        const dx = (x0 + col) - texCX;
-        const dy = (y0 + row) - texCY;
-        const d2 = dx * dx + dy * dy;
-        if (d2 <= R2) {
-          const i = (row * bw + col) * 4;
-          const dist = Math.sqrt(d2);
-          // Smooth radial falloff: 1.0 at center → 0.0 at edge
-          const fade = dist < fadeStart ? 1.0
-            : 1.0 - (dist - fadeStart) / (R - fadeStart);
-          const noise = (Math.random() - 0.5) * 0.06;
-          buf[i]     = Math.max(0, Math.min(1, (ctr + noise) * fade));
-          buf[i + 3] = 1.0;
-        }
-      }
-    }
+    gl.useProgram(this.brushProg);
+    gl.uniform1i(gl.getUniformLocation(this.brushProg, "u_state"), 0);
+    gl.uniform2f(gl.getUniformLocation(this.brushProg, "u_res"), this.gsW, this.gsH);
+    gl.uniform3fv(gl.getUniformLocation(this.brushProg, "u_circles[0]"), this.brushCircles);
+    gl.uniform1i(gl.getUniformLocation(this.brushProg, "u_count"), circles.length);
+    gl.uniform1f(gl.getUniformLocation(this.brushProg, "u_center"), center);
+    gl.uniform1f(gl.getUniformLocation(this.brushProg, "u_seed"), Math.random() * 1000);
+    gl.bindVertexArray(this.vao);
+    gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.tex[this.ping]);
-    gl.texSubImage2D(
-      gl.TEXTURE_2D,
-      0,
-      x0,
-      y0,
-      bw,
-      bh,
-      gl.RGBA,
-      this.useFloatTextures ? gl.FLOAT : gl.UNSIGNED_BYTE,
-      encodeTextureData(buf, this.useFloatTextures)!,
-    );
-    gl.bindTexture(gl.TEXTURE_2D, null);
+    const dst = 1 - this.ping;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo[dst]);
+    gl.viewport(0, 0, this.gsW, this.gsH);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    this.ping = dst;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.bindVertexArray(null);
+  }
+
+  private spawnCircle(cx: number, cy: number, radius = 100) {
+    this.paintCircles([{ x: cx, y: cy, radius }]);
   }
 
   // Adds one Orbium at a random heading without clearing the existing field.
@@ -817,12 +826,15 @@ export class Lenia implements Simulation {
   /** Spawn N circles at random positions with random size (1×–3× base) */
   private deltaSpawnRescue() {
     const count = 5 + Math.floor(Math.random() * 3); // 5–7
+    const circles: { x: number; y: number; radius: number }[] = [];
     for (let i = 0; i < count; i++) {
-      const rx = Math.random() * this.gsW;
-      const ry = Math.random() * this.gsH;
-      const r = Math.round(100 * (1 + Math.random() * 2)); // 100–300 px
-      this.spawnCircle(rx, ry, r);
+      circles.push({
+        x: Math.random() * this.gsW,
+        y: Math.random() * this.gsH,
+        radius: Math.round(100 * (1 + Math.random() * 2)), // 100–300 px
+      });
     }
+    this.paintCircles(circles);
   }
 
   private runDeltaStep() {
@@ -918,6 +930,7 @@ export class Lenia implements Simulation {
     gl.deleteFramebuffer(this.sampleFBO);
     gl.deleteProgram(this.cProg);
     gl.deleteProgram(this.dProg);
+    gl.deleteProgram(this.brushProg);
     gl.deleteProgram(this.sampleProg);
     gl.deleteVertexArray(this.vao);
     gl.getExtension("WEBGL_lose_context")?.loseContext();
