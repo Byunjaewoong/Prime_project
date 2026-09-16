@@ -41,7 +41,7 @@
 }
 
 .emergenceLink {
-  color: inherit;
+  color: #1a4031;
   text-decoration: none;
 }
 
@@ -55,8 +55,8 @@
 
 .emergenceLink:hover,
 .emergenceLink:focus-visible {
-  color: rgba(50, 54, 52, 0.82);
-  background: rgba(92, 96, 94, 0.08);
+  color: #0b6c49;
+  background: rgba(26, 64, 49, 0.07);
   text-decoration: none;
   transform: translateY(-2px);
   outline: none;
