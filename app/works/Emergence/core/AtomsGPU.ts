@@ -259,8 +259,8 @@ export class AtomsGPU {
   private friction = 0.08;
   private particleSize = 4;
   private depthMode = false;
-  private focusLayer = 0;
-  private focusMix = 0;
+  private focusLayer = 1;
+  private focusMix = 1;
   private colorCount = DEFAULT_COLOR_TYPES;
   private recolorFrom = DEFAULT_COLOR_TYPES;
   private palette = [...INITIAL_ATOM_COLORS];

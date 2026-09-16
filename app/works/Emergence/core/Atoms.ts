@@ -8,7 +8,7 @@ export class Atoms implements Simulation {
   private useGpu = false;
   private destroyed = false;
   private depthMode = false;
-  private focusLayer = 0;
+  private focusLayer = 1;
   private tapTimer: ReturnType<typeof setTimeout> | null = null;
   private lastTap: { time: number; x: number; y: number } | null = null;
 
