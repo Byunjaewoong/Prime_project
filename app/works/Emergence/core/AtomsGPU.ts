@@ -155,8 +155,10 @@ fn simulate(@builtin(global_invocation_id) id: vec3u) {
     }
   }
 
-  let nextVelocity = (velocity + totalForce * options.forceFactor * options.dtScale) * options.frictionMultiplier;
-  var nextPosition = position + nextVelocity * options.dtScale;
+  let layerTime = select(1.0, 0.7, options.depthMode == 1u && (id.x & 1u) == 1u);
+  let layerDt = options.dtScale * layerTime;
+  let nextVelocity = (velocity + totalForce * options.forceFactor * layerDt) * pow(options.frictionMultiplier, layerTime);
+  var nextPosition = position + nextVelocity * layerDt;
   nextPosition = (nextPosition - options.worldOrigin) % options.world;
   nextPosition = (nextPosition + options.world) % options.world + options.worldOrigin;
   outputParticles[id.x].posVel = vec4f(nextPosition, nextVelocity);
@@ -205,11 +207,10 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32, @builtin(instance_index) 
   let local = corners[vertexIndex];
   let layer = particleIndex % 2u;
   let depthEnabled = options.depthMode == 1u;
-  let depthScale = select(1.0, select(1.10, 0.88, layer == 1u), depthEnabled);
+  let sizeScale = select(1.0, select(1.25, 0.72, layer == 1u), depthEnabled);
   let blurAmount = select(0.0, select(options.focusMix, 1.0 - options.focusMix, layer == 1u), depthEnabled);
-  let screenCenter = (particle.posVel.xy + options.cameraOffset) * options.zoom;
-  let center = options.viewport * 0.5 + (screenCenter - options.viewport * 0.5) * depthScale;
-  let radius = max(0.7, options.particleSize * options.zoom * depthScale * 0.5) * select(1.0, 2.4, depthEnabled);
+  let center = (particle.posVel.xy + options.cameraOffset) * options.zoom;
+  let radius = max(0.7, options.particleSize * options.zoom * 0.5) * sizeScale * select(1.0, 2.4, depthEnabled);
   let pixel = center + local * radius;
   let clip = vec2f(pixel.x / options.viewport.x * 2.0 - 1.0, 1.0 - pixel.y / options.viewport.y * 2.0);
   var out: VertexOutput;

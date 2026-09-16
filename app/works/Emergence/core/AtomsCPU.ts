@@ -197,16 +197,19 @@ export class AtomsCPU implements Simulation {
         }
       }
 
-      nextVX[i] = (atom.vx + forceX * this.forceFactor) * frictionMultiplier;
-      nextVY[i] = (atom.vy + forceY * this.forceFactor) * frictionMultiplier;
+      const layerTime = this.depthMode && (i & 1) === 1 ? 0.7 : 1;
+      const layerFriction = Math.pow(frictionMultiplier, layerTime);
+      nextVX[i] = (atom.vx + forceX * this.forceFactor * layerTime) * layerFriction;
+      nextVY[i] = (atom.vy + forceY * this.forceFactor * layerTime) * layerFriction;
     }
 
     for (let i = 0; i < this.atoms.length; i++) {
       const atom = this.atoms[i];
       atom.vx = nextVX[i];
       atom.vy = nextVY[i];
-      atom.x = ((atom.x + atom.vx - this.worldOriginX) % this.w + this.w) % this.w + this.worldOriginX;
-      atom.y = ((atom.y + atom.vy - this.worldOriginY) % this.h + this.h) % this.h + this.worldOriginY;
+      const layerTime = this.depthMode && (i & 1) === 1 ? 0.7 : 1;
+      atom.x = ((atom.x + atom.vx * layerTime - this.worldOriginX) % this.w + this.w) % this.w + this.worldOriginX;
+      atom.y = ((atom.y + atom.vy * layerTime - this.worldOriginY) % this.h + this.h) % this.h + this.worldOriginY;
     }
   }
 
@@ -254,12 +257,11 @@ export class AtomsCPU implements Simulation {
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, w, h);
     for (const layer of [1, 0]) {
-      const depthScale = layer === 0 ? 1.10 : 0.88;
-      const scale = this.zoom * depthScale;
+      const scale = this.zoom;
       const blurAmount = layer === 0 ? this.focusMix : 1 - this.focusMix;
-      const radius = this.particleSize / 2;
-      const translateX = this.offsetX * scale + w * (1 - depthScale) / 2;
-      const translateY = this.offsetY * scale + h * (1 - depthScale) / 2;
+      const radius = this.particleSize * (layer === 0 ? 1.25 : 0.72) / 2;
+      const translateX = this.offsetX * scale;
+      const translateY = this.offsetY * scale;
       const blurMargin = radius + 4 / scale;
       const minX = (-translateX) / scale - blurMargin;
       const minY = (-translateY) / scale - blurMargin;
