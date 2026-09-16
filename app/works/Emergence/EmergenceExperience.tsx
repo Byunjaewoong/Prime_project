@@ -649,7 +649,7 @@ export default function EmergenceExperience() {
                         <div>min–max radius · signed triangular force</div>
                         <div>matrix direction · row reacts to column</div>
                         <div style={{ marginTop: 3 }}>
-                          {isTouchDevice ? "pinch · camera zoom / world size · field bounds" : "wheel · world size / left-drag · pan"}
+                          {isTouchDevice ? "tap · randomize force / pinch · camera zoom / world size · field bounds" : "click · randomize force / wheel · world size / left-drag · pan"}
                         </div>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 10 }}>

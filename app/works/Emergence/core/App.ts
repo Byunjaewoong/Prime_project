@@ -30,6 +30,7 @@ export class App {
   private ptrDownHandler: (e: PointerEvent) => void;
   private ptrMoveHandler: (e: PointerEvent) => void;
   private ptrUpHandler:   (e: PointerEvent) => void;
+  private ptrCancelHandler: (e: PointerEvent) => void;
   private ctxMenuHandler: (e: Event) => void;
   private wheelHandler:   (e: WheelEvent) => void;
   private touchStartHandler: (e: TouchEvent) => void;
@@ -41,6 +42,7 @@ export class App {
   private pendingPinchScale = 1;
   private pendingPinchX = 0;
   private pendingPinchY = 0;
+  private tapStart: { pointerId: number; x: number; y: number } | null = null;
 
   // ── View transform state ───────────────────────────────────────────────────
   // Transform: screenX = fieldX * (zoom * sw/fieldW) + tx
@@ -105,12 +107,19 @@ export class App {
     this.ptrDownHandler = (e: PointerEvent) => {
       if (this.pinching) return;
       e.preventDefault();
+      this.tapStart = e.button === 0 && this.sim?.onTap
+        ? { pointerId: e.pointerId, x: e.clientX, y: e.clientY }
+        : null;
       const r = rect();
       const { x, y } = toField(e.clientX - r.left, e.clientY - r.top);
       this.sim?.onPointerDown?.(x, y, e.button);
     };
     this.ptrMoveHandler = (e: PointerEvent) => {
       if (this.pinching) return;
+      if (this.tapStart?.pointerId === e.pointerId &&
+          Math.hypot(e.clientX - this.tapStart.x, e.clientY - this.tapStart.y) > 10) {
+        this.tapStart = null;
+      }
       const r = rect();
       const { x, y } = toField(e.clientX - r.left, e.clientY - r.top);
       this.sim?.onPointerMove?.(x, y, e.buttons);
@@ -120,6 +129,15 @@ export class App {
       const r = rect();
       const { x, y } = toField(e.clientX - r.left, e.clientY - r.top);
       this.sim?.onPointerUp?.(x, y, e.button);
+      if (this.tapStart?.pointerId === e.pointerId &&
+          Math.hypot(e.clientX - this.tapStart.x, e.clientY - this.tapStart.y) <= 10) {
+        this.sim?.onTap?.(x, y);
+      }
+      this.tapStart = null;
+    };
+    this.ptrCancelHandler = (_e: PointerEvent) => {
+      this.tapStart = null;
+      this.sim?.onPointerUp?.(0, 0, 0);
     };
     this.ctxMenuHandler = (e: Event) => e.preventDefault();
 
@@ -162,6 +180,7 @@ export class App {
     this.touchStartHandler = (e: TouchEvent) => {
       if (e.touches.length === 2) {
         e.preventDefault();
+        this.tapStart = null;
         this.pinching = true;
         this.sim?.onPointerUp?.(0, 0, 0);
         const dx = e.touches[0].clientX - e.touches[1].clientX;
@@ -231,6 +250,7 @@ export class App {
     this.canvas.addEventListener("pointerdown",  this.ptrDownHandler);
     this.canvas.addEventListener("pointermove",  this.ptrMoveHandler);
     this.canvas.addEventListener("pointerup",    this.ptrUpHandler);
+    this.canvas.addEventListener("pointercancel", this.ptrCancelHandler);
     this.canvas.addEventListener("contextmenu",  this.ctxMenuHandler);
     this.canvas.addEventListener("wheel",        this.wheelHandler, { passive: false });
     this.canvas.addEventListener("touchstart",   this.touchStartHandler, { passive: false });
@@ -242,6 +262,7 @@ export class App {
   }
 
   public setSim(type: SimType) {
+    this.tapStart = null;
     if (this.sim) { this.sim.destroy(); this.sim = null; }
     this.gpuCanvas.style.display = "none";
     this.currentType = type;
@@ -364,6 +385,7 @@ export class App {
     this.canvas.removeEventListener("pointerdown", this.ptrDownHandler);
     this.canvas.removeEventListener("pointermove", this.ptrMoveHandler);
     this.canvas.removeEventListener("pointerup",   this.ptrUpHandler);
+    this.canvas.removeEventListener("pointercancel", this.ptrCancelHandler);
     this.canvas.removeEventListener("contextmenu", this.ctxMenuHandler);
     this.canvas.removeEventListener("wheel",       this.wheelHandler);
     this.canvas.removeEventListener("touchstart",  this.touchStartHandler);

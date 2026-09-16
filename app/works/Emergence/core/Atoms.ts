@@ -71,6 +71,10 @@ export class Atoms implements Simulation {
     else this.gpu.onPointerUp();
   }
 
+  onTap() {
+    this.randomiseParams();
+  }
+
   onWheel(x: number, y: number, deltaY: number): boolean {
     if (this.cpu) return this.cpu.onWheel(x, y, deltaY);
     return this.gpu.onWheel(x, y, deltaY);

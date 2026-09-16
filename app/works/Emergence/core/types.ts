@@ -11,6 +11,7 @@ export interface Simulation {
   onPointerDown?(x: number, y: number, button: number): void;
   onPointerMove?(x: number, y: number, buttons: number): void;
   onPointerUp?(x: number, y: number, button: number): void;
+  onTap?(x: number, y: number): void;
   // Return true when the simulation handled its own camera zoom.
   onWheel?(x: number, y: number, deltaY: number): boolean;
   // Return true when the simulation handled a two-finger pinch scale.
