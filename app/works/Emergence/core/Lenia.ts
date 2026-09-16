@@ -3,6 +3,8 @@ import { Simulation } from "./types";
 
 const MAX_K   = 128;  // outer kernel max samples
 const MAX_K_I =  64;  // inner kernel max samples (expanded mode)
+const MOBILE_MAX_K = 64;
+const MOBILE_MAX_K_I = 32;
 type LeniaMode = "standard" | "expanded" | "lifeforms";
 
 // Orbium unicaudatus (O2u), the classic moving Lenia soliton.
@@ -55,7 +57,7 @@ function lifeformParams(): LeniaParams {
 }
 
 // ─── Kernel builder (shared for outer & inner) ────────────────────────────────
-function buildRingKernel(R: number, sigmaK: number, maxK: number) {
+function buildRingKernel(R: number, sigmaK: number, maxK: number, spread = false) {
   const HALF = Math.ceil(R * 1.6);
   const dx: number[] = [], dy: number[] = [], w: number[] = [];
   let wSum = 0;
@@ -72,7 +74,15 @@ function buildRingKernel(R: number, sigmaK: number, maxK: number) {
   const fw  = new Float32Array(maxK);
   const fdx = new Float32Array(maxK);
   const fdy = new Float32Array(maxK);
-  for (let i = 0; i < K; i++) { fw[i] = w[i] / wSum; fdx[i] = dx[i]; fdy[i] = dy[i]; }
+  const selected = Array.from({ length: K }, (_, i) =>
+    spread && dx.length > K ? Math.floor((i + 0.5) * dx.length / K) : i);
+  const selectedSum = spread ? selected.reduce((sum, index) => sum + w[index], 0) : wSum;
+  for (let i = 0; i < K; i++) {
+    const index = selected[i];
+    fw[i] = w[index] / selectedSum;
+    fdx[i] = dx[index];
+    fdy[i] = dy[index];
+  }
   return { K, fw, fdx, fdy };
 }
 
@@ -127,23 +137,23 @@ void main(){
 }`;
 }
 
-function makeComputeFrag(p: LeniaParams, mode: LeniaMode): string {
+function makeComputeFrag(p: LeniaParams, mode: LeniaMode, maxK = MAX_K, maxKI = MAX_K_I): string {
   if (mode === "lifeforms") return makeOrbiumComputeFrag(p);
   if (mode === "standard") {
     const sig2 = 2 * p.SIGMA_G * p.SIGMA_G;
     return /* glsl */`#version 300 es
 precision highp float;
 uniform sampler2D u_state;
-uniform float u_kw[${MAX_K}];
-uniform float u_kdx[${MAX_K}];
-uniform float u_kdy[${MAX_K}];
+uniform float u_kw[${maxK}];
+uniform float u_kdx[${maxK}];
+uniform float u_kdy[${maxK}];
 uniform vec2  u_res;
 in  vec2 v_uv;
 out vec4 o;
 void main(){
   vec2  px = 1.0 / u_res;
   float u  = 0.0;
-  for(int i = 0; i < ${MAX_K}; i++){
+  for(int i = 0; i < ${maxK}; i++){
     vec2 uv = fract(v_uv + vec2(u_kdx[i], u_kdy[i]) * px);
     u += texture(u_state, uv).r * u_kw[i];
   }
@@ -157,24 +167,24 @@ void main(){
     return /* glsl */`#version 300 es
 precision highp float;
 uniform sampler2D u_state;
-uniform float u_kw[${MAX_K}];
-uniform float u_kdx[${MAX_K}];
-uniform float u_kdy[${MAX_K}];
-uniform float u_kw_i[${MAX_K_I}];
-uniform float u_kdx_i[${MAX_K_I}];
-uniform float u_kdy_i[${MAX_K_I}];
+uniform float u_kw[${maxK}];
+uniform float u_kdx[${maxK}];
+uniform float u_kdy[${maxK}];
+uniform float u_kw_i[${maxKI}];
+uniform float u_kdx_i[${maxKI}];
+uniform float u_kdy_i[${maxKI}];
 uniform vec2  u_res;
 in  vec2 v_uv;
 out vec4 o;
 void main(){
   vec2  px = 1.0 / u_res;
   float uo = 0.0;
-  for(int i = 0; i < ${MAX_K}; i++){
+  for(int i = 0; i < ${maxK}; i++){
     vec2 uv = fract(v_uv + vec2(u_kdx[i], u_kdy[i]) * px);
     uo += texture(u_state, uv).r * u_kw[i];
   }
   float ui = 0.0;
-  for(int i = 0; i < ${MAX_K_I}; i++){
+  for(int i = 0; i < ${maxKI}; i++){
     vec2 uv = fract(v_uv + vec2(u_kdx_i[i], u_kdy_i[i]) * px);
     ui += texture(u_state, uv).r * u_kw_i[i];
   }
@@ -386,6 +396,13 @@ export class Lenia implements Simulation {
   private uHueShiftLoc: WebGLUniformLocation | null = null;
   private uHueScaleLoc: WebGLUniformLocation | null = null;
 
+  private get outerSamples() { return this.mobile ? MOBILE_MAX_K : MAX_K; }
+  private get innerSamples() { return this.mobile ? MOBILE_MAX_K_I : MAX_K_I; }
+
+  private computeSource() {
+    return makeComputeFrag(this.p, this.mode, this.outerSamples, this.innerSamples);
+  }
+
   constructor(w: number, h: number) {
     this.viewW = w;
     this.viewH = h;
@@ -407,7 +424,7 @@ export class Lenia implements Simulation {
       ? new Float32Array(SAMPLE_W * SAMPLE_H * 4)
       : new Uint8Array(SAMPLE_W * SAMPLE_H * 4);
 
-    this.cProg = mkProg(gl, VERT, makeComputeFrag(this.p, this.mode));
+    this.cProg = mkProg(gl, VERT, this.computeSource());
     this.dProg = mkProg(gl, VERT, COLOR_FRAG);
 
     const t0 = mkTex(gl, this.gsW, this.gsH, this.makeSeed(), this.useFloatTextures);
@@ -425,13 +442,13 @@ export class Lenia implements Simulation {
     gl.bindVertexArray(null);
     this.vao = vao;
 
-    const outer = buildRingKernel(this.p.R, this.p.SIGMA_K, MAX_K);
+    const outer = buildRingKernel(this.p.R, this.p.SIGMA_K, this.outerSamples, this.mobile);
     gl.useProgram(this.cProg);
     gl.uniform1fv(gl.getUniformLocation(this.cProg, "u_kw"),  outer.fw);
     gl.uniform1fv(gl.getUniformLocation(this.cProg, "u_kdx"), outer.fdx);
     gl.uniform1fv(gl.getUniformLocation(this.cProg, "u_kdy"), outer.fdy);
     if (this.mode === "expanded") {
-      const inner = buildRingKernel(this.p.R_I, this.p.SIGMA_K_I, MAX_K_I);
+      const inner = buildRingKernel(this.p.R_I, this.p.SIGMA_K_I, this.innerSamples, this.mobile);
       gl.uniform1fv(gl.getUniformLocation(this.cProg, "u_kw_i"),  inner.fw);
       gl.uniform1fv(gl.getUniformLocation(this.cProg, "u_kdx_i"), inner.fdx);
       gl.uniform1fv(gl.getUniformLocation(this.cProg, "u_kdy_i"), inner.fdy);
@@ -715,15 +732,15 @@ export class Lenia implements Simulation {
   // ── Rebuild compute shader from current this.p + this.mode ───────────────
   private rebuildCompute() {
     const { gl } = this;
-    const outer = buildRingKernel(this.p.R, this.p.SIGMA_K, MAX_K);
+    const outer = buildRingKernel(this.p.R, this.p.SIGMA_K, this.outerSamples, this.mobile);
     gl.deleteProgram(this.cProg);
-    this.cProg = mkProg(gl, VERT, makeComputeFrag(this.p, this.mode));
+    this.cProg = mkProg(gl, VERT, this.computeSource());
     gl.useProgram(this.cProg);
     gl.uniform1fv(gl.getUniformLocation(this.cProg, "u_kw"),  outer.fw);
     gl.uniform1fv(gl.getUniformLocation(this.cProg, "u_kdx"), outer.fdx);
     gl.uniform1fv(gl.getUniformLocation(this.cProg, "u_kdy"), outer.fdy);
     if (this.mode === "expanded") {
-      const inner = buildRingKernel(this.p.R_I, this.p.SIGMA_K_I, MAX_K_I);
+      const inner = buildRingKernel(this.p.R_I, this.p.SIGMA_K_I, this.innerSamples, this.mobile);
       gl.uniform1fv(gl.getUniformLocation(this.cProg, "u_kw_i"),  inner.fw);
       gl.uniform1fv(gl.getUniformLocation(this.cProg, "u_kdx_i"), inner.fdx);
       gl.uniform1fv(gl.getUniformLocation(this.cProg, "u_kdy_i"), inner.fdy);
