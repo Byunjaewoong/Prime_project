@@ -262,10 +262,10 @@ export class AtomsCPU implements Simulation {
     }
   }
 
-  onWheel(x: number, y: number, deltaY: number): boolean {
+  private zoomSpace(x: number, y: number, scale: number): boolean {
+    if (!Number.isFinite(scale) || scale <= 0) return true;
     const oldZoom = this.zoom;
-    const direction = deltaY < 0 ? 1 : -1;
-    this.zoom = Math.max(0.1, Math.min(3.2, this.zoom * (1 + direction * 0.1)));
+    this.zoom = Math.max(0.1, Math.min(3.2, this.zoom * scale));
     if (this.zoom === oldZoom) return true;
     const ratio = this.zoom / oldZoom;
     this.offsetX -= (x / this.zoom) * (ratio - 1);
@@ -278,6 +278,14 @@ export class AtomsCPU implements Simulation {
       if (atom.x >= this.w || atom.y >= this.h) this.atoms[i] = this.createAtom();
     }
     return true;
+  }
+
+  onWheel(x: number, y: number, deltaY: number): boolean {
+    return this.zoomSpace(x, y, deltaY < 0 ? 1.1 : 0.9);
+  }
+
+  onPinch(x: number, y: number, scale: number): boolean {
+    return this.zoomSpace(x, y, scale);
   }
 
   private toWorld(x: number, y: number) {

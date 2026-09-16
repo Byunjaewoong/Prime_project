@@ -550,9 +550,10 @@ export class AtomsGPU {
 
   onPointerUp() { this.dragging = false; }
 
-  onWheel(x: number, y: number, deltaY: number): boolean {
+  private zoomSpace(x: number, y: number, scale: number): boolean {
+    if (!Number.isFinite(scale) || scale <= 0) return true;
     const oldZoom = this.zoom;
-    this.zoom = Math.max(0.02, Math.min(5, this.zoom * (deltaY < 0 ? 1.1 : 0.9)));
+    this.zoom = Math.max(0.02, Math.min(5, this.zoom * scale));
     if (this.zoom === oldZoom) return true;
     const ratio = this.zoom / oldZoom;
     this.offsetX -= (x / this.zoom) * (ratio - 1);
@@ -562,6 +563,14 @@ export class AtomsGPU {
     this.worldH *= worldScale;
     this.updateSpatialGrid();
     return true;
+  }
+
+  onWheel(x: number, y: number, deltaY: number): boolean {
+    return this.zoomSpace(x, y, deltaY < 0 ? 1.1 : 0.9);
+  }
+
+  onPinch(x: number, y: number, scale: number): boolean {
+    return this.zoomSpace(x, y, scale);
   }
 
   resize(width: number, height: number) {

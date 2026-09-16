@@ -36,6 +36,7 @@ export class App {
   private touchMoveHandler:  (e: TouchEvent) => void;
   private touchEndHandler:   (e: TouchEvent) => void;
   private pinchStartDist = 0;
+  private pinching = false;
 
   // ── View transform state ───────────────────────────────────────────────────
   // Transform: screenX = fieldX * (zoom * sw/fieldW) + tx
@@ -98,17 +99,20 @@ export class App {
     };
 
     this.ptrDownHandler = (e: PointerEvent) => {
+      if (this.pinching) return;
       e.preventDefault();
       const r = rect();
       const { x, y } = toField(e.clientX - r.left, e.clientY - r.top);
       this.sim?.onPointerDown?.(x, y, e.button);
     };
     this.ptrMoveHandler = (e: PointerEvent) => {
+      if (this.pinching) return;
       const r = rect();
       const { x, y } = toField(e.clientX - r.left, e.clientY - r.top);
       this.sim?.onPointerMove?.(x, y, e.buttons);
     };
     this.ptrUpHandler = (e: PointerEvent) => {
+      if (this.pinching) return;
       const r = rect();
       const { x, y } = toField(e.clientX - r.left, e.clientY - r.top);
       this.sim?.onPointerUp?.(x, y, e.button);
@@ -154,6 +158,8 @@ export class App {
     this.touchStartHandler = (e: TouchEvent) => {
       if (e.touches.length === 2) {
         e.preventDefault();
+        this.pinching = true;
+        this.sim?.onPointerUp?.(0, 0, 0);
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         this.pinchStartDist = Math.hypot(dx, dy);
@@ -167,6 +173,13 @@ export class App {
         const dist = Math.hypot(dx, dy);
         const ratio = dist / this.pinchStartDist;
         this.pinchStartDist = dist;
+
+        const bounds = rect();
+        const centerClientX = (e.touches[0].clientX + e.touches[1].clientX) * 0.5;
+        const centerClientY = (e.touches[0].clientY + e.touches[1].clientY) * 0.5;
+        const pinchX = (centerClientX - bounds.left) * (this.canvas.width / bounds.width);
+        const pinchY = (centerClientY - bounds.top) * (this.canvas.height / bounds.height);
+        if (this.sim?.onPinch?.(pinchX, pinchY, ratio)) return;
 
         // ratio > 1 = spread (zoom in), ratio < 1 = pinch (zoom out)
         this.zoomTarget = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, this.zoomTarget * ratio));
@@ -187,7 +200,12 @@ export class App {
         }, ZOOM_SETTLE_MS);
       }
     };
-    this.touchEndHandler = () => { this.pinchStartDist = 0; };
+    this.touchEndHandler = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        this.pinchStartDist = 0;
+        this.pinching = false;
+      }
+    };
 
     this.canvas.addEventListener("pointerdown",  this.ptrDownHandler);
     this.canvas.addEventListener("pointermove",  this.ptrMoveHandler);
@@ -197,6 +215,7 @@ export class App {
     this.canvas.addEventListener("touchstart",   this.touchStartHandler, { passive: false });
     this.canvas.addEventListener("touchmove",    this.touchMoveHandler,  { passive: false });
     this.canvas.addEventListener("touchend",     this.touchEndHandler);
+    this.canvas.addEventListener("touchcancel",  this.touchEndHandler);
 
     this.animationId = requestAnimationFrame(this.animate.bind(this));
   }
@@ -323,5 +342,6 @@ export class App {
     this.canvas.removeEventListener("touchstart",  this.touchStartHandler);
     this.canvas.removeEventListener("touchmove",   this.touchMoveHandler);
     this.canvas.removeEventListener("touchend",    this.touchEndHandler);
+    this.canvas.removeEventListener("touchcancel", this.touchEndHandler);
   }
 }

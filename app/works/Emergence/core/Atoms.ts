@@ -69,6 +69,11 @@ export class Atoms implements Simulation {
     return this.gpu.onWheel(x, y, deltaY);
   }
 
+  onPinch(x: number, y: number, scale: number): boolean {
+    if (this.cpu) return this.cpu.onPinch(x, y, scale);
+    return this.gpu.onPinch(x, y, scale);
+  }
+
   resize(w: number, h: number) {
     if (this.cpu) this.cpu.resize(w, h);
     else this.gpu.resize(w, h);

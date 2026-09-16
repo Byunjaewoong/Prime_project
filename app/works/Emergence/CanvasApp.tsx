@@ -33,7 +33,7 @@ export default function CanvasApp({ onReady }: CanvasAppProps) {
     <>
       <canvas
         ref={canvasRef}
-        style={{ display: "block", width: "100%", height: "100vh" }}
+        style={{ display: "block", width: "100%", height: "100vh", touchAction: "none" }}
       />
       <canvas
         ref={gpuCanvasRef}
