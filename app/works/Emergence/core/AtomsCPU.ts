@@ -33,6 +33,7 @@ export class AtomsCPU implements Simulation {
   private particleSize = 4;
   private depthMode = false;
   private focusLayer = 0;
+  private focusMix = 0;
   private colorCount = DEFAULT_COLOR_TYPES;
   private palette = [...INITIAL_ATOM_COLORS];
 
@@ -118,6 +119,7 @@ export class AtomsCPU implements Simulation {
   }
 
   update(delta: number) {
+    this.focusMix += (this.focusLayer - this.focusMix) * Math.min(1, Math.max(0, delta) * 4.5);
     this.stepAcc += Math.min(delta, 0.05);
     const fixedDt = 1 / 60;
     let steps = 0;
@@ -168,6 +170,7 @@ export class AtomsCPU implements Simulation {
 
           for (const j of bucket) {
             if (i === j) continue;
+            if (this.depthMode && (i & 1) !== (j & 1)) continue;
             const other = this.atoms[j];
             let dx = other.x - atom.x;
             let dy = other.y - atom.y;
@@ -253,18 +256,19 @@ export class AtomsCPU implements Simulation {
     for (const layer of [1, 0]) {
       const depthScale = layer === 0 ? 1.10 : 0.88;
       const scale = this.zoom * depthScale;
-      const blurred = layer !== this.focusLayer;
-      const radius = this.particleSize * (blurred ? 1.55 : 1) / 2;
+      const blurAmount = layer === 0 ? this.focusMix : 1 - this.focusMix;
+      const radius = this.particleSize / 2;
       const translateX = this.offsetX * scale + w * (1 - depthScale) / 2;
       const translateY = this.offsetY * scale + h * (1 - depthScale) / 2;
-      const minX = (-translateX) / scale - radius;
-      const minY = (-translateY) / scale - radius;
-      const maxX = (w - translateX) / scale + radius;
-      const maxY = (h - translateY) / scale + radius;
+      const blurMargin = radius + 4 / scale;
+      const minX = (-translateX) / scale - blurMargin;
+      const minY = (-translateY) / scale - blurMargin;
+      const maxX = (w - translateX) / scale + blurMargin;
+      const maxY = (h - translateY) / scale + blurMargin;
       ctx.save();
       ctx.setTransform(scale, 0, 0, scale, translateX, translateY);
-      ctx.filter = blurred ? "blur(3px)" : "none";
-      ctx.globalAlpha = blurred ? 0.42 : layer === 1 ? 0.9 : 1;
+      ctx.filter = blurAmount > 0.01 ? `blur(${(blurAmount * 3.5).toFixed(2)}px)` : "none";
+      ctx.globalAlpha = (layer === 1 ? 0.9 : 1) * (1 - 0.58 * blurAmount);
       for (let type = 0; type < this.colorCount; type++) {
         ctx.fillStyle = atomColorCss(this.palette[type]);
         ctx.beginPath();

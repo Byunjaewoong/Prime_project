@@ -39,6 +39,10 @@ struct Options {
   cameraOffset: vec2f,
   recolorFrom: u32,
   recolorTo: u32,
+  depthMode: u32,
+  focusLayer: u32,
+  focusMix: f32,
+  depthPadding: f32,
 }
 
 @group(0) @binding(0) var<storage, read> inputParticles: array<Particle>;
@@ -132,6 +136,7 @@ fn simulate(@builtin(global_invocation_id) id: vec3u) {
       for (var slot = 0u; slot < count; slot++) {
         let otherIndex = cellIndices[cellIndex * options.bucketCapacity + slot];
         if (otherIndex == id.x) { continue; }
+        if (options.depthMode == 1u && (otherIndex & 1u) != (id.x & 1u)) { continue; }
         let other = inputParticles[otherIndex];
         var delta = other.posVel.xy - position;
         if (delta.x > options.world.x * 0.5) { delta.x -= options.world.x; }
@@ -167,7 +172,7 @@ struct Options {
   forceFactor: f32, repel: f32, frictionMultiplier: f32, dtScale: f32,
   particleSize: f32, zoom: f32, worldOrigin: vec2f,
   cameraOffset: vec2f, recolorFrom: u32, recolorTo: u32,
-  depthMode: u32, focusLayer: u32, depthPadding: vec2u,
+  depthMode: u32, focusLayer: u32, focusMix: f32, depthPadding: f32,
 }
 @group(0) @binding(0) var<storage, read> particles: array<Particle>;
 @group(0) @binding(1) var<uniform> options: Options;
@@ -177,8 +182,9 @@ struct VertexOutput {
   @builtin(position) position: vec4f,
   @location(0) local: vec2f,
   @location(1) color: vec3f,
-  @location(2) blurred: f32,
+  @location(2) blurAmount: f32,
   @location(3) opacity: f32,
+  @location(4) sharpRadius: f32,
 }
 
 @vertex
@@ -200,28 +206,30 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32, @builtin(instance_index) 
   let layer = particleIndex % 2u;
   let depthEnabled = options.depthMode == 1u;
   let depthScale = select(1.0, select(1.10, 0.88, layer == 1u), depthEnabled);
-  let blurred = depthEnabled && layer != options.focusLayer;
+  let blurAmount = select(0.0, select(options.focusMix, 1.0 - options.focusMix, layer == 1u), depthEnabled);
   let screenCenter = (particle.posVel.xy + options.cameraOffset) * options.zoom;
   let center = options.viewport * 0.5 + (screenCenter - options.viewport * 0.5) * depthScale;
-  let radius = max(0.7, options.particleSize * options.zoom * depthScale * 0.5) * select(1.0, 2.4, blurred);
+  let radius = max(0.7, options.particleSize * options.zoom * depthScale * 0.5) * select(1.0, 2.4, depthEnabled);
   let pixel = center + local * radius;
   let clip = vec2f(pixel.x / options.viewport.x * 2.0 - 1.0, 1.0 - pixel.y / options.viewport.y * 2.0);
   var out: VertexOutput;
   out.position = vec4f(clip, 0.0, 1.0);
   out.local = local;
   out.color = palette[u32(particle.attributes.x)].xyz * select(1.0, select(1.0, 0.78, layer == 1u), depthEnabled);
-  out.blurred = select(0.0, 1.0, blurred);
+  out.blurAmount = blurAmount;
   out.opacity = select(1.0, select(1.0, 0.9, layer == 1u), depthEnabled);
+  out.sharpRadius = select(1.0, 1.0 / 2.4, depthEnabled);
   return out;
 }
 
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
-  if (input.blurred > 0.5) {
-    return vec4f(input.color, 0.32 * exp(-dot(input.local, input.local) * 4.0));
-  }
-  if (dot(input.local, input.local) > 1.0) { discard; }
-  return vec4f(input.color, input.opacity);
+  let distanceSquared = dot(input.local, input.local);
+  let sharp = select(0.0, input.opacity, distanceSquared <= input.sharpRadius * input.sharpRadius);
+  let soft = 0.32 * exp(-distanceSquared * 4.0);
+  let alpha = mix(sharp, soft, input.blurAmount);
+  if (alpha < 0.004) { discard; }
+  return vec4f(input.color, alpha);
 }
 `;
 
@@ -244,6 +252,7 @@ export class AtomsGPU {
   private particleSize = 4;
   private depthMode = false;
   private focusLayer = 0;
+  private focusMix = 0;
   private colorCount = DEFAULT_COLOR_TYPES;
   private recolorFrom = DEFAULT_COLOR_TYPES;
   private palette = [...INITIAL_ATOM_COLORS];
@@ -537,6 +546,7 @@ export class AtomsGPU {
     view.setUint32(76, this.colorCount, true);
     view.setUint32(80, this.depthMode ? 1 : 0, true);
     view.setUint32(84, this.focusLayer, true);
+    view.setFloat32(88, this.focusMix, true);
     this.device.queue.writeBuffer(this.optionsBuffer, 0, data);
   }
 
@@ -559,6 +569,7 @@ export class AtomsGPU {
 
   frame(delta: number) {
     if (!this.ready || !this.device || !this.context || !this.clearPipeline || !this.fillPipeline || !this.simulatePipeline || !this.renderPipeline) return;
+    this.focusMix += (this.focusLayer - this.focusMix) * Math.min(1, Math.max(0, delta) * 4.5);
     this.writeOptions(delta);
     const output = 1 - this.currentBuffer;
     const encoder = this.device.createCommandEncoder();
