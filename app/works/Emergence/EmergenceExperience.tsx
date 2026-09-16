@@ -651,6 +651,27 @@ export default function EmergenceExperience() {
                         <div style={{ marginTop: 3 }}>
                           {isTouchDevice ? "tap · randomize force / pinch · camera zoom / world size · field bounds" : "click · randomize force / wheel · world size / left-drag · pan"}
                         </div>
+                        {atomParams.depthMode === 1 && <div>double tap / double click · switch focus</div>}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={atomParams.depthMode === 1}
+                          onClick={() => {
+                            const next = atomParams.depthMode === 1 ? 0 : 1;
+                            appRef.current?.setSimParam("depthMode", next);
+                            setAtomParams(prev => prev ? { ...prev, depthMode: next } : prev);
+                          }}
+                          style={{ fontSize: 11, padding: "5px 9px", background: atomParams.depthMode === 1 ? "rgba(155,205,255,0.2)" : "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 4, color: "inherit", cursor: "pointer" }}
+                        >
+                          2.5D mode · {atomParams.depthMode === 1 ? "on" : "off"}
+                        </button>
+                        {atomParams.depthMode === 1 && (
+                          <span style={{ fontSize: 10, opacity: 0.7 }}>
+                            focus: {atomParams.focusLayer === 1 ? "far" : "near"}
+                          </span>
+                        )}
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 10 }}>
                         <span style={{ opacity: 0.5 }}>

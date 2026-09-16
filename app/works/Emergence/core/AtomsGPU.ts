@@ -167,6 +167,7 @@ struct Options {
   forceFactor: f32, repel: f32, frictionMultiplier: f32, dtScale: f32,
   particleSize: f32, zoom: f32, worldOrigin: vec2f,
   cameraOffset: vec2f, recolorFrom: u32, recolorTo: u32,
+  depthMode: u32, focusLayer: u32, depthPadding: vec2u,
 }
 @group(0) @binding(0) var<storage, read> particles: array<Particle>;
 @group(0) @binding(1) var<uniform> options: Options;
@@ -176,6 +177,8 @@ struct VertexOutput {
   @builtin(position) position: vec4f,
   @location(0) local: vec2f,
   @location(1) color: vec3f,
+  @location(2) blurred: f32,
+  @location(3) opacity: f32,
 }
 
 @vertex
@@ -184,23 +187,41 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32, @builtin(instance_index) 
     vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0),
     vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0)
   );
-  let particle = particles[instanceIndex];
+  // Draw distant particles first so the near layer stays visually in front.
+  let farCount = options.particleCount / 2u;
+  var particleIndex: u32;
+  if (instanceIndex < farCount) {
+    particleIndex = instanceIndex * 2u + 1u;
+  } else {
+    particleIndex = (instanceIndex - farCount) * 2u;
+  }
+  let particle = particles[particleIndex];
   let local = corners[vertexIndex];
-  let center = (particle.posVel.xy + options.cameraOffset) * options.zoom;
-  let radius = max(0.7, options.particleSize * options.zoom * 0.5);
+  let layer = particleIndex % 2u;
+  let depthEnabled = options.depthMode == 1u;
+  let depthScale = select(1.0, select(1.10, 0.88, layer == 1u), depthEnabled);
+  let blurred = depthEnabled && layer != options.focusLayer;
+  let screenCenter = (particle.posVel.xy + options.cameraOffset) * options.zoom;
+  let center = options.viewport * 0.5 + (screenCenter - options.viewport * 0.5) * depthScale;
+  let radius = max(0.7, options.particleSize * options.zoom * depthScale * 0.5) * select(1.0, 2.4, blurred);
   let pixel = center + local * radius;
   let clip = vec2f(pixel.x / options.viewport.x * 2.0 - 1.0, 1.0 - pixel.y / options.viewport.y * 2.0);
   var out: VertexOutput;
   out.position = vec4f(clip, 0.0, 1.0);
   out.local = local;
-  out.color = palette[u32(particle.attributes.x)].xyz;
+  out.color = palette[u32(particle.attributes.x)].xyz * select(1.0, select(1.0, 0.78, layer == 1u), depthEnabled);
+  out.blurred = select(0.0, 1.0, blurred);
+  out.opacity = select(1.0, select(1.0, 0.9, layer == 1u), depthEnabled);
   return out;
 }
 
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
+  if (input.blurred > 0.5) {
+    return vec4f(input.color, 0.32 * exp(-dot(input.local, input.local) * 4.0));
+  }
   if (dot(input.local, input.local) > 1.0) { discard; }
-  return vec4f(input.color, 1.0);
+  return vec4f(input.color, input.opacity);
 }
 `;
 
@@ -221,6 +242,8 @@ export class AtomsGPU {
   private forceFactor = 0.18;
   private friction = 0.08;
   private particleSize = 4;
+  private depthMode = false;
+  private focusLayer = 0;
   private colorCount = DEFAULT_COLOR_TYPES;
   private recolorFrom = DEFAULT_COLOR_TYPES;
   private palette = [...INITIAL_ATOM_COLORS];
@@ -328,7 +351,13 @@ export class AtomsGPU {
     this.renderPipeline = this.device.createRenderPipeline({
       layout: this.device.createPipelineLayout({ bindGroupLayouts: [renderBindGroupLayout] }),
       vertex: { module: renderModule, entryPoint: "vertexMain" },
-      fragment: { module: renderModule, entryPoint: "fragmentMain", targets: [{ format: this.format }] },
+      fragment: { module: renderModule, entryPoint: "fragmentMain", targets: [{
+        format: this.format,
+        blend: {
+          color: { srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add" },
+          alpha: { srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add" },
+        },
+      }] },
       primitive: { topology: "triangle-list" },
     });
   }
@@ -373,7 +402,7 @@ export class AtomsGPU {
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
     this.optionsBuffer = this.device.createBuffer({
-      size: 80,
+      size: 96,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     this.paletteBuffer = this.device.createBuffer({
@@ -483,7 +512,7 @@ export class AtomsGPU {
 
   private writeOptions(delta: number) {
     if (!this.device || !this.optionsBuffer) return;
-    const data = new ArrayBuffer(80);
+    const data = new ArrayBuffer(96);
     const view = new DataView(data);
     view.setUint32(0, this.particleCount, true);
     view.setUint32(4, this.gridCols, true);
@@ -506,6 +535,8 @@ export class AtomsGPU {
     view.setFloat32(68, this.offsetY, true);
     view.setUint32(72, this.recolorFrom, true);
     view.setUint32(76, this.colorCount, true);
+    view.setUint32(80, this.depthMode ? 1 : 0, true);
+    view.setUint32(84, this.focusLayer, true);
     this.device.queue.writeBuffer(this.optionsBuffer, 0, data);
   }
 
@@ -582,6 +613,8 @@ export class AtomsGPU {
       forceFactor: this.forceFactor,
       friction: this.friction,
       particleSize: this.particleSize,
+      depthMode: this.depthMode ? 1 : 0,
+      focusLayer: this.focusLayer,
       worldScale: this.worldW / this.baseWorldW,
       zoom: this.zoom,
       viewX: this.offsetX,
@@ -619,6 +652,8 @@ export class AtomsGPU {
     else if (key === "forceFactor") this.forceFactor = value;
     else if (key === "friction") this.friction = value;
     else if (key === "particleSize") this.particleSize = value;
+    else if (key === "depthMode") this.depthMode = value >= 0.5;
+    else if (key === "focusLayer") this.focusLayer = value >= 0.5 ? 1 : 0;
   }
 
   randomiseParams() {

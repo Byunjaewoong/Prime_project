@@ -7,6 +7,10 @@ export class Atoms implements Simulation {
   private cpu: AtomsCPU | null = null;
   private useGpu = false;
   private destroyed = false;
+  private depthMode = false;
+  private focusLayer = 0;
+  private tapTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastTap: { time: number; x: number; y: number } | null = null;
 
   constructor(w: number, h: number, gpuCanvas: HTMLCanvasElement) {
     this.gpu = new AtomsGPU(gpuCanvas, w, h);
@@ -20,6 +24,8 @@ export class Atoms implements Simulation {
         this.cpu = new AtomsCPU(w, h);
         this.cpu.setParam("colors", this.gpu.getParams().colors);
         this.cpu.setColors(this.gpu.getColors());
+        this.cpu.setParam("depthMode", this.depthMode ? 1 : 0);
+        this.cpu.setParam("focusLayer", this.focusLayer);
       }
     });
   }
@@ -42,6 +48,12 @@ export class Atoms implements Simulation {
   }
 
   setParam(key: string, value: number) {
+    if (key === "depthMode") {
+      this.depthMode = value >= 0.5;
+      if (!this.depthMode) this.clearTapTimer();
+    } else if (key === "focusLayer") {
+      this.focusLayer = value >= 0.5 ? 1 : 0;
+    }
     if (this.cpu) this.cpu.setParam(key, value);
     else this.gpu.setParam(key, value);
   }
@@ -71,8 +83,31 @@ export class Atoms implements Simulation {
     else this.gpu.onPointerUp();
   }
 
-  onTap() {
-    this.randomiseParams();
+  onTap(x: number, y: number) {
+    if (!this.depthMode) {
+      this.randomiseParams();
+      return;
+    }
+    const now = performance.now();
+    const previous = this.lastTap;
+    if (previous && now - previous.time < 320 && Math.hypot(x - previous.x, y - previous.y) < 48) {
+      this.clearTapTimer();
+      this.setParam("focusLayer", 1 - this.focusLayer);
+      return;
+    }
+    this.clearTapTimer();
+    this.lastTap = { time: now, x, y };
+    this.tapTimer = setTimeout(() => {
+      this.tapTimer = null;
+      this.lastTap = null;
+      if (!this.destroyed) this.randomiseParams();
+    }, 320);
+  }
+
+  private clearTapTimer() {
+    if (this.tapTimer) clearTimeout(this.tapTimer);
+    this.tapTimer = null;
+    this.lastTap = null;
   }
 
   onWheel(x: number, y: number, deltaY: number): boolean {
@@ -92,6 +127,7 @@ export class Atoms implements Simulation {
 
   destroy() {
     this.destroyed = true;
+    this.clearTapTimer();
     this.cpu?.destroy();
     this.gpu.destroy();
   }

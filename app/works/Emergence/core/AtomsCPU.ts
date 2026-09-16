@@ -31,6 +31,8 @@ export class AtomsCPU implements Simulation {
   private forceFactor = 0.18;
   private friction = 0.08;
   private particleSize = 4;
+  private depthMode = false;
+  private focusLayer = 0;
   private colorCount = DEFAULT_COLOR_TYPES;
   private palette = [...INITIAL_ATOM_COLORS];
 
@@ -214,6 +216,10 @@ export class AtomsCPU implements Simulation {
   }
 
   render(ctx: CanvasRenderingContext2D, w: number, h: number) {
+    if (this.depthMode) {
+      this.renderDepth(ctx, w, h);
+      return;
+    }
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, w, h);
     ctx.save();
@@ -241,6 +247,43 @@ export class AtomsCPU implements Simulation {
     ctx.restore();
   }
 
+  private renderDepth(ctx: CanvasRenderingContext2D, w: number, h: number) {
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, w, h);
+    for (const layer of [1, 0]) {
+      const depthScale = layer === 0 ? 1.10 : 0.88;
+      const scale = this.zoom * depthScale;
+      const blurred = layer !== this.focusLayer;
+      const radius = this.particleSize * (blurred ? 1.55 : 1) / 2;
+      const translateX = this.offsetX * scale + w * (1 - depthScale) / 2;
+      const translateY = this.offsetY * scale + h * (1 - depthScale) / 2;
+      const minX = (-translateX) / scale - radius;
+      const minY = (-translateY) / scale - radius;
+      const maxX = (w - translateX) / scale + radius;
+      const maxY = (h - translateY) / scale + radius;
+      ctx.save();
+      ctx.setTransform(scale, 0, 0, scale, translateX, translateY);
+      ctx.filter = blurred ? "blur(3px)" : "none";
+      ctx.globalAlpha = blurred ? 0.42 : layer === 1 ? 0.9 : 1;
+      for (let type = 0; type < this.colorCount; type++) {
+        ctx.fillStyle = atomColorCss(this.palette[type]);
+        ctx.beginPath();
+        for (let index = layer; index < this.atoms.length; index += 2) {
+          const atom = this.atoms[index];
+          if (atom.type !== type || atom.x < minX || atom.x > maxX || atom.y < minY || atom.y > maxY) continue;
+          if (this.particleSize * scale < 2) {
+            ctx.rect(atom.x - radius, atom.y - radius, radius * 2, radius * 2);
+          } else {
+            ctx.moveTo(atom.x + radius, atom.y);
+            ctx.arc(atom.x, atom.y, radius, 0, Math.PI * 2);
+          }
+        }
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
   getParams(): Record<string, number> {
     const params: Record<string, number> = {
       particles: this.atoms.length,
@@ -249,6 +292,8 @@ export class AtomsCPU implements Simulation {
       forceFactor: this.forceFactor,
       friction: this.friction,
       particleSize: this.particleSize,
+      depthMode: this.depthMode ? 1 : 0,
+      focusLayer: this.focusLayer,
       worldScale: this.w / this.baseW,
       zoom: this.zoom,
       viewX: this.offsetX,
@@ -277,6 +322,8 @@ export class AtomsCPU implements Simulation {
     else if (key === "forceFactor") this.forceFactor = value;
     else if (key === "friction") this.friction = value;
     else if (key === "particleSize") this.particleSize = value;
+    else if (key === "depthMode") this.depthMode = value >= 0.5;
+    else if (key === "focusLayer") this.focusLayer = value >= 0.5 ? 1 : 0;
   }
 
   onPointerDown(x: number, y: number, button: number) {
