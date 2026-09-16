@@ -269,10 +269,13 @@ export class AtomsCPU implements Simulation {
       const maxY = (h - translateY) / scale + blurMargin;
       ctx.save();
       ctx.setTransform(scale, 0, 0, scale, translateX, translateY);
-      ctx.filter = blurAmount > 0.01 ? `blur(${(blurAmount * 6).toFixed(2)}px)` : "none";
-      ctx.globalAlpha = layer === 0
+      const blurRadius = layer === 0 ? 6 : 4.5;
+      const layerFilter = blurAmount > 0.01 ? `blur(${(blurAmount * blurRadius).toFixed(2)}px)` : "none";
+      const layerAlpha = layer === 0
         ? 1 - 0.42 * blurAmount
-        : (0.82 + 0.18 * this.focusMix) * (1 - 0.65 * blurAmount);
+        : 1 - 0.15 * blurAmount;
+      ctx.filter = layerFilter;
+      ctx.globalAlpha = layerAlpha;
       for (let type = 0; type < this.colorCount; type++) {
         const color = this.palette[type];
         const fade = layer === 0 ? 0.7 * this.focusMix : 0;
@@ -292,6 +295,14 @@ export class AtomsCPU implements Simulation {
           }
         }
         ctx.fill();
+        if (layer === 1 && blurAmount > 0.01) {
+          // Keep the distant color legible beneath its wider soft glow.
+          ctx.filter = `blur(${(blurAmount * 1.5).toFixed(2)}px)`;
+          ctx.globalAlpha = 0.3 * blurAmount;
+          ctx.fill();
+          ctx.filter = layerFilter;
+          ctx.globalAlpha = layerAlpha;
+        }
       }
       ctx.restore();
     }

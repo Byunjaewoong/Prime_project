@@ -220,7 +220,7 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32, @builtin(instance_index) 
   out.local = local;
   let baseColor = palette[u32(particle.attributes.x)].xyz;
   let nearColor = mix(baseColor, vec3f(0.75), 0.7 * options.focusMix);
-  let farColor = baseColor * mix(0.72, 1.08, options.focusMix);
+  let farColor = baseColor * mix(0.96, 1.08, options.focusMix);
   out.color = select(baseColor, select(nearColor, farColor, layer == 1u), depthEnabled);
   out.blurAmount = blurAmount;
   out.opacity = select(1.0, select(1.0, mix(0.82, 1.0, options.focusMix), layer == 1u), depthEnabled);
@@ -234,7 +234,7 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
   let distanceSquared = dot(input.local, input.local);
   let sharp = select(0.0, input.opacity, distanceSquared <= input.sharpRadius * input.sharpRadius);
   // The pale near layer still partially occludes the focused far layer.
-  let soft = mix(0.24, 0.58, input.nearLayer) * exp(-distanceSquared * 3.2);
+  let soft = mix(0.42, 0.58, input.nearLayer) * exp(-distanceSquared * 3.2);
   let alpha = mix(sharp, soft, input.blurAmount);
   if (alpha < 0.004) { discard; }
   return vec4f(input.color, alpha);
