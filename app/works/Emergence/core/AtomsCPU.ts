@@ -4,6 +4,8 @@ const DEFAULT_PARTICLE_COUNT = 1000;
 const MAX_PARTICLE_COUNT = 20000;
 const COLORS = ["#f04464", "#20c8e8", "#f2c94c", "#54d66b", "#a56cff"];
 const TYPE_COUNT = COLORS.length;
+const MIN_WORLD_SCALE = 0.5;
+const MAX_WORLD_SCALE = 4;
 
 interface Atom {
   x: number;
@@ -16,6 +18,10 @@ interface Atom {
 export class AtomsCPU implements Simulation {
   private w: number;
   private h: number;
+  private baseW: number;
+  private baseH: number;
+  private viewportW: number;
+  private viewportH: number;
   private atoms: Atom[] = [];
   private stepAcc = 0;
 
@@ -39,6 +45,10 @@ export class AtomsCPU implements Simulation {
   constructor(w: number, h: number) {
     this.w = w;
     this.h = h;
+    this.baseW = w;
+    this.baseH = h;
+    this.viewportW = w;
+    this.viewportH = h;
     this.randomiseInteractions();
     this.setParticleCount(DEFAULT_PARTICLE_COUNT);
   }
@@ -206,6 +216,7 @@ export class AtomsCPU implements Simulation {
       forceFactor: this.forceFactor,
       friction: this.friction,
       particleSize: this.particleSize,
+      worldScale: this.w / this.baseW,
       zoom: this.zoom,
       viewX: this.offsetX,
       viewY: this.offsetY,
@@ -226,6 +237,7 @@ export class AtomsCPU implements Simulation {
 
   setParam(key: string, value: number) {
     if (key === "particles") this.setParticleCount(value);
+    else if (key === "worldScale") this.setWorldScale(value);
     else if (key === "repel") this.repel = value;
     else if (key === "forceFactor") this.forceFactor = value;
     else if (key === "friction") this.friction = value;
@@ -244,6 +256,7 @@ export class AtomsCPU implements Simulation {
     if (!this.dragging || !(buttons & 1)) return;
     this.offsetX += (x - this.lastPointerX) / this.zoom;
     this.offsetY += (y - this.lastPointerY) / this.zoom;
+    this.clampCameraOffset();
     this.lastPointerX = x;
     this.lastPointerY = y;
   }
@@ -262,37 +275,84 @@ export class AtomsCPU implements Simulation {
     }
   }
 
-  private zoomSpace(x: number, y: number, scale: number): boolean {
+  private minimumCameraZoom() {
+    return Math.max(this.viewportW / this.w, this.viewportH / this.h);
+  }
+
+  private clampCameraOffset() {
+    const visibleW = this.viewportW / this.zoom;
+    const visibleH = this.viewportH / this.zoom;
+    this.offsetX = visibleW >= this.w
+      ? (visibleW - this.w) * 0.5
+      : Math.max(visibleW - this.w, Math.min(0, this.offsetX));
+    this.offsetY = visibleH >= this.h
+      ? (visibleH - this.h) * 0.5
+      : Math.max(visibleH - this.h, Math.min(0, this.offsetY));
+  }
+
+  private zoomCamera(x: number, y: number, scale: number): boolean {
     if (!Number.isFinite(scale) || scale <= 0) return true;
     const oldZoom = this.zoom;
-    this.zoom = Math.max(0.1, Math.min(3.2, this.zoom * scale));
+    this.zoom = Math.max(this.minimumCameraZoom(), Math.min(3.2, this.zoom * scale));
     if (this.zoom === oldZoom) return true;
     const ratio = this.zoom / oldZoom;
     this.offsetX -= (x / this.zoom) * (ratio - 1);
     this.offsetY -= (y / this.zoom) * (ratio - 1);
-    const worldScale = oldZoom / this.zoom;
-    this.w *= worldScale;
-    this.h *= worldScale;
+    this.clampCameraOffset();
+    return true;
+  }
+
+  private setWorldScale(value: number) {
+    const scale = Math.max(MIN_WORLD_SCALE, Math.min(MAX_WORLD_SCALE, value));
+    this.w = this.baseW * scale;
+    this.h = this.baseH * scale;
     for (let i = 0; i < this.atoms.length; i++) {
       const atom = this.atoms[i];
       if (atom.x >= this.w || atom.y >= this.h) this.atoms[i] = this.createAtom();
     }
+    this.zoom = Math.max(this.zoom, this.minimumCameraZoom());
+    this.clampCameraOffset();
+  }
+
+  private resizeWorldFromWheel(x: number, y: number, zoomScale: number): boolean {
+    if (!Number.isFinite(zoomScale) || zoomScale <= 0) return true;
+    const oldWorldScale = this.w / this.baseW;
+    const nextWorldScale = Math.max(
+      MIN_WORLD_SCALE,
+      Math.min(MAX_WORLD_SCALE, oldWorldScale / zoomScale),
+    );
+    const appliedZoomScale = oldWorldScale / nextWorldScale;
+    const oldZoom = this.zoom;
+    this.zoom = Math.min(3.2, oldZoom * appliedZoomScale);
+    const ratio = this.zoom / oldZoom;
+    this.offsetX -= (x / this.zoom) * (ratio - 1);
+    this.offsetY -= (y / this.zoom) * (ratio - 1);
+    this.setWorldScale(nextWorldScale);
     return true;
   }
 
   onWheel(x: number, y: number, deltaY: number): boolean {
-    return this.zoomSpace(x, y, deltaY < 0 ? 1.1 : 0.9);
+    return this.resizeWorldFromWheel(x, y, deltaY < 0 ? 1.1 : 0.9);
   }
 
   onPinch(x: number, y: number, scale: number): boolean {
-    return this.zoomSpace(x, y, scale);
+    return this.zoomCamera(x, y, scale);
   }
 
   private toWorld(x: number, y: number) {
     return { x: x / this.zoom - this.offsetX, y: y / this.zoom - this.offsetY };
   }
 
-  resize(_w: number, _h: number) {}
+  resize(w: number, h: number) {
+    const centerX = this.viewportW * 0.5 / this.zoom - this.offsetX;
+    const centerY = this.viewportH * 0.5 / this.zoom - this.offsetY;
+    this.viewportW = w;
+    this.viewportH = h;
+    this.zoom = Math.max(this.zoom, this.minimumCameraZoom());
+    this.offsetX = this.viewportW * 0.5 / this.zoom - centerX;
+    this.offsetY = this.viewportH * 0.5 / this.zoom - centerY;
+    this.clampCameraOffset();
+  }
 
   destroy() {
     this.atoms.length = 0;

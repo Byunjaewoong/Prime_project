@@ -122,6 +122,15 @@ export default function EmergencePage() {
   const [gsParams, setGsParams] = useState<Record<string, number> | null>(null);
   const [leniaParams, setLeniaParams] = useState<Record<string, number> | null>(null);
   const [atomParams, setAtomParams] = useState<Record<string, number> | null>(null);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia("(pointer: coarse)");
+    const update = () => setIsTouchDevice(media.matches || navigator.maxTouchPoints > 0);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
 
   // Poll params while FAB is open on grayscott so values stay fresh
   useEffect(() => {
@@ -550,6 +559,7 @@ export default function EmergencePage() {
                   const colors = ["#f04464", "#20c8e8", "#f2c94c", "#54d66b", "#a56cff"];
                   const controls = [
                     { key: "particles", label: "particle number", min: 16, max: 300000, step: 16, decimals: 0 },
+                    ...(isTouchDevice ? [{ key: "worldScale", label: "world size", min: 0.5, max: 4, step: 0.05, decimals: 2 }] : []),
                     { key: "repel", label: "repel force", min: 0.01, max: 4, step: 0.01, decimals: 2 },
                     { key: "forceFactor", label: "force multiplier", min: 0.01, max: 2, step: 0.01, decimals: 2 },
                     { key: "friction", label: "friction", min: 0, max: 1, step: 0.01, decimals: 2 },
@@ -562,11 +572,14 @@ export default function EmergencePage() {
                         <div>d &lt; min radius · linear repulsion</div>
                         <div>min–max radius · signed triangular force</div>
                         <div>matrix direction · row reacts to column</div>
-                        <div style={{ marginTop: 3 }}>wheel · cursor zoom / left-drag · pan</div>
+                        <div style={{ marginTop: 3 }}>
+                          {isTouchDevice ? "pinch · camera zoom / world size · field bounds" : "wheel · world size / left-drag · pan"}
+                        </div>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 10 }}>
                         <span style={{ opacity: 0.5 }}>
                           {atomParams.gpu === 1 ? "WebGPU" : atomParams.gpuFailed === 1 || atomParams.gpu === undefined ? "CPU fallback" : "WebGPU loading"}
+                          {` · world ${(atomParams.worldScale ?? 1).toFixed(2)}×`}
                         </span>
                         <span style={{ color: "#aef", fontFamily: "monospace" }}>
                           {atomParams.fps ? `${atomParams.fps.toFixed(0)} fps · ` : ""}{atomParams.zoom?.toFixed(2)}×
