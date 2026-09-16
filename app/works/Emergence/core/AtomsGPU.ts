@@ -6,6 +6,8 @@ const TYPE_COUNT = 5;
 const BUCKET_CAPACITY = 128;
 const PARTICLE_STRIDE = 32;
 const MAX_INTERACTION_RADIUS = 140;
+const SPATIAL_RESERVE_FACTOR = 8;
+const SPATIAL_RESERVE_BUDGET = 64 * 1024 * 1024;
 
 const computeShader = /* wgsl */ `
 struct Particle {
@@ -365,7 +367,14 @@ export class AtomsGPU {
     if (buffersChanged) {
       this.cellCountsBuffer?.destroy();
       this.cellIndicesBuffer?.destroy();
-      this.spatialCellCapacity = 2 ** Math.ceil(Math.log2(Math.max(1, requiredCells)));
+      const bytesPerCell = BUCKET_CAPACITY * 4;
+      const deviceLimit = Number(this.device.limits.maxStorageBufferBindingSize);
+      const reserveLimit = Math.max(requiredCells, Math.floor(Math.min(deviceLimit, SPATIAL_RESERVE_BUDGET) / bytesPerCell));
+      const desiredCells = this.spatialCellCapacity > 0
+        ? Math.max(requiredCells, this.spatialCellCapacity * 2)
+        : requiredCells * SPATIAL_RESERVE_FACTOR;
+      const powerOfTwoCells = 2 ** Math.ceil(Math.log2(Math.max(1, desiredCells)));
+      this.spatialCellCapacity = Math.max(requiredCells, Math.min(reserveLimit, powerOfTwoCells));
       this.cellCountsBuffer = this.device.createBuffer({
         size: this.spatialCellCapacity * 4,
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,

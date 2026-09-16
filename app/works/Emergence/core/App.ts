@@ -37,6 +37,10 @@ export class App {
   private touchEndHandler:   (e: TouchEvent) => void;
   private pinchStartDist = 0;
   private pinching = false;
+  private pinchFrame: number | null = null;
+  private pendingPinchScale = 1;
+  private pendingPinchX = 0;
+  private pendingPinchY = 0;
 
   // ── View transform state ───────────────────────────────────────────────────
   // Transform: screenX = fieldX * (zoom * sw/fieldW) + tx
@@ -179,7 +183,22 @@ export class App {
         const centerClientY = (e.touches[0].clientY + e.touches[1].clientY) * 0.5;
         const pinchX = (centerClientX - bounds.left) * (this.canvas.width / bounds.width);
         const pinchY = (centerClientY - bounds.top) * (this.canvas.height / bounds.height);
-        if (this.sim?.onPinch?.(pinchX, pinchY, ratio)) return;
+        if (this.sim?.onPinch) {
+          this.pendingPinchScale *= ratio;
+          this.pendingPinchX = pinchX;
+          this.pendingPinchY = pinchY;
+          if (this.pinchFrame === null) {
+            this.pinchFrame = requestAnimationFrame(() => {
+              const scale = this.pendingPinchScale;
+              const x = this.pendingPinchX;
+              const y = this.pendingPinchY;
+              this.pendingPinchScale = 1;
+              this.pinchFrame = null;
+              this.sim?.onPinch?.(x, y, scale);
+            });
+          }
+          return;
+        }
 
         // ratio > 1 = spread (zoom in), ratio < 1 = pinch (zoom out)
         this.zoomTarget = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, this.zoomTarget * ratio));
@@ -203,6 +222,8 @@ export class App {
     this.touchEndHandler = (e: TouchEvent) => {
       if (e.touches.length < 2) {
         this.pinchStartDist = 0;
+      }
+      if (e.touches.length === 0) {
         this.pinching = false;
       }
     };
@@ -333,6 +354,7 @@ export class App {
     if (this.sim) this.sim.destroy();
     if (this.resizeDebounce) clearTimeout(this.resizeDebounce);
     if (this.zoomSettleTimer) clearTimeout(this.zoomSettleTimer);
+    if (this.pinchFrame !== null) cancelAnimationFrame(this.pinchFrame);
     window.removeEventListener("resize", this.resizeHandler);
     this.canvas.removeEventListener("pointerdown", this.ptrDownHandler);
     this.canvas.removeEventListener("pointermove", this.ptrMoveHandler);
