@@ -5,6 +5,7 @@ const MAX_PARTICLE_COUNT = 300000;
 const TYPE_COUNT = 5;
 const BUCKET_CAPACITY = 128;
 const PARTICLE_STRIDE = 32;
+const MAX_INTERACTION_RADIUS = 140;
 
 const computeShader = /* wgsl */ `
 struct Particle {
@@ -197,8 +198,6 @@ export class AtomsGPU {
   private rules = new Float32Array(TYPE_COUNT * TYPE_COUNT);
   private minRadii = new Float32Array(TYPE_COUNT * TYPE_COUNT);
   private maxRadii = new Float32Array(TYPE_COUNT * TYPE_COUNT);
-  private currentMaxRadius = 100;
-
   private device: GPUDevice | null = null;
   private context: GPUCanvasContext | null = null;
   private format: GPUTextureFormat | null = null;
@@ -315,8 +314,8 @@ export class AtomsGPU {
       this.offsetX = this.viewportW * 0.5 / this.zoom - centerX;
       this.offsetY = this.viewportH * 0.5 / this.zoom - centerY;
     }
-    this.gridCols = Math.max(1, Math.floor(this.worldW / this.currentMaxRadius));
-    this.gridRows = Math.max(1, Math.floor(this.worldH / this.currentMaxRadius));
+    this.gridCols = Math.max(1, Math.floor(this.worldW / MAX_INTERACTION_RADIUS));
+    this.gridRows = Math.max(1, Math.floor(this.worldH / MAX_INTERACTION_RADIUS));
     const cellCount = this.gridCols * this.gridRows;
 
     const initial = new Float32Array(this.particleCount * 8);
@@ -450,14 +449,11 @@ export class AtomsGPU {
   }
 
   private randomiseInteractions() {
-    let largest = 0;
     for (let i = 0; i < TYPE_COUNT * TYPE_COUNT; i++) {
       this.rules[i] = Math.round((Math.random() * 2 - 1) * 100) / 100;
       this.minRadii[i] = Math.round(12 + Math.random() * 16);
       this.maxRadii[i] = Math.round(65 + Math.random() * 75);
-      largest = Math.max(largest, this.maxRadii[i]);
     }
-    this.currentMaxRadius = largest;
   }
 
   getParams(): Record<string, number> {
@@ -502,7 +498,7 @@ export class AtomsGPU {
 
   randomiseParams() {
     this.randomiseInteractions();
-    if (this.ready) this.rebuildBuffers();
+    if (this.ready) this.writeInteractions();
   }
 
   onPointerDown(x: number, y: number, button: number) {

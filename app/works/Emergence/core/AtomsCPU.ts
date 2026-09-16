@@ -222,9 +222,6 @@ export class AtomsCPU implements Simulation {
 
   randomiseParams() {
     this.randomiseInteractions();
-    const count = this.atoms.length;
-    this.atoms.length = 0;
-    this.setParticleCount(count);
   }
 
   setParam(key: string, value: number) {
