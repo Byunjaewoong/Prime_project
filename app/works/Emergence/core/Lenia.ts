@@ -249,10 +249,33 @@ function mkProg(gl: WebGL2RenderingContext, vs: string, fs: string): WebGLProgra
   return p;
 }
 
-function mkTex(gl: WebGL2RenderingContext, w: number, h: number, data?: Float32Array): WebGLTexture {
+function encodeTextureData(data: Float32Array | undefined, useFloat: boolean) {
+  if (!data || useFloat) return data;
+  const bytes = new Uint8Array(data.length);
+  for (let i = 0; i < data.length; i++) bytes[i] = Math.round(Math.max(0, Math.min(1, data[i])) * 255);
+  return bytes;
+}
+
+function mkTex(
+  gl: WebGL2RenderingContext,
+  w: number,
+  h: number,
+  data: Float32Array | undefined,
+  useFloat: boolean,
+): WebGLTexture {
   const t = gl.createTexture()!;
   gl.bindTexture(gl.TEXTURE_2D, t);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, data ?? null);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    useFloat ? gl.RGBA32F : gl.RGBA8,
+    w,
+    h,
+    0,
+    gl.RGBA,
+    useFloat ? gl.FLOAT : gl.UNSIGNED_BYTE,
+    encodeTextureData(data, useFloat) ?? null,
+  );
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
@@ -324,6 +347,8 @@ export class Lenia implements Simulation {
   private gsH: number;
   private gl:       WebGL2RenderingContext;
   private glCanvas: HTMLCanvasElement;
+  private mobile: boolean;
+  private useFloatTextures: boolean;
   private cProg:    WebGLProgram;
   private dProg:    WebGLProgram;
   private tex:      WebGLTexture[];
@@ -337,7 +362,7 @@ export class Lenia implements Simulation {
   private sampleProg: WebGLProgram;
   private sampleFBO:  WebGLFramebuffer;
   private sampleTex:  WebGLTexture;
-  private sampleBuf = new Float32Array(SAMPLE_W * SAMPLE_H * 4);
+  private sampleBuf: Float32Array | Uint8Array;
   private alivePct  = 0;
   private computeSteps = 0;
 
@@ -364,24 +389,29 @@ export class Lenia implements Simulation {
   constructor(w: number, h: number) {
     this.viewW = w;
     this.viewH = h;
+    this.mobile = window.matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
     this.gsW = w;
     this.gsH = h;
     this.p = randParams();
 
     const canvas = document.createElement("canvas");
     canvas.width = w; canvas.height = h;
-    const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: true })!;
+    const gl = canvas.getContext("webgl2", { preserveDrawingBuffer: true });
+    if (!gl) throw new Error("WebGL2 not supported");
     this.glCanvas = canvas;
     this.gl = gl;
 
     const ext = gl.getExtension("EXT_color_buffer_float");
-    if (!ext) throw new Error("EXT_color_buffer_float not supported");
+    this.useFloatTextures = Boolean(ext);
+    this.sampleBuf = this.useFloatTextures
+      ? new Float32Array(SAMPLE_W * SAMPLE_H * 4)
+      : new Uint8Array(SAMPLE_W * SAMPLE_H * 4);
 
     this.cProg = mkProg(gl, VERT, makeComputeFrag(this.p, this.mode));
     this.dProg = mkProg(gl, VERT, COLOR_FRAG);
 
-    const t0 = mkTex(gl, w, h, this.makeSeed());
-    const t1 = mkTex(gl, w, h);
+    const t0 = mkTex(gl, this.gsW, this.gsH, this.makeSeed(), this.useFloatTextures);
+    const t1 = mkTex(gl, this.gsW, this.gsH, undefined, this.useFloatTextures);
     this.tex = [t0, t1];
     this.fbo = [mkFBO(gl, t0), mkFBO(gl, t1)];
 
@@ -418,11 +448,28 @@ export class Lenia implements Simulation {
 
     // ── Census FBO (64×64 downsampled state for alive-% readback) ──────────
     this.sampleProg = mkProg(gl, VERT, SAMPLE_FRAG);
-    this.sampleTex  = mkTex(gl, SAMPLE_W, SAMPLE_H);
+    this.sampleTex  = mkTex(gl, SAMPLE_W, SAMPLE_H, undefined, this.useFloatTextures);
     this.sampleFBO  = mkFBO(gl, this.sampleTex);
     gl.useProgram(this.sampleProg);
     gl.uniform1i(gl.getUniformLocation(this.sampleProg, "u_state"), 0);
     gl.useProgram(null);
+  }
+
+  private readState(fbo: WebGLFramebuffer, x: number, y: number, w: number, h: number) {
+    const { gl } = this;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    if (this.useFloatTextures) {
+      const data = new Float32Array(w * h * 4);
+      gl.readPixels(x, y, w, h, gl.RGBA, gl.FLOAT, data);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      return data;
+    }
+    const bytes = new Uint8Array(w * h * 4);
+    gl.readPixels(x, y, w, h, gl.RGBA, gl.UNSIGNED_BYTE, bytes);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const data = new Float32Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) data[i] = bytes[i] / 255;
+    return data;
   }
 
   private makeSeed(): Float32Array {
@@ -462,7 +509,7 @@ export class Lenia implements Simulation {
     const { gl, cProg, tex, fbo, vao } = this;
 
     this.stepAcc += delta;
-    const stepInterval = this.mode === "lifeforms" ? 1 / 30 : 1 / 40;
+    const stepInterval = this.mobile ? 1 / 15 : this.mode === "lifeforms" ? 1 / 30 : 1 / 40;
     if (this.stepAcc >= stepInterval) {
       this.stepAcc -= stepInterval;
       const src = this.ping, dst = 1 - src;
@@ -487,12 +534,20 @@ export class Lenia implements Simulation {
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.sampleFBO);
         gl.viewport(0, 0, SAMPLE_W, SAMPLE_H);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-        gl.readPixels(0, 0, SAMPLE_W, SAMPLE_H, gl.RGBA, gl.FLOAT, this.sampleBuf);
+        gl.readPixels(
+          0,
+          0,
+          SAMPLE_W,
+          SAMPLE_H,
+          gl.RGBA,
+          this.useFloatTextures ? gl.FLOAT : gl.UNSIGNED_BYTE,
+          this.sampleBuf,
+        );
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.bindVertexArray(null);
         let alive = 0;
         for (let i = 0; i < SAMPLE_W * SAMPLE_H; i++) {
-          if (this.sampleBuf[i * 4] > 0.05) alive++;
+          if (this.sampleBuf[i * 4] > (this.useFloatTextures ? 0.05 : 13)) alive++;
         }
         this.alivePct = (alive / (SAMPLE_W * SAMPLE_H)) * 100;
 
@@ -544,10 +599,7 @@ export class Lenia implements Simulation {
     const y1 = Math.min(h - 1, texCY + R);
     const bw = x1 - x0 + 1;
     const bh = y1 - y0 + 1;
-    const buf = new Float32Array(bw * bh * 4);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo[this.ping]);
-    gl.readPixels(x0, y0, bw, bh, gl.RGBA, gl.FLOAT, buf);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const buf = this.readState(this.fbo[this.ping], x0, y0, bw, bh);
 
     // Target value: center of the growth function's alive zone
     let ctr: number;
@@ -580,17 +632,24 @@ export class Lenia implements Simulation {
       }
     }
     gl.bindTexture(gl.TEXTURE_2D, this.tex[this.ping]);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, x0, y0, bw, bh, gl.RGBA, gl.FLOAT, buf);
+    gl.texSubImage2D(
+      gl.TEXTURE_2D,
+      0,
+      x0,
+      y0,
+      bw,
+      bh,
+      gl.RGBA,
+      this.useFloatTextures ? gl.FLOAT : gl.UNSIGNED_BYTE,
+      encodeTextureData(buf, this.useFloatTextures)!,
+    );
     gl.bindTexture(gl.TEXTURE_2D, null);
   }
 
   // Adds one Orbium at a random heading without clearing the existing field.
   private spawnLifeform(viewX: number, viewY: number) {
     const { gl, gsW: w, gsH: h } = this;
-    const data = new Float32Array(w * h * 4);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo[this.ping]);
-    gl.readPixels(0, 0, w, h, gl.RGBA, gl.FLOAT, data);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const data = this.readState(this.fbo[this.ping], 0, 0, w, h);
 
     const rows = decodeOrbiumPattern();
     const patternW = Math.max(...rows.map(row => row.length));
@@ -617,7 +676,17 @@ export class Lenia implements Simulation {
     this.lifeformHeading = Math.round((angle / (Math.PI * 2)) * 359);
 
     gl.bindTexture(gl.TEXTURE_2D, this.tex[this.ping]);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, w, h, gl.RGBA, gl.FLOAT, data);
+    gl.texSubImage2D(
+      gl.TEXTURE_2D,
+      0,
+      0,
+      0,
+      w,
+      h,
+      gl.RGBA,
+      this.useFloatTextures ? gl.FLOAT : gl.UNSIGNED_BYTE,
+      encodeTextureData(data, this.useFloatTextures)!,
+    );
     gl.bindTexture(gl.TEXTURE_2D, null);
   }
 
@@ -634,8 +703,8 @@ export class Lenia implements Simulation {
     this.gsH = h;
     this.glCanvas.width = w;
     this.glCanvas.height = h;
-    const t0 = mkTex(gl, w, h, data);
-    const t1 = mkTex(gl, w, h);
+    const t0 = mkTex(gl, w, h, data, this.useFloatTextures);
+    const t1 = mkTex(gl, w, h, undefined, this.useFloatTextures);
     this.tex = [t0, t1];
     this.fbo = [mkFBO(gl, t0), mkFBO(gl, t1)];
     this.ping = 0;
@@ -788,11 +857,7 @@ export class Lenia implements Simulation {
     this.viewH = h;
     const { gl } = this;
     const oldW = this.gsW, oldH = this.gsH;
-
-    const oldData = new Float32Array(oldW * oldH * 4);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo[this.ping]);
-    gl.readPixels(0, 0, oldW, oldH, gl.RGBA, gl.FLOAT, oldData);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const oldData = this.readState(this.fbo[this.ping], 0, 0, oldW, oldH);
 
     this.gsW = w;
     this.gsH = h;
@@ -817,8 +882,8 @@ export class Lenia implements Simulation {
 
     this.tex.forEach(t => gl.deleteTexture(t));
     this.fbo.forEach(f => gl.deleteFramebuffer(f));
-    const t0 = mkTex(gl, w, h, newData);
-    const t1 = mkTex(gl, w, h);
+    const t0 = mkTex(gl, w, h, newData, this.useFloatTextures);
+    const t1 = mkTex(gl, w, h, undefined, this.useFloatTextures);
     this.tex = [t0, t1];
     this.fbo = [mkFBO(gl, t0), mkFBO(gl, t1)];
     this.ping = 0;
