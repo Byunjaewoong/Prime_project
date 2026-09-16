@@ -569,9 +569,11 @@ export default function EmergenceExperience() {
                 })()}
 
                 {currentSim === "atoms" && atomParams && (() => {
-                  const colors = ["#f04464", "#20c8e8", "#f2c94c", "#54d66b", "#a56cff"];
+                  const colors = ["#f04464", "#20c8e8", "#f2c94c", "#54d66b", "#a56cff"]
+                    .slice(0, atomParams.colors ?? 5);
                   const controls = [
                     { key: "particles", label: "particle number", min: 16, max: 300000, step: 16, decimals: 0 },
+                    { key: "colors", label: "color types", min: 1, max: 5, step: 1, decimals: 0 },
                     ...(isTouchDevice ? [{ key: "worldScale", label: "world size", min: 0.5, max: 4, step: 0.05, decimals: 2 }] : []),
                     { key: "repel", label: "repel force", min: 0.01, max: 4, step: 0.01, decimals: 2 },
                     { key: "forceFactor", label: "force multiplier", min: 0.01, max: 2, step: 0.01, decimals: 2 },
@@ -611,7 +613,7 @@ export default function EmergenceExperience() {
                           randomize
                         </button>
                       </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "20px repeat(5, 1fr)", gap: 3, marginBottom: 12 }}>
+                      <div style={{ display: "grid", gridTemplateColumns: `20px repeat(${colors.length}, 1fr)`, gap: 3, marginBottom: 12 }}>
                         <span />
                         {colors.map(color => <span key={`head-${color}`} style={{ width: 8, height: 8, borderRadius: "50%", background: color, boxShadow: `0 0 6px ${color}`, justifySelf: "center", alignSelf: "center" }} />)}
                         {colors.flatMap((rowColor, i) => [

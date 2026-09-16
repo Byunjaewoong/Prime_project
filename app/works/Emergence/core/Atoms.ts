@@ -18,6 +18,7 @@ export class Atoms implements Simulation {
       } else {
         gpuCanvas.style.display = "none";
         this.cpu = new AtomsCPU(w, h);
+        this.cpu.setParam("colors", this.gpu.getParams().colors);
       }
     });
   }

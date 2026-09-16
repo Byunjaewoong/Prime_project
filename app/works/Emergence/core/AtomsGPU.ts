@@ -36,7 +36,8 @@ struct Options {
   zoom: f32,
   worldOrigin: vec2f,
   cameraOffset: vec2f,
-  cameraPad: vec2f,
+  recolorFrom: u32,
+  recolorTo: u32,
 }
 
 @group(0) @binding(0) var<storage, read> inputParticles: array<Particle>;
@@ -81,6 +82,21 @@ fn hash01(value: u32) -> f32 {
   state = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
   state = (state >> 22u) ^ state;
   return f32(state) / 4294967295.0;
+}
+
+@compute @workgroup_size(64)
+fn recolor(@builtin(global_invocation_id) id: vec3u) {
+  if (id.x >= options.particleCount) { return; }
+  var particle = inputParticles[id.x];
+  let previousCount = options.recolorFrom;
+  let nextCount = options.recolorTo;
+  let kind = u32(particle.attributes.x);
+  if (nextCount < previousCount && kind >= nextCount) {
+    particle.attributes.x = f32(min(nextCount - 1u, u32(hash01(id.x ^ 0x9e3779b9u) * f32(nextCount))));
+  } else if (nextCount > previousCount && (id.x == 0u || hash01(id.x ^ 0x85ebca6bu) < f32(nextCount - previousCount) / f32(nextCount))) {
+    particle.attributes.x = f32(previousCount + min(nextCount - previousCount - 1u, u32(hash01(id.x ^ 0xc2b2ae35u) * f32(nextCount - previousCount))));
+  }
+  outputParticles[id.x] = particle;
 }
 
 @compute @workgroup_size(64)
@@ -149,7 +165,7 @@ struct Options {
   world: vec2f, viewport: vec2f,
   forceFactor: f32, repel: f32, frictionMultiplier: f32, dtScale: f32,
   particleSize: f32, zoom: f32, worldOrigin: vec2f,
-  cameraOffset: vec2f, cameraPad: vec2f,
+  cameraOffset: vec2f, recolorFrom: u32, recolorTo: u32,
 }
 @group(0) @binding(0) var<storage, read> particles: array<Particle>;
 @group(0) @binding(1) var<uniform> options: Options;
@@ -213,6 +229,8 @@ export class AtomsGPU {
   private forceFactor = 0.18;
   private friction = 0.08;
   private particleSize = 4;
+  private colorCount = TYPE_COUNT;
+  private recolorFrom = TYPE_COUNT;
   private zoom = 1;
   private offsetX = 0;
   private offsetY = 0;
@@ -240,6 +258,7 @@ export class AtomsGPU {
   private clearPipeline: GPUComputePipeline | null = null;
   private fillPipeline: GPUComputePipeline | null = null;
   private simulatePipeline: GPUComputePipeline | null = null;
+  private recolorPipeline: GPUComputePipeline | null = null;
   private renderPipeline: GPURenderPipeline | null = null;
   private currentBuffer = 0;
   private gridCols = 1;
@@ -306,6 +325,7 @@ export class AtomsGPU {
     this.clearPipeline = this.device.createComputePipeline({ layout: computeLayout, compute: { module: computeModule, entryPoint: "clearBins" } });
     this.fillPipeline = this.device.createComputePipeline({ layout: computeLayout, compute: { module: computeModule, entryPoint: "fillBins" } });
     this.simulatePipeline = this.device.createComputePipeline({ layout: computeLayout, compute: { module: computeModule, entryPoint: "simulate" } });
+    this.recolorPipeline = this.device.createComputePipeline({ layout: computeLayout, compute: { module: computeModule, entryPoint: "recolor" } });
     const renderBindGroupLayout = this.device.createBindGroupLayout({ entries: [
       { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
       { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: "uniform" } },
@@ -342,7 +362,7 @@ export class AtomsGPU {
       const offset = i * 8;
       initial[offset] = Math.random() * this.worldW;
       initial[offset + 1] = Math.random() * this.worldH;
-      initial[offset + 4] = Math.floor(Math.random() * TYPE_COUNT);
+      initial[offset + 4] = Math.floor(Math.random() * this.colorCount);
     }
     this.particleBuffers = [0, 1].map(() => {
       const buffer = this.device!.createBuffer({
@@ -421,7 +441,7 @@ export class AtomsGPU {
       const offset = i * 8;
       added[offset] = this.worldOriginX + Math.random() * this.worldW;
       added[offset + 1] = this.worldOriginY + Math.random() * this.worldH;
-      added[offset + 4] = Math.floor(Math.random() * TYPE_COUNT);
+      added[offset + 4] = Math.floor(Math.random() * this.colorCount);
     }
     for (const buffer of this.particleBuffers) {
       this.device.queue.writeBuffer(buffer, start * PARTICLE_STRIDE, added);
@@ -462,7 +482,26 @@ export class AtomsGPU {
     view.setFloat32(60, this.worldOriginY, true);
     view.setFloat32(64, this.offsetX, true);
     view.setFloat32(68, this.offsetY, true);
+    view.setUint32(72, this.recolorFrom, true);
+    view.setUint32(76, this.colorCount, true);
     this.device.queue.writeBuffer(this.optionsBuffer, 0, data);
+  }
+
+  private setColorCount(value: number) {
+    const next = Math.max(1, Math.min(TYPE_COUNT, Math.round(value)));
+    if (next === this.colorCount) return;
+    this.recolorFrom = this.colorCount;
+    this.colorCount = next;
+    if (!this.ready || !this.device || !this.recolorPipeline) return;
+    this.writeOptions(1 / 60);
+    const encoder = this.device.createCommandEncoder();
+    const pass = encoder.beginComputePass();
+    pass.setBindGroup(0, this.computeBindGroups[this.currentBuffer]);
+    pass.setPipeline(this.recolorPipeline);
+    pass.dispatchWorkgroups(Math.ceil(this.particleCount / 64));
+    pass.end();
+    this.device.queue.submit([encoder.finish()]);
+    this.currentBuffer = 1 - this.currentBuffer;
   }
 
   frame(delta: number) {
@@ -516,6 +555,7 @@ export class AtomsGPU {
   getParams(): Record<string, number> {
     const params: Record<string, number> = {
       particles: this.requestedParticleCount,
+      colors: this.colorCount,
       repel: this.repel,
       forceFactor: this.forceFactor,
       friction: this.friction,
@@ -551,6 +591,7 @@ export class AtomsGPU {
         this.particleCountTimer = null;
       }, 120);
     } else if (key === "worldScale") this.setWorldScale(value);
+    else if (key === "colors") this.setColorCount(value);
     else if (key === "repel") this.repel = value;
     else if (key === "forceFactor") this.forceFactor = value;
     else if (key === "friction") this.friction = value;

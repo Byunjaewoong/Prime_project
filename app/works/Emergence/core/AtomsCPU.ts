@@ -31,6 +31,7 @@ export class AtomsCPU implements Simulation {
   private forceFactor = 0.18;
   private friction = 0.08;
   private particleSize = 4;
+  private colorCount = TYPE_COUNT;
 
   private rulesMatrix = this.makeMatrix(0);
   private minRadiusMatrix = this.makeMatrix(20);
@@ -76,7 +77,22 @@ export class AtomsCPU implements Simulation {
     x = this.worldOriginX + Math.random() * this.w,
     y = this.worldOriginY + Math.random() * this.h,
   ): Atom {
-    return { x, y, vx: 0, vy: 0, type: Math.floor(Math.random() * TYPE_COUNT) };
+    return { x, y, vx: 0, vy: 0, type: Math.floor(Math.random() * this.colorCount) };
+  }
+
+  private setColorCount(value: number) {
+    const next = Math.max(1, Math.min(TYPE_COUNT, Math.round(value)));
+    if (next === this.colorCount) return;
+    const previous = this.colorCount;
+    for (let index = 0; index < this.atoms.length; index++) {
+      const atom = this.atoms[index];
+      if (next < previous && atom.type >= next) {
+        atom.type = Math.floor(Math.random() * next);
+      } else if (next > previous && (index === 0 || Math.random() < (next - previous) / next)) {
+        atom.type = previous + Math.floor(Math.random() * (next - previous));
+      }
+    }
+    this.colorCount = next;
   }
 
   private setParticleCount(value: number) {
@@ -197,7 +213,7 @@ export class AtomsCPU implements Simulation {
     const maxX = minX + w / this.zoom + radius * 2;
     const maxY = minY + h / this.zoom + radius * 2;
 
-    for (let type = 0; type < TYPE_COUNT; type++) {
+    for (let type = 0; type < this.colorCount; type++) {
       ctx.fillStyle = COLORS[type];
       ctx.beginPath();
       for (const atom of this.atoms) {
@@ -217,6 +233,7 @@ export class AtomsCPU implements Simulation {
   getParams(): Record<string, number> {
     const params: Record<string, number> = {
       particles: this.atoms.length,
+      colors: this.colorCount,
       repel: this.repel,
       forceFactor: this.forceFactor,
       friction: this.friction,
@@ -242,6 +259,7 @@ export class AtomsCPU implements Simulation {
 
   setParam(key: string, value: number) {
     if (key === "particles") this.setParticleCount(value);
+    else if (key === "colors") this.setColorCount(value);
     else if (key === "worldScale") this.setWorldScale(value);
     else if (key === "repel") this.repel = value;
     else if (key === "forceFactor") this.forceFactor = value;
