@@ -19,6 +19,7 @@ export class Atoms implements Simulation {
         gpuCanvas.style.display = "none";
         this.cpu = new AtomsCPU(w, h);
         this.cpu.setParam("colors", this.gpu.getParams().colors);
+        this.cpu.setColors(this.gpu.getColors());
       }
     });
   }
@@ -48,6 +49,11 @@ export class Atoms implements Simulation {
   randomiseParams() {
     if (this.cpu) this.cpu.randomiseParams();
     else this.gpu.randomiseParams();
+  }
+
+  randomiseColors() {
+    if (this.cpu) this.cpu.randomiseColors();
+    else this.gpu.randomiseColors();
   }
 
   onPointerDown(x: number, y: number, button: number) {

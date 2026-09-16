@@ -283,6 +283,11 @@ export class App {
       (this.sim as { randomiseParams(): void }).randomiseParams();
   }
 
+  public randomiseColors(): void {
+    if (this.sim && "randomiseColors" in this.sim)
+      (this.sim as { randomiseColors(): void }).randomiseColors();
+  }
+
   public toggleLeniaDelta(): void {
     if (this.sim && "toggleDelta" in this.sim)
       (this.sim as { toggleDelta(): void }).toggleDelta();

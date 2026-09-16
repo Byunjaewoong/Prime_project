@@ -1,9 +1,9 @@
 import { Simulation } from "./types";
+import { atomColorCss, DEFAULT_COLOR_TYPES, INITIAL_ATOM_COLORS, MAX_COLOR_TYPES, randomAtomPalette } from "./AtomPalette";
 
 const DEFAULT_PARTICLE_COUNT = 1000;
 const MAX_PARTICLE_COUNT = 20000;
-const COLORS = ["#f04464", "#20c8e8", "#f2c94c", "#54d66b", "#a56cff"];
-const TYPE_COUNT = COLORS.length;
+const TYPE_COUNT = MAX_COLOR_TYPES;
 const MIN_WORLD_SCALE = 0.5;
 const MAX_WORLD_SCALE = 4;
 
@@ -31,7 +31,8 @@ export class AtomsCPU implements Simulation {
   private forceFactor = 0.18;
   private friction = 0.08;
   private particleSize = 4;
-  private colorCount = TYPE_COUNT;
+  private colorCount = DEFAULT_COLOR_TYPES;
+  private palette = [...INITIAL_ATOM_COLORS];
 
   private rulesMatrix = this.makeMatrix(0);
   private minRadiusMatrix = this.makeMatrix(20);
@@ -93,6 +94,16 @@ export class AtomsCPU implements Simulation {
       }
     }
     this.colorCount = next;
+  }
+
+  getColors(): number[] { return [...this.palette]; }
+
+  setColors(colors: number[]) {
+    if (colors.length === TYPE_COUNT) this.palette = [...colors];
+  }
+
+  randomiseColors() {
+    this.palette = randomAtomPalette();
   }
 
   private setParticleCount(value: number) {
@@ -214,7 +225,7 @@ export class AtomsCPU implements Simulation {
     const maxY = minY + h / this.zoom + radius * 2;
 
     for (let type = 0; type < this.colorCount; type++) {
-      ctx.fillStyle = COLORS[type];
+      ctx.fillStyle = atomColorCss(this.palette[type]);
       ctx.beginPath();
       for (const atom of this.atoms) {
         if (atom.type !== type || atom.x < minX || atom.x > maxX || atom.y < minY || atom.y > maxY) continue;
@@ -250,6 +261,7 @@ export class AtomsCPU implements Simulation {
         params[`matrixMax_${row}_${column}`] = this.maxRadiusMatrix[row][column];
       }
     }
+    for (let type = 0; type < TYPE_COUNT; type++) params[`color_${type}`] = this.palette[type];
     return params;
   }
 

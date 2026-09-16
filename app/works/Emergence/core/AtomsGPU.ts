@@ -1,8 +1,9 @@
 /// <reference types="@webgpu/types" />
+import { DEFAULT_COLOR_TYPES, INITIAL_ATOM_COLORS, MAX_COLOR_TYPES, randomAtomPalette } from "./AtomPalette";
 
 const DEFAULT_PARTICLE_COUNT = 60000;
 const MAX_PARTICLE_COUNT = 300000;
-const TYPE_COUNT = 5;
+const TYPE_COUNT = MAX_COLOR_TYPES;
 const BUCKET_CAPACITY = 128;
 const PARTICLE_STRIDE = 32;
 const MAX_INTERACTION_RADIUS = 140;
@@ -169,21 +170,12 @@ struct Options {
 }
 @group(0) @binding(0) var<storage, read> particles: array<Particle>;
 @group(0) @binding(1) var<uniform> options: Options;
+@group(0) @binding(2) var<storage, read> palette: array<vec4f>;
 
 struct VertexOutput {
   @builtin(position) position: vec4f,
   @location(0) local: vec2f,
   @location(1) color: vec3f,
-}
-
-fn colorForType(kind: u32) -> vec3f {
-  switch kind {
-    case 0u: { return vec3f(0.941, 0.267, 0.392); }
-    case 1u: { return vec3f(0.125, 0.784, 0.910); }
-    case 2u: { return vec3f(0.949, 0.788, 0.298); }
-    case 3u: { return vec3f(0.329, 0.839, 0.420); }
-    default: { return vec3f(0.647, 0.424, 1.0); }
-  }
 }
 
 @vertex
@@ -201,7 +193,7 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32, @builtin(instance_index) 
   var out: VertexOutput;
   out.position = vec4f(clip, 0.0, 1.0);
   out.local = local;
-  out.color = colorForType(u32(particle.attributes.x));
+  out.color = palette[u32(particle.attributes.x)].xyz;
   return out;
 }
 
@@ -229,8 +221,9 @@ export class AtomsGPU {
   private forceFactor = 0.18;
   private friction = 0.08;
   private particleSize = 4;
-  private colorCount = TYPE_COUNT;
-  private recolorFrom = TYPE_COUNT;
+  private colorCount = DEFAULT_COLOR_TYPES;
+  private recolorFrom = DEFAULT_COLOR_TYPES;
+  private palette = [...INITIAL_ATOM_COLORS];
   private zoom = 1;
   private offsetX = 0;
   private offsetY = 0;
@@ -253,6 +246,7 @@ export class AtomsGPU {
   private cellIndicesBuffer: GPUBuffer | null = null;
   private interactionBuffer: GPUBuffer | null = null;
   private optionsBuffer: GPUBuffer | null = null;
+  private paletteBuffer: GPUBuffer | null = null;
   private computeBindGroups: GPUBindGroup[] = [];
   private renderBindGroups: GPUBindGroup[] = [];
   private clearPipeline: GPUComputePipeline | null = null;
@@ -329,6 +323,7 @@ export class AtomsGPU {
     const renderBindGroupLayout = this.device.createBindGroupLayout({ entries: [
       { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
       { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: "uniform" } },
+      { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } },
     ] });
     this.renderPipeline = this.device.createRenderPipeline({
       layout: this.device.createPipelineLayout({ bindGroupLayouts: [renderBindGroupLayout] }),
@@ -345,6 +340,7 @@ export class AtomsGPU {
     this.cellIndicesBuffer?.destroy();
     this.interactionBuffer?.destroy();
     this.optionsBuffer?.destroy();
+    this.paletteBuffer?.destroy();
 
     const scale = Math.sqrt(DEFAULT_PARTICLE_COUNT / 1000);
     this.worldW = this.viewportW * scale;
@@ -380,6 +376,11 @@ export class AtomsGPU {
       size: 80,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
+    this.paletteBuffer = this.device.createBuffer({
+      size: TYPE_COUNT * 16,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+    this.writePalette();
     this.writeInteractions();
     this.writeOptions(1 / 60);
     this.spatialCellCapacity = 0;
@@ -389,6 +390,7 @@ export class AtomsGPU {
       entries: [
         { binding: 0, resource: { buffer: this.particleBuffers[index] } },
         { binding: 1, resource: { buffer: this.optionsBuffer! } },
+        { binding: 2, resource: { buffer: this.paletteBuffer! } },
       ],
     }));
     this.currentBuffer = 0;
@@ -457,6 +459,26 @@ export class AtomsGPU {
       values[i * 4 + 2] = this.maxRadii[i];
     }
     this.device.queue.writeBuffer(this.interactionBuffer, 0, values);
+  }
+
+  private writePalette() {
+    if (!this.device || !this.paletteBuffer) return;
+    const values = new Float32Array(TYPE_COUNT * 4);
+    for (let type = 0; type < TYPE_COUNT; type++) {
+      const color = this.palette[type];
+      values[type * 4] = ((color >> 16) & 255) / 255;
+      values[type * 4 + 1] = ((color >> 8) & 255) / 255;
+      values[type * 4 + 2] = (color & 255) / 255;
+      values[type * 4 + 3] = 1;
+    }
+    this.device.queue.writeBuffer(this.paletteBuffer, 0, values);
+  }
+
+  getColors(): number[] { return [...this.palette]; }
+
+  randomiseColors() {
+    this.palette = randomAtomPalette();
+    this.writePalette();
   }
 
   private writeOptions(delta: number) {
@@ -576,6 +598,7 @@ export class AtomsGPU {
         params[`matrixMax_${row}_${column}`] = this.maxRadii[index];
       }
     }
+    for (let type = 0; type < TYPE_COUNT; type++) params[`color_${type}`] = this.palette[type];
     return params;
   }
 
@@ -713,6 +736,7 @@ export class AtomsGPU {
     this.cellIndicesBuffer?.destroy();
     this.interactionBuffer?.destroy();
     this.optionsBuffer?.destroy();
+    this.paletteBuffer?.destroy();
     this.context?.unconfigure();
   }
 }

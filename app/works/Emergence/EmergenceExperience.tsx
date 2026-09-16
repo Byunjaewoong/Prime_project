@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import CanvasApp from "./CanvasApp";
 import { App as EmergenceApp } from "./core/App";
+import { atomColorCss, INITIAL_ATOM_COLORS, MAX_COLOR_TYPES } from "./core/AtomPalette";
 import { SimType } from "./core/types";
 
 // ── Lenia G(Uo, Ui) 2D phase diagram ─────────────────────────────────────────
@@ -322,7 +323,8 @@ export default function EmergenceExperience() {
       <div className="orbit-fab">
         <div
           className={
-            "orbit-fab__actions" + (fabOpen ? " orbit-fab__actions--open" : "")
+            "orbit-fab__actions" + (fabOpen ? " orbit-fab__actions--open" : "") +
+            (currentSim === "atoms" ? " orbit-fab__actions--atoms" : "")
           }
         >
           <Link
@@ -339,7 +341,7 @@ export default function EmergenceExperience() {
               className="orbit-fab__controls"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="orbit-panel-container">
+              <div className="orbit-panel-container" style={currentSim === "atoms" ? { minWidth: 0, width: "100%", maxWidth: "100%" } : undefined}>
                 <div className="orbit-panel-section">
                   <h4>
                     {simInfo ? simInfo.label : "emergence"}
@@ -569,11 +571,11 @@ export default function EmergenceExperience() {
                 })()}
 
                 {currentSim === "atoms" && atomParams && (() => {
-                  const colors = ["#f04464", "#20c8e8", "#f2c94c", "#54d66b", "#a56cff"]
-                    .slice(0, atomParams.colors ?? 5);
+                  const colors = Array.from({ length: atomParams.colors ?? 5 }, (_, index) =>
+                    atomColorCss(atomParams[`color_${index}`] ?? INITIAL_ATOM_COLORS[index]));
                   const controls = [
                     { key: "particles", label: "particle number", min: 16, max: 300000, step: 16, decimals: 0 },
-                    { key: "colors", label: "color types", min: 1, max: 5, step: 1, decimals: 0 },
+                    { key: "colors", label: "color types", min: 1, max: MAX_COLOR_TYPES, step: 1, decimals: 0 },
                     ...(isTouchDevice ? [{ key: "worldScale", label: "world size", min: 0.5, max: 4, step: 0.05, decimals: 2 }] : []),
                     { key: "repel", label: "repel force", min: 0.01, max: 4, step: 0.01, decimals: 2 },
                     { key: "forceFactor", label: "force multiplier", min: 0.01, max: 2, step: 0.01, decimals: 2 },
@@ -581,7 +583,7 @@ export default function EmergenceExperience() {
                     { key: "particleSize", label: "particle size", min: 0.1, max: 6, step: 0.1, decimals: 1 },
                   ];
                   return (
-                    <div className="orbit-panel-section" style={{ marginTop: 8 }}>
+                    <div className="orbit-panel-section" style={{ marginTop: 8, minWidth: 0, maxWidth: "100%" }}>
                       <div style={{ padding: "8px 9px", marginBottom: 12, borderRadius: 5, background: "rgba(255,255,255,0.04)", fontSize: 10, lineHeight: 1.55, opacity: 0.65 }}>
                         <div>WebGPU compute · spatial bins · instanced render</div>
                         <div>d &lt; min radius · linear repulsion</div>
@@ -600,6 +602,20 @@ export default function EmergenceExperience() {
                           {atomParams.fps ? `${atomParams.fps.toFixed(0)} fps · ` : ""}{atomParams.zoom?.toFixed(2)}×
                         </span>
                       </div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                        <span style={{ fontSize: 10, letterSpacing: "0.12em", opacity: 0.45, textTransform: "uppercase" }}>particle palette</span>
+                        <button
+                          type="button"
+                          style={{ fontSize: 10, padding: "3px 7px", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 4, color: "inherit", cursor: "pointer" }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            appRef.current?.randomiseColors();
+                            setAtomParams(appRef.current?.getSimParams() ?? null);
+                          }}
+                        >
+                          randomize colors
+                        </button>
+                      </div>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                         <span style={{ fontSize: 10, letterSpacing: "0.12em", opacity: 0.45, textTransform: "uppercase" }}>directed force matrix</span>
                         <button
@@ -613,27 +629,29 @@ export default function EmergenceExperience() {
                           randomize
                         </button>
                       </div>
-                      <div style={{ display: "grid", gridTemplateColumns: `20px repeat(${colors.length}, 1fr)`, gap: 3, marginBottom: 12 }}>
-                        <span />
-                        {colors.map(color => <span key={`head-${color}`} style={{ width: 8, height: 8, borderRadius: "50%", background: color, boxShadow: `0 0 6px ${color}`, justifySelf: "center", alignSelf: "center" }} />)}
-                        {colors.flatMap((rowColor, i) => [
-                          <span key={`row-${rowColor}`} style={{ width: 8, height: 8, borderRadius: "50%", background: rowColor, boxShadow: `0 0 6px ${rowColor}`, alignSelf: "center" }} />,
-                          ...colors.map((_, j) => {
-                            const rule = atomParams[`matrixRule_${i}_${j}`] ?? 0;
-                            const minRadius = atomParams[`matrixMin_${i}_${j}`] ?? 0;
-                            const maxRadius = atomParams[`matrixMax_${i}_${j}`] ?? 0;
-                            const positive = rule >= 0;
-                            return (
-                              <span
-                                key={`${i}-${j}`}
-                                title={`rule ${rule.toFixed(2)}, radius ${minRadius.toFixed(0)}–${maxRadius.toFixed(0)}`}
-                                style={{ minWidth: 34, padding: "4px 1px", borderRadius: 3, textAlign: "center", fontFamily: "monospace", fontSize: 8, lineHeight: 1.15, color: positive ? "#9ddcff" : "#ff9dab", background: positive ? "rgba(80,170,255,0.10)" : "rgba(255,80,105,0.11)", border: `1px solid ${positive ? "rgba(100,190,255,0.20)" : "rgba(255,100,120,0.22)"}` }}
-                              >
-                                <b>{rule >= 0 ? "+" : ""}{rule.toFixed(1)}</b><br />{minRadius.toFixed(0)}–{maxRadius.toFixed(0)}
-                              </span>
-                            );
-                          }),
-                        ])}
+                      <div style={{ overflow: "auto", maxWidth: "100%", maxHeight: 250, minHeight: 90, flexShrink: 0, marginBottom: 12 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: `20px repeat(${colors.length}, 37px)`, width: "max-content", gap: 3, paddingBottom: 4 }}>
+                          <span />
+                          {colors.map((color, index) => <span key={`head-${index}`} style={{ width: 8, height: 8, borderRadius: "50%", background: color, boxShadow: `0 0 6px ${color}`, justifySelf: "center", alignSelf: "center" }} />)}
+                          {colors.flatMap((rowColor, i) => [
+                            <span key={`row-${i}`} style={{ width: 8, height: 8, borderRadius: "50%", background: rowColor, boxShadow: `0 0 6px ${rowColor}`, alignSelf: "center" }} />,
+                            ...colors.map((_, j) => {
+                              const rule = atomParams[`matrixRule_${i}_${j}`] ?? 0;
+                              const minRadius = atomParams[`matrixMin_${i}_${j}`] ?? 0;
+                              const maxRadius = atomParams[`matrixMax_${i}_${j}`] ?? 0;
+                              const positive = rule >= 0;
+                              return (
+                                <span
+                                  key={`${i}-${j}`}
+                                  title={`rule ${rule.toFixed(2)}, radius ${minRadius.toFixed(0)}–${maxRadius.toFixed(0)}`}
+                                  style={{ minWidth: 34, padding: "4px 1px", borderRadius: 3, textAlign: "center", fontFamily: "monospace", fontSize: 8, lineHeight: 1.15, color: positive ? "#9ddcff" : "#ff9dab", background: positive ? "rgba(80,170,255,0.10)" : "rgba(255,80,105,0.11)", border: `1px solid ${positive ? "rgba(100,190,255,0.20)" : "rgba(255,100,120,0.22)"}` }}
+                                >
+                                  <b>{rule >= 0 ? "+" : ""}{rule.toFixed(1)}</b><br />{minRadius.toFixed(0)}–{maxRadius.toFixed(0)}
+                                </span>
+                              );
+                            }),
+                          ])}
+                        </div>
                       </div>
                       {controls.map(({ key, label, min, max, step, decimals }) => {
                         const value = atomParams[key] ?? min;

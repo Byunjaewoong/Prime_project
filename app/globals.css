@@ -384,6 +384,10 @@ a:hover {
 
 /* 🔹 모바일 최적화 */
 @media (max-width: 768px) {
+  .orbit-fab__actions--atoms.orbit-fab__actions--open {
+    transform: none;
+  }
+
   .orbit-fab__controls {
     right: 16px;
     left: 16px;        /* 양쪽 여백 16px */
@@ -471,5 +475,4 @@ a:hover {
     font-size: 11px;
   }
 }
-
 
