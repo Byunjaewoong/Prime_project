@@ -884,37 +884,40 @@ export class Lenia implements Simulation {
   resize(w: number, h: number) {
     this.viewW = w;
     this.viewH = h;
+    if (w === this.gsW && h === this.gsH) return;
     const { gl } = this;
     const oldW = this.gsW, oldH = this.gsH;
-    const oldData = this.readState(this.fbo[this.ping], 0, 0, oldW, oldH);
-
-    this.gsW = w;
-    this.gsH = h;
-    this.glCanvas.width  = w;
-    this.glCanvas.height = h;
-
-    const newData = new Float32Array(w * h * 4);
     const ox = Math.max(0, Math.floor((w - oldW) / 2));
     const oy = Math.max(0, Math.floor((h - oldH) / 2));
     const sx = Math.max(0, Math.floor((oldW - w) / 2));
     const sy = Math.max(0, Math.floor((oldH - h) / 2));
     const cpW = Math.min(oldW, w);
     const cpH = Math.min(oldH, h);
-    for (let y = 0; y < cpH; y++) {
-      for (let x = 0; x < cpW; x++) {
-        const src = ((y + sy) * oldW + (x + sx)) * 4;
-        const dst = ((y + oy) * w   + (x + ox)) * 4;
-        newData[dst]     = oldData[src];
-        newData[dst + 3] = 1.0;
-      }
-    }
+
+    const t0 = mkTex(gl, w, h, undefined, this.useFloatTextures);
+    const t1 = mkTex(gl, w, h, undefined, this.useFloatTextures);
+    const f0 = mkFBO(gl, t0);
+    const f1 = mkFBO(gl, t1);
+
+    // Chrome on Android may resize the viewport as its bars move. Keep the
+    // existing field on the GPU rather than reading the whole texture to JS.
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, f0);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.fbo[this.ping]);
+    gl.blitFramebuffer(sx, sy, sx + cpW, sy + cpH,
+      ox, oy, ox + cpW, oy + cpH, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
 
     this.tex.forEach(t => gl.deleteTexture(t));
     this.fbo.forEach(f => gl.deleteFramebuffer(f));
-    const t0 = mkTex(gl, w, h, newData, this.useFloatTextures);
-    const t1 = mkTex(gl, w, h, undefined, this.useFloatTextures);
     this.tex = [t0, t1];
-    this.fbo = [mkFBO(gl, t0), mkFBO(gl, t1)];
+    this.fbo = [f0, f1];
+    this.gsW = w;
+    this.gsH = h;
+    this.glCanvas.width = w;
+    this.glCanvas.height = h;
     this.ping = 0;
 
     gl.useProgram(this.cProg);
