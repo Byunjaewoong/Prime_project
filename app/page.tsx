@@ -93,7 +93,7 @@ export default function HomePage() {
                 viewBox="0 0 100 100"
                 aria-hidden="true"
               >
-                <circle cx="50" cy="50" r="49" />
+                <path d="M 50 2 L 66 4 L 81 12 L 92 27 L 97 43 L 95 60 L 87 77 L 73 91 L 55 97 L 37 96 L 20 88 L 8 74 L 3 57 L 4 39 L 12 23 L 27 10 L 42 4 Z" />
               </svg>
               <h3 id="emergence-title" className={styles.emergenceTitle}>
                 Emergence

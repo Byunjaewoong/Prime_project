@@ -7,7 +7,7 @@
   position: relative;
   width: 100%;
   aspect-ratio: 1;
-  border-radius: 50%;
+  color: rgba(92, 96, 94, 0.48);
 }
 
 .emergenceBoundary {
@@ -18,10 +18,11 @@
   overflow: visible;
   pointer-events: none;
   fill: none;
-  stroke: rgba(26, 64, 49, 0.5);
+  stroke: rgba(92, 96, 94, 0.46);
   stroke-width: 0.45;
-  stroke-dasharray: 5 11;
+  stroke-dasharray: 4.5 10.5;
   stroke-linecap: round;
+  stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
 
@@ -36,7 +37,7 @@
   font-size: 1.05rem;
   font-weight: 400;
   letter-spacing: 0.04em;
-  opacity: 0.2;
+  color: rgba(92, 96, 94, 0.45);
 }
 
 .emergenceLink {
@@ -54,42 +55,36 @@
 
 .emergenceLink:hover,
 .emergenceLink:focus-visible {
-  color: #0b6c49;
-  background: rgba(26, 64, 49, 0.07);
+  color: rgba(50, 54, 52, 0.82);
+  background: rgba(92, 96, 94, 0.08);
   text-decoration: none;
   transform: translateY(-2px);
   outline: none;
 }
 
 .emergenceLenia {
-  top: 20%;
-  left: 19%;
+  top: 15%;
+  left: 22%;
 }
 
 .emergenceBoids {
-  top: 23%;
-  right: 17%;
+  top: 34%;
+  right: 15%;
 }
 
 .emergenceGrayScott {
-  top: 47%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-}
-
-.emergenceGrayScott:hover,
-.emergenceGrayScott:focus-visible {
-  transform: translate(-50%, calc(-50% - 2px));
+  top: 49%;
+  left: 17%;
 }
 
 .emergencePhysarum {
-  bottom: 20%;
-  left: 18%;
+  bottom: 14%;
+  left: 35%;
 }
 
 .emergenceAtoms {
-  right: 20%;
-  bottom: 18%;
+  right: 23%;
+  bottom: 30%;
 }
 
 @media (max-width: 700px) {
