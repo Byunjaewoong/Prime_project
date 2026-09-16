@@ -1,0 +1,108 @@
+.emergenceItem {
+  width: min(440px, calc(100vw - 48px));
+  margin: 18px 0 24px 42%;
+}
+
+.emergenceField {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+}
+
+.emergenceBoundary {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  fill: none;
+  stroke: rgba(26, 64, 49, 0.5);
+  stroke-width: 0.45;
+  stroke-dasharray: 5 11;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.emergenceTitle {
+  position: absolute;
+  z-index: 1;
+  top: -0.9em;
+  left: 20%;
+  margin: 0;
+  padding: 0 12px;
+  background: #fcfcfc;
+  font-size: 1.05rem;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+
+.emergenceTitle a,
+.emergenceLink {
+  color: inherit;
+  text-decoration: none;
+}
+
+.emergenceLink {
+  position: absolute;
+  padding: 8px 10px;
+  white-space: nowrap;
+  border-radius: 999px;
+  transition: color 160ms ease, background-color 160ms ease, transform 160ms ease;
+}
+
+.emergenceLink:hover,
+.emergenceLink:focus-visible {
+  color: #0b6c49;
+  background: rgba(26, 64, 49, 0.07);
+  text-decoration: none;
+  transform: translateY(-2px);
+  outline: none;
+}
+
+.emergenceLenia {
+  top: 20%;
+  left: 19%;
+}
+
+.emergenceBoids {
+  top: 23%;
+  right: 17%;
+}
+
+.emergenceGrayScott {
+  top: 47%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.emergenceGrayScott:hover,
+.emergenceGrayScott:focus-visible {
+  transform: translate(-50%, calc(-50% - 2px));
+}
+
+.emergencePhysarum {
+  bottom: 20%;
+  left: 18%;
+}
+
+.emergenceAtoms {
+  right: 20%;
+  bottom: 18%;
+}
+
+@media (max-width: 700px) {
+  .emergenceItem {
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  .emergenceTitle {
+    left: 16%;
+  }
+
+  .emergenceLink {
+    font-size: 0.82rem;
+  }
+}

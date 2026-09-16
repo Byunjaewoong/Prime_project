@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import CanvasApp from "./CanvasApp";
 import { App as EmergenceApp } from "./core/App";
 import { SimType } from "./core/types";
@@ -112,12 +113,23 @@ const SIMS: {
   },
 ];
 
+const SIM_ROUTES: Record<string, SimType> = {
+  lenia: "lenia",
+  boids: "boids",
+  "gray-scott": "grayscott",
+  physarum: "physarum",
+  atoms: "atoms",
+};
+
 export default function EmergencePage() {
+  const pathname = usePathname();
+  const routeName = pathname.split("/").filter(Boolean).at(-1) ?? "";
+  const routeSim = SIM_ROUTES[routeName] ?? null;
   const appRef = useRef<EmergenceApp | null>(null);
   const [showPanel, setShowPanel] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
-  const [showOverlay, setShowOverlay] = useState(true);
-  const [currentSim, setCurrentSim] = useState<SimType | null>(null);
+  const [showOverlay, setShowOverlay] = useState(routeSim === null);
+  const [currentSim, setCurrentSim] = useState<SimType | null>(routeSim);
   const [hovered, setHovered] = useState<SimType | null>(null);
   const [gsParams, setGsParams] = useState<Record<string, number> | null>(null);
   const [leniaParams, setLeniaParams] = useState<Record<string, number> | null>(null);
@@ -179,7 +191,8 @@ export default function EmergencePage() {
 
   const handleReady = useCallback((app: EmergenceApp | null) => {
     appRef.current = app;
-  }, []);
+    if (app && routeSim) app.setSim(routeSim);
+  }, [routeSim]);
 
   const selectSim = (type: SimType) => {
     setShowOverlay(false);

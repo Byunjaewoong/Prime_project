@@ -1,5 +1,14 @@
 // app/page.tsx
 import Link from "next/link";
+import styles from "./page.module.css";
+
+const emergenceWorks = [
+  { label: "Lenia", href: "/works/Emergence/lenia", position: styles.emergenceLenia },
+  { label: "Boids", href: "/works/Emergence/boids", position: styles.emergenceBoids },
+  { label: "Gray-Scott", href: "/works/Emergence/gray-scott", position: styles.emergenceGrayScott },
+  { label: "Physarum", href: "/works/Emergence/physarum", position: styles.emergencePhysarum },
+  { label: "Atoms", href: "/works/Emergence/atoms", position: styles.emergenceAtoms },
+];
 
 export default function HomePage() {
   return (
@@ -77,10 +86,30 @@ export default function HomePage() {
             </Link>
           </li>
 
-          <li style={{ marginLeft: "45%", width: "fit-content" }}>
-            <Link href="/works/Emergence" style={{ textDecoration: "none", color: "inherit" }}>
-              <span>Emergence</span>
-            </Link>
+          <li className={styles.emergenceItem}>
+            <section className={styles.emergenceField} aria-labelledby="emergence-title">
+              <svg
+                className={styles.emergenceBoundary}
+                viewBox="0 0 100 100"
+                aria-hidden="true"
+              >
+                <circle cx="50" cy="50" r="49" />
+              </svg>
+              <h3 id="emergence-title" className={styles.emergenceTitle}>
+                <Link href="/works/Emergence">Emergence</Link>
+              </h3>
+              <nav aria-label="Emergence works">
+                {emergenceWorks.map((work) => (
+                  <Link
+                    key={work.href}
+                    href={work.href}
+                    className={`${styles.emergenceLink} ${work.position}`}
+                  >
+                    {work.label}
+                  </Link>
+                ))}
+              </nav>
+            </section>
           </li>
 
           <li style={{ marginLeft: "25%", width: "fit-content" }}>
