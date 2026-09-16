@@ -266,9 +266,17 @@ export class AtomsCPU implements Simulation {
     const oldZoom = this.zoom;
     const direction = deltaY < 0 ? 1 : -1;
     this.zoom = Math.max(0.1, Math.min(3.2, this.zoom * (1 + direction * 0.1)));
+    if (this.zoom === oldZoom) return true;
     const ratio = this.zoom / oldZoom;
     this.offsetX -= (x / this.zoom) * (ratio - 1);
     this.offsetY -= (y / this.zoom) * (ratio - 1);
+    const worldScale = oldZoom / this.zoom;
+    this.w *= worldScale;
+    this.h *= worldScale;
+    for (let i = 0; i < this.atoms.length; i++) {
+      const atom = this.atoms[i];
+      if (atom.x >= this.w || atom.y >= this.h) this.atoms[i] = this.createAtom();
+    }
     return true;
   }
 
@@ -276,16 +284,7 @@ export class AtomsCPU implements Simulation {
     return { x: x / this.zoom - this.offsetX, y: y / this.zoom - this.offsetY };
   }
 
-  resize(w: number, h: number) {
-    const scaleX = w / this.w;
-    const scaleY = h / this.h;
-    for (const atom of this.atoms) {
-      atom.x *= scaleX;
-      atom.y *= scaleY;
-    }
-    this.w = w;
-    this.h = h;
-  }
+  resize(_w: number, _h: number) {}
 
   destroy() {
     this.atoms.length = 0;

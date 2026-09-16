@@ -71,6 +71,13 @@ fn interactionForce(rule: f32, minRadius: f32, maxRadius: f32, distance: f32) ->
   return -(slope * abs(distance - middle)) + rule;
 }
 
+fn hash01(value: u32) -> f32 {
+  var state = value * 747796405u + 2891336453u;
+  state = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+  state = (state >> 22u) ^ state;
+  return f32(state) / 4294967295.0;
+}
+
 @compute @workgroup_size(64)
 fn simulate(@builtin(global_invocation_id) id: vec3u) {
   if (id.x >= options.particleCount) { return; }
@@ -78,6 +85,16 @@ fn simulate(@builtin(global_invocation_id) id: vec3u) {
   let position = particle.posVel.xy;
   let velocity = particle.posVel.zw;
   let particleType = u32(particle.attributes.x);
+  if (position.x >= options.world.x || position.y >= options.world.y) {
+    let worldSeed = bitcast<u32>(options.world.x) ^ bitcast<u32>(options.world.y);
+    let nextPosition = vec2f(
+      hash01(id.x ^ worldSeed) * options.world.x,
+      hash01((id.x + 1u) ^ (worldSeed * 1664525u)) * options.world.y,
+    );
+    outputParticles[id.x].posVel = vec4f(nextPosition, vec2f(0.0));
+    outputParticles[id.x].attributes = particle.attributes;
+    return;
+  }
   let cellSize = options.world / vec2f(f32(options.gridCols), f32(options.gridRows));
   let baseCell = min(vec2u(position / cellSize), vec2u(options.gridCols - 1u, options.gridRows - 1u));
   var totalForce = vec2f(0.0);
@@ -215,6 +232,7 @@ export class AtomsGPU {
   private currentBuffer = 0;
   private gridCols = 1;
   private gridRows = 1;
+  private spatialCellCapacity = 0;
   private ready = false;
   private failed = false;
 
@@ -241,7 +259,7 @@ export class AtomsGPU {
       this.format = navigator.gpu.getPreferredCanvasFormat();
       this.configureCanvas();
       this.createPipelines();
-      this.rebuildBuffers(true);
+      this.rebuildBuffers();
       this.ready = true;
       return true;
     } catch (error) {
@@ -286,14 +304,7 @@ export class AtomsGPU {
     });
   }
 
-  private getNormalizedViewCenter() {
-    return {
-      x: (this.viewportW * 0.5 / this.zoom - this.offsetX) / this.worldW,
-      y: (this.viewportH * 0.5 / this.zoom - this.offsetY) / this.worldH,
-    };
-  }
-
-  private rebuildBuffers(resetView = false, preservedCenter = this.getNormalizedViewCenter()) {
+  private rebuildBuffers() {
     if (!this.device || !this.clearPipeline || !this.renderPipeline) return;
     for (const buffer of this.particleBuffers) buffer.destroy();
     this.cellCountsBuffer?.destroy();
@@ -301,22 +312,12 @@ export class AtomsGPU {
     this.interactionBuffer?.destroy();
     this.optionsBuffer?.destroy();
 
-    const scale = Math.sqrt(Math.max(1, this.particleCount / 1000));
+    const scale = Math.sqrt(DEFAULT_PARTICLE_COUNT / 1000);
     this.worldW = this.viewportW * scale;
     this.worldH = this.viewportH * scale;
-    if (resetView) {
-      this.zoom = 1 / scale;
-      this.offsetX = 0;
-      this.offsetY = 0;
-    } else {
-      const centerX = preservedCenter.x * this.worldW;
-      const centerY = preservedCenter.y * this.worldH;
-      this.offsetX = this.viewportW * 0.5 / this.zoom - centerX;
-      this.offsetY = this.viewportH * 0.5 / this.zoom - centerY;
-    }
-    this.gridCols = Math.max(1, Math.floor(this.worldW / MAX_INTERACTION_RADIUS));
-    this.gridRows = Math.max(1, Math.floor(this.worldH / MAX_INTERACTION_RADIUS));
-    const cellCount = this.gridCols * this.gridRows;
+    this.zoom = 1 / scale;
+    this.offsetX = 0;
+    this.offsetY = 0;
 
     const initial = new Float32Array(this.particleCount * 8);
     for (let i = 0; i < this.particleCount; i++) {
@@ -327,19 +328,11 @@ export class AtomsGPU {
     }
     this.particleBuffers = [0, 1].map(() => {
       const buffer = this.device!.createBuffer({
-        size: Math.max(PARTICLE_STRIDE, initial.byteLength),
+        size: MAX_PARTICLE_COUNT * PARTICLE_STRIDE,
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
       });
       this.device!.queue.writeBuffer(buffer, 0, initial);
       return buffer;
-    });
-    this.cellCountsBuffer = this.device.createBuffer({
-      size: Math.max(4, cellCount * 4),
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-    });
-    this.cellIndicesBuffer = this.device.createBuffer({
-      size: Math.max(4, cellCount * BUCKET_CAPACITY * 4),
-      usage: GPUBufferUsage.STORAGE,
     });
     this.interactionBuffer = this.device.createBuffer({
       size: TYPE_COUNT * TYPE_COUNT * 16,
@@ -351,7 +344,38 @@ export class AtomsGPU {
     });
     this.writeInteractions();
     this.writeOptions(1 / 60);
+    this.spatialCellCapacity = 0;
+    this.updateSpatialGrid();
+    this.renderBindGroups = [0, 1].map(index => this.device!.createBindGroup({
+      layout: this.renderPipeline!.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.particleBuffers[index] } },
+        { binding: 1, resource: { buffer: this.optionsBuffer! } },
+      ],
+    }));
+    this.currentBuffer = 0;
+  }
 
+  private updateSpatialGrid() {
+    if (!this.device || !this.clearPipeline || !this.interactionBuffer || !this.optionsBuffer) return;
+    this.gridCols = Math.max(1, Math.floor(this.worldW / MAX_INTERACTION_RADIUS));
+    this.gridRows = Math.max(1, Math.floor(this.worldH / MAX_INTERACTION_RADIUS));
+    const requiredCells = this.gridCols * this.gridRows;
+    const buffersChanged = requiredCells > this.spatialCellCapacity || !this.cellCountsBuffer || !this.cellIndicesBuffer;
+    if (buffersChanged) {
+      this.cellCountsBuffer?.destroy();
+      this.cellIndicesBuffer?.destroy();
+      this.spatialCellCapacity = 2 ** Math.ceil(Math.log2(Math.max(1, requiredCells)));
+      this.cellCountsBuffer = this.device.createBuffer({
+        size: this.spatialCellCapacity * 4,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      });
+      this.cellIndicesBuffer = this.device.createBuffer({
+        size: this.spatialCellCapacity * BUCKET_CAPACITY * 4,
+        usage: GPUBufferUsage.STORAGE,
+      });
+    }
+    if (!buffersChanged && this.computeBindGroups.length === 2) return;
     this.computeBindGroups = [0, 1].map(input => this.device!.createBindGroup({
       layout: this.clearPipeline!.getBindGroupLayout(0),
       entries: [
@@ -363,14 +387,20 @@ export class AtomsGPU {
         { binding: 5, resource: { buffer: this.optionsBuffer! } },
       ],
     }));
-    this.renderBindGroups = [0, 1].map(index => this.device!.createBindGroup({
-      layout: this.renderPipeline!.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: this.particleBuffers[index] } },
-        { binding: 1, resource: { buffer: this.optionsBuffer! } },
-      ],
-    }));
-    this.currentBuffer = 0;
+  }
+
+  private addParticles(start: number, end: number) {
+    if (!this.device || end <= start) return;
+    const added = new Float32Array((end - start) * 8);
+    for (let i = 0; i < end - start; i++) {
+      const offset = i * 8;
+      added[offset] = Math.random() * this.worldW;
+      added[offset + 1] = Math.random() * this.worldH;
+      added[offset + 4] = Math.floor(Math.random() * TYPE_COUNT);
+    }
+    for (const buffer of this.particleBuffers) {
+      this.device.queue.writeBuffer(buffer, start * PARTICLE_STRIDE, added);
+    }
   }
 
   private writeInteractions() {
@@ -486,8 +516,10 @@ export class AtomsGPU {
       this.requestedParticleCount = Math.max(16, Math.min(MAX_PARTICLE_COUNT, Math.round(value / 16) * 16));
       if (this.particleCountTimer) clearTimeout(this.particleCountTimer);
       this.particleCountTimer = setTimeout(() => {
-        this.particleCount = this.requestedParticleCount;
-        if (this.ready) this.rebuildBuffers();
+        const previousCount = this.particleCount;
+        const nextCount = this.requestedParticleCount;
+        if (this.ready && nextCount > previousCount) this.addParticles(previousCount, nextCount);
+        this.particleCount = nextCount;
         this.particleCountTimer = null;
       }, 120);
     } else if (key === "repel") this.repel = value;
@@ -521,9 +553,14 @@ export class AtomsGPU {
   onWheel(x: number, y: number, deltaY: number): boolean {
     const oldZoom = this.zoom;
     this.zoom = Math.max(0.02, Math.min(5, this.zoom * (deltaY < 0 ? 1.1 : 0.9)));
+    if (this.zoom === oldZoom) return true;
     const ratio = this.zoom / oldZoom;
     this.offsetX -= (x / this.zoom) * (ratio - 1);
     this.offsetY -= (y / this.zoom) * (ratio - 1);
+    const worldScale = oldZoom / this.zoom;
+    this.worldW *= worldScale;
+    this.worldH *= worldScale;
+    this.updateSpatialGrid();
     return true;
   }
 
