@@ -259,7 +259,7 @@ export class AtomsCPU implements Simulation {
     for (const layer of [1, 0]) {
       const scale = this.zoom;
       const blurAmount = layer === 0 ? this.focusMix : 1 - this.focusMix;
-      const radius = this.particleSize * (layer === 0 ? 1.25 : 0.72) / 2;
+      const radius = this.particleSize * (layer === 0 ? 1.45 : 0.72) / 2;
       const translateX = this.offsetX * scale;
       const translateY = this.offsetY * scale;
       const blurMargin = radius + 4 / scale;
@@ -270,7 +270,7 @@ export class AtomsCPU implements Simulation {
       ctx.save();
       ctx.setTransform(scale, 0, 0, scale, translateX, translateY);
       ctx.filter = blurAmount > 0.01 ? `blur(${(blurAmount * 3.5).toFixed(2)}px)` : "none";
-      ctx.globalAlpha = (layer === 1 ? 0.9 : 1) * (1 - 0.58 * blurAmount);
+      ctx.globalAlpha = layer === 0 ? 1 - 0.1 * blurAmount : 0.9 * (1 - 0.58 * blurAmount);
       for (let type = 0; type < this.colorCount; type++) {
         ctx.fillStyle = atomColorCss(this.palette[type]);
         ctx.beginPath();

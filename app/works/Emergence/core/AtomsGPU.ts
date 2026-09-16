@@ -187,6 +187,7 @@ struct VertexOutput {
   @location(2) blurAmount: f32,
   @location(3) opacity: f32,
   @location(4) sharpRadius: f32,
+  @location(5) nearLayer: f32,
 }
 
 @vertex
@@ -207,7 +208,7 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32, @builtin(instance_index) 
   let local = corners[vertexIndex];
   let layer = particleIndex % 2u;
   let depthEnabled = options.depthMode == 1u;
-  let sizeScale = select(1.0, select(1.25, 0.72, layer == 1u), depthEnabled);
+  let sizeScale = select(1.0, select(1.45, 0.72, layer == 1u), depthEnabled);
   let blurAmount = select(0.0, select(options.focusMix, 1.0 - options.focusMix, layer == 1u), depthEnabled);
   let center = (particle.posVel.xy + options.cameraOffset) * options.zoom;
   let radius = max(0.7, options.particleSize * options.zoom * 0.5) * sizeScale * select(1.0, 2.4, depthEnabled);
@@ -220,6 +221,7 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32, @builtin(instance_index) 
   out.blurAmount = blurAmount;
   out.opacity = select(1.0, select(1.0, 0.9, layer == 1u), depthEnabled);
   out.sharpRadius = select(1.0, 1.0 / 2.4, depthEnabled);
+  out.nearLayer = select(0.0, 1.0, depthEnabled && layer == 0u);
   return out;
 }
 
@@ -227,7 +229,8 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32, @builtin(instance_index) 
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
   let distanceSquared = dot(input.local, input.local);
   let sharp = select(0.0, input.opacity, distanceSquared <= input.sharpRadius * input.sharpRadius);
-  let soft = 0.32 * exp(-distanceSquared * 4.0);
+  // The near layer remains an occluder even while out of focus.
+  let soft = mix(0.32, 0.9, input.nearLayer) * exp(-distanceSquared * 4.0);
   let alpha = mix(sharp, soft, input.blurAmount);
   if (alpha < 0.004) { discard; }
   return vec4f(input.color, alpha);
