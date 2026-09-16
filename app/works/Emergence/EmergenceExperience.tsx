@@ -121,7 +121,7 @@ const SIM_ROUTES: Record<string, SimType> = {
   atoms: "atoms",
 };
 
-export default function EmergencePage() {
+export default function EmergenceExperience() {
   const pathname = usePathname();
   const routeName = pathname.split("/").filter(Boolean).at(-1) ?? "";
   const routeSim = SIM_ROUTES[routeName] ?? null;

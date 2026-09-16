@@ -96,7 +96,7 @@ export default function HomePage() {
                 <circle cx="50" cy="50" r="49" />
               </svg>
               <h3 id="emergence-title" className={styles.emergenceTitle}>
-                <Link href="/works/Emergence">Emergence</Link>
+                Emergence
               </h3>
               <nav aria-label="Emergence works">
                 {emergenceWorks.map((work) => (

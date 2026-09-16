@@ -36,9 +36,9 @@
   font-size: 1.05rem;
   font-weight: 400;
   letter-spacing: 0.04em;
+  opacity: 0.2;
 }
 
-.emergenceTitle a,
 .emergenceLink {
   color: inherit;
   text-decoration: none;
