@@ -259,20 +259,27 @@ export class AtomsCPU implements Simulation {
     for (const layer of [1, 0]) {
       const scale = this.zoom;
       const blurAmount = layer === 0 ? this.focusMix : 1 - this.focusMix;
-      const radius = this.particleSize * (layer === 0 ? 1.45 : 0.72) / 2;
+      const radius = this.particleSize * (layer === 0 ? 1.45 : 0.72 + 0.46 * this.focusMix) / 2;
       const translateX = this.offsetX * scale;
       const translateY = this.offsetY * scale;
-      const blurMargin = radius + 4 / scale;
+      const blurMargin = radius + 6 / scale;
       const minX = (-translateX) / scale - blurMargin;
       const minY = (-translateY) / scale - blurMargin;
       const maxX = (w - translateX) / scale + blurMargin;
       const maxY = (h - translateY) / scale + blurMargin;
       ctx.save();
       ctx.setTransform(scale, 0, 0, scale, translateX, translateY);
-      ctx.filter = blurAmount > 0.01 ? `blur(${(blurAmount * 3.5).toFixed(2)}px)` : "none";
-      ctx.globalAlpha = layer === 0 ? 1 - 0.1 * blurAmount : 0.9 * (1 - 0.58 * blurAmount);
+      ctx.filter = blurAmount > 0.01 ? `blur(${(blurAmount * 6).toFixed(2)}px)` : "none";
+      ctx.globalAlpha = layer === 0
+        ? 1 - 0.42 * blurAmount
+        : (0.82 + 0.18 * this.focusMix) * (1 - 0.65 * blurAmount);
       for (let type = 0; type < this.colorCount; type++) {
-        ctx.fillStyle = atomColorCss(this.palette[type]);
+        const color = this.palette[type];
+        const fade = layer === 0 ? 0.7 * this.focusMix : 0;
+        const paleChannel = (shift: number) => Math.round(((color >> shift) & 255) * (1 - fade) + 191 * fade);
+        ctx.fillStyle = fade > 0
+          ? `rgb(${paleChannel(16)}, ${paleChannel(8)}, ${paleChannel(0)})`
+          : atomColorCss(color);
         ctx.beginPath();
         for (let index = layer; index < this.atoms.length; index += 2) {
           const atom = this.atoms[index];

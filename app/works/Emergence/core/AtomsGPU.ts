@@ -208,19 +208,23 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32, @builtin(instance_index) 
   let local = corners[vertexIndex];
   let layer = particleIndex % 2u;
   let depthEnabled = options.depthMode == 1u;
-  let sizeScale = select(1.0, select(1.45, 0.72, layer == 1u), depthEnabled);
+  let sizeScale = select(1.0, select(1.45, mix(0.72, 1.18, options.focusMix), layer == 1u), depthEnabled);
   let blurAmount = select(0.0, select(options.focusMix, 1.0 - options.focusMix, layer == 1u), depthEnabled);
+  let blurSpread = 1.0 + 1.8 * blurAmount;
   let center = (particle.posVel.xy + options.cameraOffset) * options.zoom;
-  let radius = max(0.7, options.particleSize * options.zoom * 0.5) * sizeScale * select(1.0, 2.4, depthEnabled);
+  let radius = max(0.7, options.particleSize * options.zoom * 0.5) * sizeScale * blurSpread;
   let pixel = center + local * radius;
   let clip = vec2f(pixel.x / options.viewport.x * 2.0 - 1.0, 1.0 - pixel.y / options.viewport.y * 2.0);
   var out: VertexOutput;
   out.position = vec4f(clip, 0.0, 1.0);
   out.local = local;
-  out.color = palette[u32(particle.attributes.x)].xyz * select(1.0, select(1.0, 0.78, layer == 1u), depthEnabled);
+  let baseColor = palette[u32(particle.attributes.x)].xyz;
+  let nearColor = mix(baseColor, vec3f(0.75), 0.7 * options.focusMix);
+  let farColor = baseColor * mix(0.72, 1.08, options.focusMix);
+  out.color = select(baseColor, select(nearColor, farColor, layer == 1u), depthEnabled);
   out.blurAmount = blurAmount;
-  out.opacity = select(1.0, select(1.0, 0.9, layer == 1u), depthEnabled);
-  out.sharpRadius = select(1.0, 1.0 / 2.4, depthEnabled);
+  out.opacity = select(1.0, select(1.0, mix(0.82, 1.0, options.focusMix), layer == 1u), depthEnabled);
+  out.sharpRadius = 1.0 / blurSpread;
   out.nearLayer = select(0.0, 1.0, depthEnabled && layer == 0u);
   return out;
 }
@@ -229,8 +233,8 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32, @builtin(instance_index) 
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4f {
   let distanceSquared = dot(input.local, input.local);
   let sharp = select(0.0, input.opacity, distanceSquared <= input.sharpRadius * input.sharpRadius);
-  // The near layer remains an occluder even while out of focus.
-  let soft = mix(0.32, 0.9, input.nearLayer) * exp(-distanceSquared * 4.0);
+  // The pale near layer still partially occludes the focused far layer.
+  let soft = mix(0.24, 0.58, input.nearLayer) * exp(-distanceSquared * 3.2);
   let alpha = mix(sharp, soft, input.blurAmount);
   if (alpha < 0.004) { discard; }
   return vec4f(input.color, alpha);
