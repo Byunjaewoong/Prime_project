@@ -242,7 +242,7 @@ export class AtomsGPU {
       this.format = navigator.gpu.getPreferredCanvasFormat();
       this.configureCanvas();
       this.createPipelines();
-      this.rebuildBuffers();
+      this.rebuildBuffers(true);
       this.ready = true;
       return true;
     } catch (error) {
@@ -287,7 +287,14 @@ export class AtomsGPU {
     });
   }
 
-  private rebuildBuffers() {
+  private getNormalizedViewCenter() {
+    return {
+      x: (this.viewportW * 0.5 / this.zoom - this.offsetX) / this.worldW,
+      y: (this.viewportH * 0.5 / this.zoom - this.offsetY) / this.worldH,
+    };
+  }
+
+  private rebuildBuffers(resetView = false, preservedCenter = this.getNormalizedViewCenter()) {
     if (!this.device || !this.clearPipeline || !this.renderPipeline) return;
     for (const buffer of this.particleBuffers) buffer.destroy();
     this.cellCountsBuffer?.destroy();
@@ -298,9 +305,16 @@ export class AtomsGPU {
     const scale = Math.sqrt(Math.max(1, this.particleCount / 1000));
     this.worldW = this.viewportW * scale;
     this.worldH = this.viewportH * scale;
-    this.zoom = 1 / scale;
-    this.offsetX = 0;
-    this.offsetY = 0;
+    if (resetView) {
+      this.zoom = 1 / scale;
+      this.offsetX = 0;
+      this.offsetY = 0;
+    } else {
+      const centerX = preservedCenter.x * this.worldW;
+      const centerY = preservedCenter.y * this.worldH;
+      this.offsetX = this.viewportW * 0.5 / this.zoom - centerX;
+      this.offsetY = this.viewportH * 0.5 / this.zoom - centerY;
+    }
     this.gridCols = Math.max(1, Math.floor(this.worldW / this.currentMaxRadius));
     this.gridRows = Math.max(1, Math.floor(this.worldH / this.currentMaxRadius));
     const cellCount = this.gridCols * this.gridRows;
@@ -454,6 +468,8 @@ export class AtomsGPU {
       friction: this.friction,
       particleSize: this.particleSize,
       zoom: this.zoom,
+      viewX: this.offsetX,
+      viewY: this.offsetY,
       fps: this.fps,
       gpu: this.ready ? 1 : 0,
       gpuFailed: this.failed ? 1 : 0,
@@ -516,10 +532,13 @@ export class AtomsGPU {
   }
 
   resize(width: number, height: number) {
+    const centerX = this.viewportW * 0.5 / this.zoom - this.offsetX;
+    const centerY = this.viewportH * 0.5 / this.zoom - this.offsetY;
     this.viewportW = width;
     this.viewportH = height;
+    this.offsetX = this.viewportW * 0.5 / this.zoom - centerX;
+    this.offsetY = this.viewportH * 0.5 / this.zoom - centerY;
     this.configureCanvas();
-    if (this.ready) this.rebuildBuffers();
   }
 
   destroy() {
