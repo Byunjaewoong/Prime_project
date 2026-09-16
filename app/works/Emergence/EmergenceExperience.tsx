@@ -76,6 +76,65 @@ function LeniaPhaseChart({ params }: { params: Record<string, number> }) {
   );
 }
 
+// Touch sliders wait for a deliberate horizontal drag. Vertical gestures can
+// therefore scroll the panel without changing a parameter on touch-down.
+function AtomTouchSlider({ label, value, min, max, step, onChange }: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (value: number) => void;
+}) {
+  const gesture = useRef<{ pointerId: number; x: number; y: number; value: number; dragging: boolean } | null>(null);
+  const update = (next: number) => {
+    const stepped = min + Math.round((next - min) / step) * step;
+    const clamped = Math.max(min, Math.min(max, Number(stepped.toFixed(5))));
+    if (clamped !== value) onChange(clamped);
+  };
+
+  return (
+    <div
+      role="slider"
+      tabIndex={0}
+      aria-label={label}
+      aria-orientation="horizontal"
+      aria-valuemin={min}
+      aria-valuemax={max}
+      aria-valuenow={value}
+      style={{ position: "relative", width: "100%", height: 28, touchAction: "pan-y", cursor: "ew-resize", userSelect: "none" }}
+      onPointerDown={(e) => {
+        if (!e.isPrimary) return;
+        gesture.current = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, value, dragging: false };
+      }}
+      onPointerMove={(e) => {
+        const start = gesture.current;
+        if (!start || start.pointerId !== e.pointerId) return;
+        const dx = e.clientX - start.x;
+        const dy = e.clientY - start.y;
+        if (!start.dragging) {
+          if (Math.abs(dx) < 12 || Math.abs(dx) <= Math.abs(dy) * 1.25) return;
+          start.dragging = true;
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }
+        update(start.value + dx / e.currentTarget.getBoundingClientRect().width * (max - min));
+      }}
+      onPointerUp={() => { gesture.current = null; }}
+      onPointerCancel={() => { gesture.current = null; }}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowLeft" || e.key === "ArrowDown") { e.preventDefault(); update(value - step); }
+        if (e.key === "ArrowRight" || e.key === "ArrowUp") { e.preventDefault(); update(value + step); }
+        if (e.key === "Home") { e.preventDefault(); update(min); }
+        if (e.key === "End") { e.preventDefault(); update(max); }
+      }}
+    >
+      <span style={{ position: "absolute", top: 13, left: 0, right: 0, height: 3, borderRadius: 2, background: "rgba(255,255,255,0.28)" }} />
+      <span style={{ position: "absolute", top: 13, left: 0, width: `${(value - min) / (max - min) * 100}%`, height: 3, borderRadius: 2, background: "#aef" }} />
+      <span style={{ position: "absolute", top: 7, left: `clamp(0px, calc(${(value - min) / (max - min) * 100}% - 7px), calc(100% - 14px))`, width: 14, height: 14, borderRadius: "50%", background: "#aef", boxShadow: "0 0 0 2px rgba(12,19,34,0.9)" }} />
+    </div>
+  );
+}
+
 const SIMS: {
   type: SimType;
   label: string;
@@ -655,25 +714,22 @@ export default function EmergenceExperience() {
                       </div>
                       {controls.map(({ key, label, min, max, step, decimals }) => {
                         const value = atomParams[key] ?? min;
+                        const update = (next: number) => {
+                          appRef.current?.setSimParam(key, next);
+                          setAtomParams(prev => prev ? { ...prev, [key]: next } : prev);
+                        };
                         return (
-                          <label key={key} style={{ display: "block", marginBottom: 10 }}>
+                          <label key={key} style={{ display: "block", marginBottom: 10, paddingInline: 18, boxSizing: "border-box" }}>
                             <span style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginBottom: 4 }}>
                               <span style={{ opacity: 0.5 }}>{label}</span>
                               <span style={{ color: "#aef", fontFamily: "monospace" }}>{value.toFixed(decimals)}</span>
                             </span>
-                            <input
-                              type="range"
-                              min={min}
-                              max={max}
-                              step={step}
-                              value={value}
-                              style={{ width: "100%", accentColor: "#aef" }}
-                              onChange={(e) => {
-                                const next = Number(e.target.value);
-                                appRef.current?.setSimParam(key, next);
-                                setAtomParams(prev => prev ? { ...prev, [key]: next } : prev);
-                              }}
-                            />
+                            {isTouchDevice ? (
+                              <AtomTouchSlider label={label} value={value} min={min} max={max} step={step} onChange={update} />
+                            ) : (
+                              <input type="range" aria-label={label} min={min} max={max} step={step} value={value}
+                                style={{ width: "100%", accentColor: "#aef" }} onChange={(e) => update(Number(e.target.value))} />
+                            )}
                           </label>
                         );
                       })}
