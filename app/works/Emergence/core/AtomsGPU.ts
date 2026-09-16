@@ -34,7 +34,7 @@ struct Options {
   dtScale: f32,
   particleSize: f32,
   zoom: f32,
-  optionPad: vec2f,
+  worldOrigin: vec2f,
   cameraOffset: vec2f,
   cameraPad: vec2f,
 }
@@ -57,7 +57,8 @@ fn fillBins(@builtin(global_invocation_id) id: vec3u) {
   if (id.x >= options.particleCount) { return; }
   let p = inputParticles[id.x];
   let cellSize = options.world / vec2f(f32(options.gridCols), f32(options.gridRows));
-  let cell = min(vec2u(p.posVel.xy / cellSize), vec2u(options.gridCols - 1u, options.gridRows - 1u));
+  let relativePosition = (p.posVel.xy - options.worldOrigin + options.world) % options.world;
+  let cell = min(vec2u(relativePosition / cellSize), vec2u(options.gridCols - 1u, options.gridRows - 1u));
   let cellIndex = cell.x + cell.y * options.gridCols;
   let slot = atomicAdd(&cellCounts[cellIndex], 1u);
   if (slot < options.bucketCapacity) {
@@ -89,18 +90,20 @@ fn simulate(@builtin(global_invocation_id) id: vec3u) {
   let position = particle.posVel.xy;
   let velocity = particle.posVel.zw;
   let particleType = u32(particle.attributes.x);
-  if (position.x >= options.world.x || position.y >= options.world.y) {
+  let worldMax = options.worldOrigin + options.world;
+  if (position.x < options.worldOrigin.x || position.y < options.worldOrigin.y || position.x >= worldMax.x || position.y >= worldMax.y) {
     let worldSeed = bitcast<u32>(options.world.x) ^ bitcast<u32>(options.world.y);
     let nextPosition = vec2f(
-      hash01(id.x ^ worldSeed) * options.world.x,
-      hash01((id.x + 1u) ^ (worldSeed * 1664525u)) * options.world.y,
+      options.worldOrigin.x + hash01(id.x ^ worldSeed) * options.world.x,
+      options.worldOrigin.y + hash01((id.x + 1u) ^ (worldSeed * 1664525u)) * options.world.y,
     );
     outputParticles[id.x].posVel = vec4f(nextPosition, vec2f(0.0));
     outputParticles[id.x].attributes = particle.attributes;
     return;
   }
   let cellSize = options.world / vec2f(f32(options.gridCols), f32(options.gridRows));
-  let baseCell = min(vec2u(position / cellSize), vec2u(options.gridCols - 1u, options.gridRows - 1u));
+  let relativePosition = position - options.worldOrigin;
+  let baseCell = min(vec2u(relativePosition / cellSize), vec2u(options.gridCols - 1u, options.gridRows - 1u));
   var totalForce = vec2f(0.0);
 
   for (var oy = -1; oy <= 1; oy++) {
@@ -132,7 +135,8 @@ fn simulate(@builtin(global_invocation_id) id: vec3u) {
 
   let nextVelocity = (velocity + totalForce * options.forceFactor * options.dtScale) * options.frictionMultiplier;
   var nextPosition = position + nextVelocity * options.dtScale;
-  nextPosition = (nextPosition % options.world + options.world) % options.world;
+  nextPosition = (nextPosition - options.worldOrigin) % options.world;
+  nextPosition = (nextPosition + options.world) % options.world + options.worldOrigin;
   outputParticles[id.x].posVel = vec4f(nextPosition, nextVelocity);
   outputParticles[id.x].attributes = particle.attributes;
 }
@@ -144,7 +148,7 @@ struct Options {
   particleCount: u32, gridCols: u32, gridRows: u32, bucketCapacity: u32,
   world: vec2f, viewport: vec2f,
   forceFactor: f32, repel: f32, frictionMultiplier: f32, dtScale: f32,
-  particleSize: f32, zoom: f32, optionPad: vec2f,
+  particleSize: f32, zoom: f32, worldOrigin: vec2f,
   cameraOffset: vec2f, cameraPad: vec2f,
 }
 @group(0) @binding(0) var<storage, read> particles: array<Particle>;
@@ -198,6 +202,8 @@ export class AtomsGPU {
   private viewportH: number;
   private worldW: number;
   private worldH: number;
+  private worldOriginX = 0;
+  private worldOriginY = 0;
   private baseWorldW: number;
   private baseWorldH: number;
   private particleCount = DEFAULT_PARTICLE_COUNT;
@@ -323,6 +329,8 @@ export class AtomsGPU {
     const scale = Math.sqrt(DEFAULT_PARTICLE_COUNT / 1000);
     this.worldW = this.viewportW * scale;
     this.worldH = this.viewportH * scale;
+    this.worldOriginX = 0;
+    this.worldOriginY = 0;
     this.baseWorldW = this.worldW;
     this.baseWorldH = this.worldH;
     this.zoom = 1 / scale;
@@ -411,8 +419,8 @@ export class AtomsGPU {
     const added = new Float32Array((end - start) * 8);
     for (let i = 0; i < end - start; i++) {
       const offset = i * 8;
-      added[offset] = Math.random() * this.worldW;
-      added[offset + 1] = Math.random() * this.worldH;
+      added[offset] = this.worldOriginX + Math.random() * this.worldW;
+      added[offset + 1] = this.worldOriginY + Math.random() * this.worldH;
       added[offset + 4] = Math.floor(Math.random() * TYPE_COUNT);
     }
     for (const buffer of this.particleBuffers) {
@@ -450,6 +458,8 @@ export class AtomsGPU {
     view.setFloat32(44, dtScale, true);
     view.setFloat32(48, this.particleSize, true);
     view.setFloat32(52, this.zoom, true);
+    view.setFloat32(56, this.worldOriginX, true);
+    view.setFloat32(60, this.worldOriginY, true);
     view.setFloat32(64, this.offsetX, true);
     view.setFloat32(68, this.offsetY, true);
     this.device.queue.writeBuffer(this.optionsBuffer, 0, data);
@@ -578,11 +588,11 @@ export class AtomsGPU {
     const visibleW = this.viewportW / this.zoom;
     const visibleH = this.viewportH / this.zoom;
     this.offsetX = visibleW >= this.worldW
-      ? (visibleW - this.worldW) * 0.5
-      : Math.max(visibleW - this.worldW, Math.min(0, this.offsetX));
+      ? (visibleW - this.worldW) * 0.5 - this.worldOriginX
+      : Math.max(visibleW - this.worldW - this.worldOriginX, Math.min(-this.worldOriginX, this.offsetX));
     this.offsetY = visibleH >= this.worldH
-      ? (visibleH - this.worldH) * 0.5
-      : Math.max(visibleH - this.worldH, Math.min(0, this.offsetY));
+      ? (visibleH - this.worldH) * 0.5 - this.worldOriginY
+      : Math.max(visibleH - this.worldH - this.worldOriginY, Math.min(-this.worldOriginY, this.offsetY));
   }
 
   private zoomCamera(x: number, y: number, scale: number): boolean {
@@ -599,11 +609,17 @@ export class AtomsGPU {
 
   private setWorldScale(value: number) {
     const scale = Math.max(MIN_WORLD_SCALE, Math.min(MAX_WORLD_SCALE, value));
-    this.worldW = this.baseWorldW * scale;
-    this.worldH = this.baseWorldH * scale;
+    this.resizeWorldAroundCenter(this.baseWorldW * scale, this.baseWorldH * scale);
     this.updateSpatialGrid();
     this.zoom = Math.max(this.zoom, this.minimumCameraZoom());
     this.clampCameraOffset();
+  }
+
+  private resizeWorldAroundCenter(width: number, height: number) {
+    this.worldOriginX -= (width - this.worldW) * 0.5;
+    this.worldOriginY -= (height - this.worldH) * 0.5;
+    this.worldW = width;
+    this.worldH = height;
   }
 
   private resizeWorldFromWheel(x: number, y: number, zoomScale: number): boolean {
@@ -615,8 +631,10 @@ export class AtomsGPU {
     );
     const appliedZoomScale = oldWorldScale / nextWorldScale;
     const oldZoom = this.zoom;
-    this.worldW = this.baseWorldW * nextWorldScale;
-    this.worldH = this.baseWorldH * nextWorldScale;
+    this.resizeWorldAroundCenter(
+      this.baseWorldW * nextWorldScale,
+      this.baseWorldH * nextWorldScale,
+    );
     this.updateSpatialGrid();
     this.zoom = Math.max(this.minimumCameraZoom(), Math.min(5, oldZoom * appliedZoomScale));
     const ratio = this.zoom / oldZoom;

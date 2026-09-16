@@ -18,6 +18,8 @@ interface Atom {
 export class AtomsCPU implements Simulation {
   private w: number;
   private h: number;
+  private worldOriginX = 0;
+  private worldOriginY = 0;
   private baseW: number;
   private baseH: number;
   private viewportW: number;
@@ -70,7 +72,10 @@ export class AtomsCPU implements Simulation {
     this.currentMaxRadius = largestRadius;
   }
 
-  private createAtom(x = Math.random() * this.w, y = Math.random() * this.h): Atom {
+  private createAtom(
+    x = this.worldOriginX + Math.random() * this.w,
+    y = this.worldOriginY + Math.random() * this.h,
+  ): Atom {
     return { x, y, vx: 0, vy: 0, type: Math.floor(Math.random() * TYPE_COUNT) };
   }
 
@@ -102,8 +107,8 @@ export class AtomsCPU implements Simulation {
 
     for (let i = 0; i < this.atoms.length; i++) {
       const atom = this.atoms[i];
-      const cx = Math.min(columns - 1, Math.floor(atom.x / cellSize));
-      const cy = Math.min(rows - 1, Math.floor(atom.y / cellSize));
+      const cx = Math.min(columns - 1, Math.floor((atom.x - this.worldOriginX) / cellSize));
+      const cy = Math.min(rows - 1, Math.floor((atom.y - this.worldOriginY) / cellSize));
       const key = cx + cy * columns;
       const bucket = cells.get(key);
       if (bucket) bucket.push(i);
@@ -116,8 +121,8 @@ export class AtomsCPU implements Simulation {
 
     for (let i = 0; i < this.atoms.length; i++) {
       const atom = this.atoms[i];
-      const cx = Math.min(columns - 1, Math.floor(atom.x / cellSize));
-      const cy = Math.min(rows - 1, Math.floor(atom.y / cellSize));
+      const cx = Math.min(columns - 1, Math.floor((atom.x - this.worldOriginX) / cellSize));
+      const cy = Math.min(rows - 1, Math.floor((atom.y - this.worldOriginY) / cellSize));
       let forceX = 0;
       let forceY = 0;
       const visited = new Set<number>();
@@ -168,8 +173,8 @@ export class AtomsCPU implements Simulation {
       const atom = this.atoms[i];
       atom.vx = nextVX[i];
       atom.vy = nextVY[i];
-      atom.x = (atom.x + atom.vx + this.w) % this.w;
-      atom.y = (atom.y + atom.vy + this.h) % this.h;
+      atom.x = ((atom.x + atom.vx - this.worldOriginX) % this.w + this.w) % this.w + this.worldOriginX;
+      atom.y = ((atom.y + atom.vy - this.worldOriginY) % this.h + this.h) % this.h + this.worldOriginY;
     }
   }
 
@@ -269,8 +274,8 @@ export class AtomsCPU implements Simulation {
       const angle = Math.random() * Math.PI * 2;
       const radius = Math.sqrt(Math.random()) * 24;
       this.atoms.push(this.createAtom(
-        (world.x + Math.cos(angle) * radius + this.w) % this.w,
-        (world.y + Math.sin(angle) * radius + this.h) % this.h,
+        ((world.x + Math.cos(angle) * radius - this.worldOriginX) % this.w + this.w) % this.w + this.worldOriginX,
+        ((world.y + Math.sin(angle) * radius - this.worldOriginY) % this.h + this.h) % this.h + this.worldOriginY,
       ));
     }
   }
@@ -283,11 +288,11 @@ export class AtomsCPU implements Simulation {
     const visibleW = this.viewportW / this.zoom;
     const visibleH = this.viewportH / this.zoom;
     this.offsetX = visibleW >= this.w
-      ? (visibleW - this.w) * 0.5
-      : Math.max(visibleW - this.w, Math.min(0, this.offsetX));
+      ? (visibleW - this.w) * 0.5 - this.worldOriginX
+      : Math.max(visibleW - this.w - this.worldOriginX, Math.min(-this.worldOriginX, this.offsetX));
     this.offsetY = visibleH >= this.h
-      ? (visibleH - this.h) * 0.5
-      : Math.max(visibleH - this.h, Math.min(0, this.offsetY));
+      ? (visibleH - this.h) * 0.5 - this.worldOriginY
+      : Math.max(visibleH - this.h - this.worldOriginY, Math.min(-this.worldOriginY, this.offsetY));
   }
 
   private zoomCamera(x: number, y: number, scale: number): boolean {
@@ -304,11 +309,20 @@ export class AtomsCPU implements Simulation {
 
   private setWorldScale(value: number) {
     const scale = Math.max(MIN_WORLD_SCALE, Math.min(MAX_WORLD_SCALE, value));
-    this.w = this.baseW * scale;
-    this.h = this.baseH * scale;
+    const nextW = this.baseW * scale;
+    const nextH = this.baseH * scale;
+    this.worldOriginX -= (nextW - this.w) * 0.5;
+    this.worldOriginY -= (nextH - this.h) * 0.5;
+    this.w = nextW;
+    this.h = nextH;
     for (let i = 0; i < this.atoms.length; i++) {
       const atom = this.atoms[i];
-      if (atom.x >= this.w || atom.y >= this.h) this.atoms[i] = this.createAtom();
+      if (
+        atom.x < this.worldOriginX ||
+        atom.y < this.worldOriginY ||
+        atom.x >= this.worldOriginX + this.w ||
+        atom.y >= this.worldOriginY + this.h
+      ) this.atoms[i] = this.createAtom();
     }
     this.zoom = Math.max(this.zoom, this.minimumCameraZoom());
     this.clampCameraOffset();
