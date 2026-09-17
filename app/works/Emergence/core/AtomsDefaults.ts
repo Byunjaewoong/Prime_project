@@ -7,7 +7,7 @@ export const DESKTOP_ATOM_DEFAULTS = {
 export const MOBILE_ATOM_DEFAULTS = {
   particleCount: 30000,
   worldScale: 1.1,
-  friction: 2.0,
+  friction: 0.2,
 } as const;
 
 export type AtomDefaults = {

@@ -548,7 +548,7 @@ export class AtomsGPU {
     const dtScale = Math.max(0.25, Math.min(3, delta * 60));
     view.setFloat32(32, this.forceFactor, true);
     view.setFloat32(36, this.repel, true);
-    view.setFloat32(40, Math.exp(-this.friction * dtScale), true);
+    view.setFloat32(40, Math.pow(1 - this.friction, dtScale), true);
     view.setFloat32(44, dtScale, true);
     view.setFloat32(48, this.particleSize, true);
     view.setFloat32(52, this.zoom, true);

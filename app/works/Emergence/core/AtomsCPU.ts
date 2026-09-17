@@ -153,7 +153,7 @@ export class AtomsCPU implements Simulation {
 
     const nextVX = new Float32Array(this.atoms.length);
     const nextVY = new Float32Array(this.atoms.length);
-    const frictionMultiplier = Math.exp(-this.friction);
+    const frictionMultiplier = 1 - this.friction;
 
     for (let i = 0; i < this.atoms.length; i++) {
       const atom = this.atoms[i];
