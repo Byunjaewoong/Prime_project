@@ -17,6 +17,8 @@ export class Atoms implements Simulation {
     const defaults = window.matchMedia("(pointer: coarse)").matches
       ? MOBILE_ATOM_DEFAULTS
       : DESKTOP_ATOM_DEFAULTS;
+    this.depthMode = defaults.depthMode;
+    this.focusLayer = defaults.focusLayer;
     this.gpu = new AtomsGPU(gpuCanvas, w, h, defaults);
     gpuCanvas.style.display = "block";
     void this.gpu.init().then(supported => {

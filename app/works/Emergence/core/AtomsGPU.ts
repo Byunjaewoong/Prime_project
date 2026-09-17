@@ -309,6 +309,9 @@ export class AtomsGPU {
     this.particleCount = defaults.particleCount;
     this.requestedParticleCount = defaults.particleCount;
     this.friction = defaults.friction;
+    this.depthMode = defaults.depthMode;
+    this.focusLayer = defaults.focusLayer;
+    this.focusMix = defaults.focusLayer;
     this.viewportW = width;
     this.viewportH = height;
     this.worldW = width;

@@ -60,6 +60,9 @@ export class AtomsCPU implements Simulation {
     this.viewportH = h;
     this.zoom = 1 / defaults.worldScale;
     this.friction = defaults.friction;
+    this.depthMode = defaults.depthMode;
+    this.focusLayer = defaults.focusLayer;
+    this.focusMix = defaults.focusLayer;
     this.randomiseInteractions();
     this.setParticleCount(defaults.particleCount);
   }
