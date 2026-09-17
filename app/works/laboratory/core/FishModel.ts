@@ -1,19 +1,25 @@
 import * as THREE from "three";
+import { VeilFins } from "./VeilFins";
 
-const BODY_LENGTH = 2.25;
+const BODY_LENGTH = 1.85;
 const SECTIONS = 42;
 const ACROSS = 12;
 
 function headPath(time: number) {
-  const angle = time * 0.52 + 1.0;
+  // Incommensurate, gently modulated curves avoid a constant circular orbit.
+  // The resulting changes of heading and speed also drive the veil's drag.
+  const angle = time * 0.46 + 0.5 * Math.sin(time * 0.23) + 0.19 * Math.sin(time * 0.79);
+  const radius = 1.16 + 0.16 * Math.sin(time * 0.37 + 0.6);
   return new THREE.Vector2(
-    1.45 * Math.cos(angle) + 0.12 * Math.cos(angle * 3 + 0.5),
-    1.45 * Math.sin(angle) + 0.10 * Math.sin(angle * 2),
+    radius * Math.cos(angle) + 0.11 * Math.sin(time * 0.57 + 0.4),
+    0.9 * radius * Math.sin(angle) + 0.13 * Math.sin(time * 0.71 + 1.4),
   );
 }
 
+export type FishStyle = "classic" | "veil";
+
 function bodyWidth(u: number) {
-  return 0.035 + 0.38 * Math.pow(Math.max(0, Math.sin(Math.PI * u)), 0.72) * (1 - u * 0.32);
+  return 0.025 + 0.3 * Math.pow(Math.max(0, Math.sin(Math.PI * u)), 0.72) * (1 - u * 0.3);
 }
 
 function finGeometry() {
@@ -43,9 +49,12 @@ export class FishModel {
   private bodyPositions = new Float32Array((SECTIONS + 1) * (ACROSS + 1) * 3);
   private edgeGeometries: THREE.BufferGeometry[] = [];
   private edgePositions: Float32Array[] = [];
+  private edgeMaterials: THREE.LineBasicMaterial[] = [];
   private leftFin = new THREE.Mesh(finGeometry());
   private rightFin = new THREE.Mesh(finGeometry());
   private tail = new THREE.Mesh(tailGeometry());
+  private veil = new VeilFins();
+  private bodyMaterial = new THREE.MeshBasicMaterial({ color: 0x20c7c1, side: THREE.DoubleSide });
   private materials: THREE.Material[] = [];
 
   constructor() {
@@ -59,9 +68,8 @@ export class FishModel {
     }
     this.bodyGeometry.setAttribute("position", new THREE.BufferAttribute(this.bodyPositions, 3));
     this.bodyGeometry.setIndex(indices);
-    const bodyMaterial = new THREE.MeshBasicMaterial({ color: 0x20c7c1, side: THREE.DoubleSide });
-    this.materials.push(bodyMaterial);
-    this.group.add(new THREE.Mesh(this.bodyGeometry, bodyMaterial));
+    this.materials.push(this.bodyMaterial);
+    this.group.add(new THREE.Mesh(this.bodyGeometry, this.bodyMaterial));
 
     for (let side = 0; side < 2; side++) {
       const positions = new Float32Array((SECTIONS + 1) * 3);
@@ -69,6 +77,7 @@ export class FishModel {
       geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
       const material = new THREE.LineBasicMaterial({ color: side === 0 ? 0x4ff6e2 : 0x288bc7, transparent: true, opacity: 0.86 });
       this.materials.push(material);
+      this.edgeMaterials.push(material);
       this.edgeGeometries.push(geometry);
       this.edgePositions.push(positions);
       this.group.add(new THREE.Line(geometry, material));
@@ -85,9 +94,22 @@ export class FishModel {
     this.materials.push(tailMaterial);
     this.tail.material = tailMaterial;
     this.group.add(this.tail);
+    this.veil.group.visible = false;
+    this.group.add(this.veil.group);
 
     this.rebuildHistory(0);
     this.update(0);
+  }
+
+  setStyle(style: FishStyle) {
+    const veil = style === "veil";
+    this.leftFin.visible = !veil;
+    this.rightFin.visible = !veil;
+    this.tail.visible = !veil;
+    this.veil.group.visible = veil;
+    this.bodyMaterial.color.setHex(veil ? 0x21548e : 0x20c7c1);
+    this.edgeMaterials[0].color.setHex(veil ? 0x4c94b8 : 0x4ff6e2);
+    this.edgeMaterials[1].color.setHex(veil ? 0x174275 : 0x288bc7);
   }
 
   private rebuildHistory(time: number) {
@@ -153,6 +175,11 @@ export class FishModel {
     this.bodyGeometry.attributes.position.needsUpdate = true;
     for (const geometry of this.edgeGeometries) geometry.attributes.position.needsUpdate = true;
 
+    if (this.veil.group.visible) {
+      const speed = headPath(time + 0.025).distanceTo(headPath(time - 0.025)) / 0.05;
+      this.veil.update(time, spine, tangent, normal, bodyWidth, speed);
+    }
+
     const finSection = 12;
     const finWidth = bodyWidth(finSection / SECTIONS);
     const headAngle = Math.atan2(tangent[0].y, tangent[0].x);
@@ -175,6 +202,7 @@ export class FishModel {
     this.rightFin.geometry.dispose();
     this.tail.geometry.dispose();
     for (const geometry of this.edgeGeometries) geometry.dispose();
+    this.veil.dispose();
     for (const material of this.materials) material.dispose();
   }
 }
