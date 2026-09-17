@@ -633,7 +633,7 @@ export default function EmergenceExperience() {
                   const colors = Array.from({ length: atomParams.colors ?? 5 }, (_, index) =>
                     atomColorCss(atomParams[`color_${index}`] ?? INITIAL_ATOM_COLORS[index]));
                   const controls = [
-                    { key: "particles", label: "particle number", min: 16, max: 300000, step: 16, decimals: 0 },
+                    { key: "particles", label: "particle number", min: 16, max: 300000, step: 8, decimals: 0 },
                     { key: "colors", label: "color types", min: 1, max: MAX_COLOR_TYPES, step: 1, decimals: 0 },
                     ...(isTouchDevice ? [{ key: "worldScale", label: "world size", min: 0.5, max: 4, step: 0.05, decimals: 2 }] : []),
                     { key: "repel", label: "repel force", min: 0.01, max: 4, step: 0.01, decimals: 2 },

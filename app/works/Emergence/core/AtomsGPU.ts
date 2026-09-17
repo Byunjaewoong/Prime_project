@@ -1,7 +1,8 @@
 /// <reference types="@webgpu/types" />
 import { DEFAULT_COLOR_TYPES, INITIAL_ATOM_COLORS, MAX_COLOR_TYPES, randomAtomPalette } from "./AtomPalette";
+import { DEFAULT_ATOM_PARTICLE_COUNT, DEFAULT_ATOM_WORLD_SCALE } from "./AtomsDefaults";
 
-const DEFAULT_PARTICLE_COUNT = 60000;
+const DEFAULT_PARTICLE_COUNT = DEFAULT_ATOM_PARTICLE_COUNT;
 const MAX_PARTICLE_COUNT = 300000;
 const TYPE_COUNT = MAX_COLOR_TYPES;
 const BUCKET_CAPACITY = 128;
@@ -389,13 +390,13 @@ export class AtomsGPU {
     this.paletteBuffer?.destroy();
 
     const scale = Math.sqrt(DEFAULT_PARTICLE_COUNT / 1000);
-    this.worldW = this.viewportW * scale;
-    this.worldH = this.viewportH * scale;
+    this.worldW = this.viewportW * scale * DEFAULT_ATOM_WORLD_SCALE;
+    this.worldH = this.viewportH * scale * DEFAULT_ATOM_WORLD_SCALE;
     this.worldOriginX = 0;
     this.worldOriginY = 0;
-    this.baseWorldW = this.worldW;
-    this.baseWorldH = this.worldH;
-    this.zoom = 1 / scale;
+    this.baseWorldW = this.viewportW * scale;
+    this.baseWorldH = this.viewportH * scale;
+    this.zoom = 1 / (scale * DEFAULT_ATOM_WORLD_SCALE);
     this.offsetX = 0;
     this.offsetY = 0;
 
@@ -656,7 +657,7 @@ export class AtomsGPU {
 
   setParam(key: string, value: number) {
     if (key === "particles") {
-      this.requestedParticleCount = Math.max(16, Math.min(MAX_PARTICLE_COUNT, Math.round(value / 16) * 16));
+      this.requestedParticleCount = Math.max(16, Math.min(MAX_PARTICLE_COUNT, Math.round(value / 8) * 8));
       if (this.particleCountTimer) clearTimeout(this.particleCountTimer);
       this.particleCountTimer = setTimeout(() => {
         const previousCount = this.particleCount;

@@ -1,0 +1,2 @@
+export const DEFAULT_ATOM_PARTICLE_COUNT = 15000;
+export const DEFAULT_ATOM_WORLD_SCALE = 0.5;

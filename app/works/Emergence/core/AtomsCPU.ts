@@ -1,9 +1,11 @@
 import { Simulation } from "./types";
 import { atomColorCss, DEFAULT_COLOR_TYPES, INITIAL_ATOM_COLORS, MAX_COLOR_TYPES, randomAtomPalette } from "./AtomPalette";
+import { DEFAULT_ATOM_PARTICLE_COUNT, DEFAULT_ATOM_WORLD_SCALE } from "./AtomsDefaults";
 
-const DEFAULT_PARTICLE_COUNT = 1000;
+const DEFAULT_PARTICLE_COUNT = DEFAULT_ATOM_PARTICLE_COUNT;
 const MAX_PARTICLE_COUNT = 20000;
 const TYPE_COUNT = MAX_COLOR_TYPES;
+const MAX_SAMPLES_PER_CELL = 8;
 const MIN_WORLD_SCALE = 0.5;
 const MAX_WORLD_SCALE = 4;
 
@@ -26,6 +28,7 @@ export class AtomsCPU implements Simulation {
   private viewportH: number;
   private atoms: Atom[] = [];
   private stepAcc = 0;
+  private sampleFrame = 0;
 
   private repel = 1;
   private forceFactor = 0.18;
@@ -42,7 +45,7 @@ export class AtomsCPU implements Simulation {
   private maxRadiusMatrix = this.makeMatrix(100);
   private currentMaxRadius = 100;
 
-  private zoom = 1;
+  private zoom = 1 / DEFAULT_ATOM_WORLD_SCALE;
   private offsetX = 0;
   private offsetY = 0;
   private dragging = false;
@@ -50,8 +53,8 @@ export class AtomsCPU implements Simulation {
   private lastPointerY = 0;
 
   constructor(w: number, h: number) {
-    this.w = w;
-    this.h = h;
+    this.w = w * DEFAULT_ATOM_WORLD_SCALE;
+    this.h = h * DEFAULT_ATOM_WORLD_SCALE;
     this.baseW = w;
     this.baseH = h;
     this.viewportW = w;
@@ -131,6 +134,7 @@ export class AtomsCPU implements Simulation {
   }
 
   private integrate() {
+    this.sampleFrame++;
     const cellSize = Math.max(1, this.currentMaxRadius);
     const columns = Math.max(1, Math.ceil(this.w / cellSize));
     const rows = Math.max(1, Math.ceil(this.h / cellSize));
@@ -168,7 +172,13 @@ export class AtomsCPU implements Simulation {
           const bucket = cells.get(key);
           if (!bucket) continue;
 
-          for (const j of bucket) {
+          const sampleCount = this.atoms.length > 2000
+            ? Math.min(bucket.length, MAX_SAMPLES_PER_CELL)
+            : bucket.length;
+          const start = sampleCount === bucket.length ? 0 : (i * 17 + this.sampleFrame * 23) % bucket.length;
+          const stride = sampleCount === bucket.length ? 1 : Math.max(1, Math.floor(bucket.length / sampleCount));
+          for (let sample = 0; sample < sampleCount; sample++) {
+            const j = bucket[(start + sample * stride) % bucket.length];
             if (i === j) continue;
             if (this.depthMode && (i & 1) !== (j & 1)) continue;
             const other = this.atoms[j];
