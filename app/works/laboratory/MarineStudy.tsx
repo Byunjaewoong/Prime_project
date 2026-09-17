@@ -78,8 +78,8 @@ export default function MarineStudy({ kind }: MarineStudyProps) {
   }, [jellyfish]);
 
   return (
-    <main style={{ position: "relative", width: "100%", minHeight: "100dvh", overflow: "hidden", color: "#a8bbd2", background: jellyfish ? "radial-gradient(ellipse at 54% 47%, #111722 0%, #080c12 72%, #05080d 100%)" : "radial-gradient(ellipse at 48% 48%, #17151c 0%, #101014 70%, #090a0e 100%)", fontFamily: "var(--font-courier), monospace" }}>
-      <canvas ref={canvasRef} aria-label={jellyfish ? "Animated neon jellyfish drifting under water" : "A single fish swimming from above, its body following its path"} role="img" style={{ display: "block", width: "100%", height: "100dvh", filter: jellyfish ? "drop-shadow(0 0 3px rgba(0,170,255,0.45))" : "drop-shadow(0 0 3px rgba(26,210,202,0.28))" }} />
+    <main style={{ position: "relative", width: "100%", minHeight: "100dvh", overflow: "hidden", color: "#a8bbd2", background: jellyfish ? "radial-gradient(ellipse at 54% 47%, #111722 0%, #080c12 72%, #05080d 100%)" : "#111014", fontFamily: "var(--font-courier), monospace" }}>
+      <canvas ref={canvasRef} aria-label={jellyfish ? "Animated neon jellyfish drifting under water" : "A single flat fish swimming from above, its body following its path"} role="img" style={{ display: "block", width: "100%", height: "100dvh", filter: jellyfish ? "drop-shadow(0 0 3px rgba(0,170,255,0.45))" : undefined }} />
       <div style={{ position: "absolute", inset: "28px 28px auto", display: "flex", justifyContent: "space-between", gap: 20, alignItems: "flex-start", pointerEvents: "none" }}>
         <Link href="/works/laboratory" style={{ color: "inherit", textDecoration: "none", fontSize: 13, opacity: 0.7, pointerEvents: "auto" }}>← Laboratory</Link>
         <div style={{ textAlign: "right", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", opacity: 0.7 }}>
