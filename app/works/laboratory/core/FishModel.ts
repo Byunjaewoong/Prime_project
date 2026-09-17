@@ -1,166 +1,139 @@
 import * as THREE from "three";
 
-const SECTIONS = 52;
-const ACROSS = 16;
-const TAIL_X = -2.05;
-const HEAD_X = 1.85;
+const FISH_COUNT = 480;
+const COLORS = [0x1bc6d7, 0x19bda5, 0xd62290, 0xe33166, 0x28a9cd];
 
-function bodyWidth(u: number) {
-  return (0.09 + 0.72 * Math.pow(Math.sin(Math.PI * u), 0.88)) * (0.8 + u * 0.23);
+type FishSeed = {
+  angle: number;
+  radiusX: number;
+  radiusY: number;
+  speed: number;
+  phase: number;
+  size: number;
+  centerX: number;
+  centerY: number;
+};
+
+function random(seed: number) {
+  const value = Math.sin(seed * 127.1 + 31.7) * 43758.5453;
+  return value - Math.floor(value);
 }
 
-function bodyWave(x: number, time: number) {
-  const strength = Math.pow(Math.max(0, (HEAD_X - x) / (HEAD_X - TAIL_X)), 1.7);
-  return Math.sin(time * 3.8 + x * 1.75) * strength * 0.24;
-}
-
-function finShape(points: [number, number][]) {
+function bodyGeometry() {
   const shape = new THREE.Shape();
-  shape.moveTo(points[0][0], points[0][1]);
-  for (let i = 1; i < points.length; i++) shape.lineTo(points[i][0], points[i][1]);
+  shape.moveTo(-0.42, 0);
+  shape.bezierCurveTo(-0.25, 0.14, 0.02, 0.27, 0.29, 0.21);
+  shape.bezierCurveTo(0.48, 0.16, 0.59, 0.06, 0.6, 0);
+  shape.bezierCurveTo(0.59, -0.06, 0.48, -0.16, 0.29, -0.21);
+  shape.bezierCurveTo(0.02, -0.27, -0.25, -0.14, -0.42, 0);
+  return new THREE.ShapeGeometry(shape, 10);
+}
+
+function tailGeometry() {
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 0);
+  shape.lineTo(-0.2, 0.085);
+  shape.quadraticCurveTo(-0.4, 0.18, -0.66, 0.34);
+  shape.lineTo(-0.53, 0.08);
+  shape.lineTo(-0.43, 0);
+  shape.lineTo(-0.53, -0.08);
+  shape.lineTo(-0.66, -0.34);
+  shape.quadraticCurveTo(-0.4, -0.18, -0.2, -0.085);
   shape.closePath();
-  return new THREE.ShapeGeometry(shape, 12);
+  return new THREE.ShapeGeometry(shape, 8);
+}
+
+function finGeometry() {
+  const upper = new THREE.Shape();
+  upper.moveTo(0.05, 0.16);
+  upper.lineTo(-0.18, 0.34);
+  upper.quadraticCurveTo(-0.13, 0.2, -0.07, 0.12);
+  upper.closePath();
+  const lower = new THREE.Shape();
+  lower.moveTo(0.05, -0.16);
+  lower.lineTo(-0.18, -0.34);
+  lower.quadraticCurveTo(-0.13, -0.2, -0.07, -0.12);
+  lower.closePath();
+  return new THREE.ShapeGeometry([upper, lower], 6);
 }
 
 export class FishModel {
   readonly group = new THREE.Group();
-  private bodyGeometry = new THREE.BufferGeometry();
-  private bodyPositions = new Float32Array((SECTIONS + 1) * (ACROSS + 1) * 3);
-  private tail = new THREE.Group();
-  private leftFin = new THREE.Group();
-  private rightFin = new THREE.Group();
-  private materials: THREE.Material[] = [];
-  private shadowTexture: THREE.CanvasTexture | null = null;
+  private fish: FishSeed[] = [];
+  private body: THREE.InstancedMesh;
+  private tail: THREE.InstancedMesh;
+  private fins: THREE.InstancedMesh;
+  private eye: THREE.InstancedMesh;
+  private dummy = new THREE.Object3D();
 
   constructor() {
-    const indices: number[] = [];
-    const colors = new Float32Array(this.bodyPositions.length);
-    for (let section = 0; section <= SECTIONS; section++) {
-      const u = section / SECTIONS;
-      for (let across = 0; across <= ACROSS; across++) {
-        const v = across / ACROSS * 2 - 1;
-        const k = (section * (ACROSS + 1) + across) * 3;
-        const irregular = Math.sin(u * 54 + v * 8) * 0.15 + Math.sin(u * 108 - v * 15) * 0.07;
-        const headPatch = u > 0.69 + irregular * 0.18 && Math.abs(v) < 0.88;
-        const shoulderPatch = u > 0.40 + irregular * 0.12 && u < 0.58 + irregular * 0.12 && Math.abs(v) < 0.76;
-        const tailPatch = u < 0.19 + irregular * 0.12;
-        const dark = headPatch || shoulderPatch || tailPatch;
-        const edge = Math.abs(v);
-        const ink = dark ? 0.10 + edge * 0.10 + Math.max(0, irregular) * 0.13 : 0.81 - edge * 0.17 + irregular * 0.11;
-        colors[k] = ink;
-        colors[k + 1] = ink + (dark ? 0.01 : 0.005);
-        colors[k + 2] = ink + (dark ? 0.025 : 0.015);
-      }
+    this.body = new THREE.InstancedMesh(bodyGeometry(), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }), FISH_COUNT);
+    this.tail = new THREE.InstancedMesh(tailGeometry(), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.88, side: THREE.DoubleSide, depthWrite: false }), FISH_COUNT);
+    this.fins = new THREE.InstancedMesh(finGeometry(), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.62, side: THREE.DoubleSide, depthWrite: false }), FISH_COUNT);
+    this.eye = new THREE.InstancedMesh(new THREE.CircleGeometry(0.035, 8), new THREE.MeshBasicMaterial({ color: 0x111319 }), FISH_COUNT);
+    this.body.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.tail.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.fins.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.eye.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.group.add(this.tail, this.fins, this.body, this.eye);
+
+    for (let i = 0; i < FISH_COUNT; i++) {
+      const spread = Math.sqrt(random(i * 5 + 2));
+      const seed: FishSeed = {
+        angle: random(i * 7 + 1) * Math.PI * 2,
+        radiusX: 0.25 + spread * 6.2,
+        radiusY: 0.2 + spread * 4.15,
+        speed: (i % 13 === 0 ? -1 : 1) * (0.14 + random(i * 7 + 3) * 0.13),
+        phase: random(i * 7 + 4) * Math.PI * 2,
+        size: 0.15 + random(i * 7 + 5) * 0.09,
+        centerX: (random(i * 7 + 6) - 0.5) * 0.35,
+        centerY: (random(i * 7 + 7) - 0.5) * 0.25,
+      };
+      this.fish.push(seed);
+      const color = new THREE.Color(COLORS[Math.floor(random(i * 11 + 9) * COLORS.length)]);
+      this.body.setColorAt(i, color);
+      this.tail.setColorAt(i, color);
+      this.fins.setColorAt(i, color);
     }
-    for (let section = 0; section < SECTIONS; section++) {
-      for (let across = 0; across < ACROSS; across++) {
-        const a = section * (ACROSS + 1) + across;
-        const b = a + ACROSS + 1;
-        indices.push(a, b, a + 1, b, b + 1, a + 1);
-      }
-    }
-    this.bodyGeometry.setAttribute("position", new THREE.BufferAttribute(this.bodyPositions, 3));
-    this.bodyGeometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    this.bodyGeometry.setIndex(indices);
-    const bodyMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.94, metalness: 0, side: THREE.DoubleSide });
-    this.materials.push(bodyMaterial);
-    this.group.add(new THREE.Mesh(this.bodyGeometry, bodyMaterial));
-
-    const edgeMaterial = new THREE.MeshBasicMaterial({ color: 0x1d2227, transparent: true, opacity: 0.72, side: THREE.DoubleSide });
-    const paleFinMaterial = new THREE.MeshBasicMaterial({ color: 0x777e82, transparent: true, opacity: 0.58, side: THREE.DoubleSide, depthWrite: false });
-    this.materials.push(edgeMaterial, paleFinMaterial);
-
-    const tailUpper = finShape([[0, 0], [-0.38, 0.13], [-0.87, 0.68], [-0.55, 0.51], [-0.25, 0.28]]);
-    const tailLower = finShape([[0, 0], [-0.38, -0.13], [-0.85, -0.64], [-0.55, -0.48], [-0.25, -0.26]]);
-    this.tail.add(new THREE.Mesh(tailUpper, edgeMaterial), new THREE.Mesh(tailLower, paleFinMaterial));
-    this.tail.position.set(TAIL_X, 0, 0.03);
-    this.group.add(this.tail);
-
-    const finPoints: [number, number][] = [[0, 0], [-0.25, 0.20], [-0.78, 0.87], [-0.50, 0.72], [-0.10, 0.43]];
-    this.leftFin.add(new THREE.Mesh(finShape(finPoints), paleFinMaterial));
-    this.leftFin.position.set(0.55, 0.48, 0.08);
-    this.group.add(this.leftFin);
-    this.rightFin.add(new THREE.Mesh(finShape(finPoints), edgeMaterial));
-    this.rightFin.position.set(0.55, -0.48, 0.08);
-    this.rightFin.scale.y = -1;
-    this.group.add(this.rightFin);
-
-    const dorsal = finShape([[-0.80, 0], [-1.02, 0.14], [-0.76, 0.30], [-0.20, 0.11], [0.05, 0]]);
-    const dorsalMesh = new THREE.Mesh(dorsal, edgeMaterial);
-    dorsalMesh.position.z = 0.22;
-    this.group.add(dorsalMesh);
-
-    const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0x111417 });
-    const glintMaterial = new THREE.MeshBasicMaterial({ color: 0xe9e9e6 });
-    this.materials.push(eyeMaterial, glintMaterial);
-    for (const sign of [-1, 1]) {
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 8), eyeMaterial);
-      eye.position.set(1.35, sign * 0.28, 0.27);
-      this.group.add(eye);
-      const glint = new THREE.Mesh(new THREE.SphereGeometry(0.019, 8, 6), glintMaterial);
-      glint.position.set(1.36, sign * 0.28 + 0.015, 0.34);
-      this.group.add(glint);
-    }
-
-    const mouthMaterial = new THREE.LineBasicMaterial({ color: 0x20262a, transparent: true, opacity: 0.55 });
-    this.materials.push(mouthMaterial);
-    const mouth = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(1.70, -0.15, 0.12),
-      new THREE.Vector3(1.80, 0, 0.14),
-      new THREE.Vector3(1.70, 0.15, 0.12),
-    ]);
-    this.group.add(new THREE.Line(mouth, mouthMaterial));
-
-    const shadowCanvas = document.createElement("canvas");
-    shadowCanvas.width = shadowCanvas.height = 64;
-    const shadowContext = shadowCanvas.getContext("2d");
-    if (shadowContext) {
-      const gradient = shadowContext.createRadialGradient(32, 32, 5, 32, 32, 32);
-      gradient.addColorStop(0, "rgba(52,61,64,0.38)");
-      gradient.addColorStop(1, "rgba(52,61,64,0)");
-      shadowContext.fillStyle = gradient;
-      shadowContext.fillRect(0, 0, 64, 64);
-    }
-    this.shadowTexture = new THREE.CanvasTexture(shadowCanvas);
-    const shadow = new THREE.Mesh(
-      new THREE.PlaneGeometry(5.2, 1.8),
-      new THREE.MeshBasicMaterial({ map: this.shadowTexture, transparent: true, opacity: 0.28, depthWrite: false }),
-    );
-    shadow.position.set(-0.17, -0.18, -0.15);
-    this.group.add(shadow);
-    this.materials.push(shadow.material);
     this.update(0);
   }
 
   update(time: number) {
-    for (let section = 0; section <= SECTIONS; section++) {
-      const u = section / SECTIONS;
-      const x = TAIL_X + u * (HEAD_X - TAIL_X);
-      const width = bodyWidth(u);
-      const wave = bodyWave(x, time);
-      for (let across = 0; across <= ACROSS; across++) {
-        const v = across / ACROSS * 2 - 1;
-        const k = (section * (ACROSS + 1) + across) * 3;
-        this.bodyPositions[k] = x;
-        this.bodyPositions[k + 1] = v * width + wave;
-        this.bodyPositions[k + 2] = 0.05 + (1 - v * v) * 0.23 * Math.sin(Math.PI * u);
-      }
+    for (let i = 0; i < this.fish.length; i++) {
+      const fish = this.fish[i];
+      const orbit = fish.angle + time * fish.speed;
+      const x = fish.centerX + Math.cos(orbit) * fish.radiusX;
+      const y = fish.centerY + Math.sin(orbit) * fish.radiusY;
+      const heading = Math.atan2(Math.cos(orbit) * fish.radiusY, -Math.sin(orbit) * fish.radiusX) + (fish.speed < 0 ? Math.PI : 0);
+      const wave = Math.sin(time * 8.5 + fish.phase);
+      const bodyHeading = heading + wave * 0.065;
+      this.dummy.position.set(x, y, 0);
+      this.dummy.rotation.set(0, 0, bodyHeading);
+      this.dummy.scale.setScalar(fish.size);
+      this.dummy.updateMatrix();
+      this.body.setMatrixAt(i, this.dummy.matrix);
+      this.fins.setMatrixAt(i, this.dummy.matrix);
+
+      this.dummy.position.set(x + Math.cos(bodyHeading) * 0.37 * fish.size, y + Math.sin(bodyHeading) * 0.37 * fish.size, 0.01);
+      this.dummy.scale.setScalar(fish.size);
+      this.dummy.updateMatrix();
+      this.eye.setMatrixAt(i, this.dummy.matrix);
+
+      this.dummy.position.set(x - Math.cos(bodyHeading) * 0.42 * fish.size, y - Math.sin(bodyHeading) * 0.42 * fish.size, -0.01);
+      this.dummy.rotation.set(0, 0, bodyHeading + wave * 0.52);
+      this.dummy.updateMatrix();
+      this.tail.setMatrixAt(i, this.dummy.matrix);
     }
-    this.bodyGeometry.attributes.position.needsUpdate = true;
-    this.bodyGeometry.computeVertexNormals();
-    this.tail.position.y = bodyWave(TAIL_X, time);
-    this.tail.rotation.z = Math.sin(time * 3.8 + TAIL_X * 1.75) * 0.33;
-    this.leftFin.rotation.z = Math.sin(time * 4.1) * 0.14;
-    this.rightFin.rotation.z = Math.sin(time * 4.1 + Math.PI) * 0.14;
-    this.group.position.set(Math.sin(time * 0.28) * 0.37, Math.sin(time * 0.42) * 0.3, 0);
-    this.group.rotation.z = 0.66 + Math.sin(time * 0.32) * 0.16;
+    this.body.instanceMatrix.needsUpdate = true;
+    this.fins.instanceMatrix.needsUpdate = true;
+    this.eye.instanceMatrix.needsUpdate = true;
+    this.tail.instanceMatrix.needsUpdate = true;
   }
 
   dispose() {
-    this.group.traverse(object => {
-      if (object instanceof THREE.Mesh || object instanceof THREE.Line) object.geometry.dispose();
-    });
-    for (const material of this.materials) material.dispose();
-    this.shadowTexture?.dispose();
+    for (const mesh of [this.body, this.tail, this.fins, this.eye]) {
+      mesh.geometry.dispose();
+      (mesh.material as THREE.Material).dispose();
+    }
   }
 }

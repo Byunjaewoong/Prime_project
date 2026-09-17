@@ -64,7 +64,6 @@ export default function MarineStudy({ kind }: MarineStudyProps) {
       const time = (now - started) / 1000;
       model.update(time);
       if (jellyfish) model.group.rotation.z = canvas.clientWidth < 650 ? Math.PI / 2 : 0;
-      else if (canvas.clientWidth < 650) model.group.rotation.z += 0.5;
       renderer.render(scene, camera);
       frame = requestAnimationFrame(animate);
     };
@@ -79,13 +78,13 @@ export default function MarineStudy({ kind }: MarineStudyProps) {
   }, [jellyfish]);
 
   return (
-    <main style={{ position: "relative", width: "100%", minHeight: "100dvh", overflow: "hidden", color: jellyfish ? "#a8bbd2" : "#333b3d", background: jellyfish ? "radial-gradient(ellipse at 54% 47%, #111722 0%, #080c12 72%, #05080d 100%)" : "radial-gradient(ellipse at 48% 48%, #fbfbf8 0%, #e9ebe8 75%, #dfe3e0 100%)", fontFamily: "var(--font-courier), monospace" }}>
-      <canvas ref={canvasRef} aria-label={jellyfish ? "Animated neon jellyfish drifting under water" : "Animated fish swimming from above"} role="img" style={{ display: "block", width: "100%", height: "100dvh", filter: jellyfish ? "drop-shadow(0 0 3px rgba(0,170,255,0.45))" : undefined }} />
+    <main style={{ position: "relative", width: "100%", minHeight: "100dvh", overflow: "hidden", color: "#a8bbd2", background: jellyfish ? "radial-gradient(ellipse at 54% 47%, #111722 0%, #080c12 72%, #05080d 100%)" : "radial-gradient(ellipse at 48% 48%, #17151c 0%, #101014 70%, #090a0e 100%)", fontFamily: "var(--font-courier), monospace" }}>
+      <canvas ref={canvasRef} aria-label={jellyfish ? "Animated neon jellyfish drifting under water" : "Animated school of colorful fish swimming from above"} role="img" style={{ display: "block", width: "100%", height: "100dvh", filter: jellyfish ? "drop-shadow(0 0 3px rgba(0,170,255,0.45))" : "drop-shadow(0 0 2px rgba(210,34,135,0.25))" }} />
       <div style={{ position: "absolute", inset: "28px 28px auto", display: "flex", justifyContent: "space-between", gap: 20, alignItems: "flex-start", pointerEvents: "none" }}>
         <Link href="/works/laboratory" style={{ color: "inherit", textDecoration: "none", fontSize: 13, opacity: 0.7, pointerEvents: "auto" }}>← Laboratory</Link>
         <div style={{ textAlign: "right", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", opacity: 0.7 }}>
           <div>{jellyfish ? "Jellyfish" : "Ink fish"}</div>
-          <div style={{ marginTop: 5, letterSpacing: "0.02em", textTransform: "none", opacity: 0.7 }}>{jellyfish ? "pulse / drift" : "body wave / swim"}</div>
+          <div style={{ marginTop: 5, letterSpacing: "0.02em", textTransform: "none", opacity: 0.7 }}>{jellyfish ? "pulse / drift" : "school / wave"}</div>
         </div>
       </div>
       {unavailable && <p style={{ position: "absolute", left: 28, bottom: 28, fontSize: 13 }}>WebGL is unavailable on this device.</p>}
