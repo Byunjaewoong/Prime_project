@@ -1,8 +1,8 @@
 /// <reference types="@webgpu/types" />
 import { DEFAULT_COLOR_TYPES, INITIAL_ATOM_COLORS, MAX_COLOR_TYPES, randomAtomPalette } from "./AtomPalette";
-import { DEFAULT_ATOM_PARTICLE_COUNT, DEFAULT_ATOM_WORLD_SCALE } from "./AtomsDefaults";
+import { AtomDefaults, DESKTOP_ATOM_DEFAULTS } from "./AtomsDefaults";
 
-const DEFAULT_PARTICLE_COUNT = DEFAULT_ATOM_PARTICLE_COUNT;
+const DEFAULT_PARTICLE_COUNT = DESKTOP_ATOM_DEFAULTS.particleCount;
 const MAX_PARTICLE_COUNT = 300000;
 const TYPE_COUNT = MAX_COLOR_TYPES;
 const BUCKET_CAPACITY = 128;
@@ -246,14 +246,15 @@ export class AtomsGPU {
   private canvas: HTMLCanvasElement;
   private viewportW: number;
   private viewportH: number;
+  private defaults: AtomDefaults;
   private worldW: number;
   private worldH: number;
   private worldOriginX = 0;
   private worldOriginY = 0;
   private baseWorldW: number;
   private baseWorldH: number;
-  private particleCount = DEFAULT_PARTICLE_COUNT;
-  private requestedParticleCount = DEFAULT_PARTICLE_COUNT;
+  private particleCount: number = DEFAULT_PARTICLE_COUNT;
+  private requestedParticleCount: number = DEFAULT_PARTICLE_COUNT;
   private particleCountTimer: ReturnType<typeof setTimeout> | null = null;
   private repel = 1;
   private forceFactor = 0.18;
@@ -302,8 +303,12 @@ export class AtomsGPU {
   private ready = false;
   private failed = false;
 
-  constructor(canvas: HTMLCanvasElement, width: number, height: number) {
+  constructor(canvas: HTMLCanvasElement, width: number, height: number, defaults: AtomDefaults = DESKTOP_ATOM_DEFAULTS) {
     this.canvas = canvas;
+    this.defaults = defaults;
+    this.particleCount = defaults.particleCount;
+    this.requestedParticleCount = defaults.particleCount;
+    this.friction = defaults.friction;
     this.viewportW = width;
     this.viewportH = height;
     this.worldW = width;
@@ -389,14 +394,14 @@ export class AtomsGPU {
     this.optionsBuffer?.destroy();
     this.paletteBuffer?.destroy();
 
-    const scale = Math.sqrt(DEFAULT_PARTICLE_COUNT / 1000);
-    this.worldW = this.viewportW * scale * DEFAULT_ATOM_WORLD_SCALE;
-    this.worldH = this.viewportH * scale * DEFAULT_ATOM_WORLD_SCALE;
+    const scale = Math.sqrt(this.defaults.particleCount / 1000);
+    this.worldW = this.viewportW * scale * this.defaults.worldScale;
+    this.worldH = this.viewportH * scale * this.defaults.worldScale;
     this.worldOriginX = 0;
     this.worldOriginY = 0;
     this.baseWorldW = this.viewportW * scale;
     this.baseWorldH = this.viewportH * scale;
-    this.zoom = 1 / (scale * DEFAULT_ATOM_WORLD_SCALE);
+    this.zoom = 1 / (scale * this.defaults.worldScale);
     this.offsetX = 0;
     this.offsetY = 0;
 
@@ -543,7 +548,7 @@ export class AtomsGPU {
     const dtScale = Math.max(0.25, Math.min(3, delta * 60));
     view.setFloat32(32, this.forceFactor, true);
     view.setFloat32(36, this.repel, true);
-    view.setFloat32(40, Math.pow(1 - this.friction, dtScale), true);
+    view.setFloat32(40, Math.exp(-this.friction * dtScale), true);
     view.setFloat32(44, dtScale, true);
     view.setFloat32(48, this.particleSize, true);
     view.setFloat32(52, this.zoom, true);

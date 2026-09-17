@@ -1,9 +1,8 @@
 import { Simulation } from "./types";
 import { atomColorCss, DEFAULT_COLOR_TYPES, INITIAL_ATOM_COLORS, MAX_COLOR_TYPES, randomAtomPalette } from "./AtomPalette";
-import { DEFAULT_ATOM_PARTICLE_COUNT, DEFAULT_ATOM_WORLD_SCALE } from "./AtomsDefaults";
+import { AtomDefaults, DESKTOP_ATOM_DEFAULTS } from "./AtomsDefaults";
 
-const DEFAULT_PARTICLE_COUNT = DEFAULT_ATOM_PARTICLE_COUNT;
-const MAX_PARTICLE_COUNT = 20000;
+const MAX_PARTICLE_COUNT = 30000;
 const TYPE_COUNT = MAX_COLOR_TYPES;
 const MAX_SAMPLES_PER_CELL = 8;
 const MIN_WORLD_SCALE = 0.5;
@@ -45,22 +44,24 @@ export class AtomsCPU implements Simulation {
   private maxRadiusMatrix = this.makeMatrix(100);
   private currentMaxRadius = 100;
 
-  private zoom = 1 / DEFAULT_ATOM_WORLD_SCALE;
+  private zoom = 1;
   private offsetX = 0;
   private offsetY = 0;
   private dragging = false;
   private lastPointerX = 0;
   private lastPointerY = 0;
 
-  constructor(w: number, h: number) {
-    this.w = w * DEFAULT_ATOM_WORLD_SCALE;
-    this.h = h * DEFAULT_ATOM_WORLD_SCALE;
+  constructor(w: number, h: number, defaults: AtomDefaults = DESKTOP_ATOM_DEFAULTS) {
+    this.w = w * defaults.worldScale;
+    this.h = h * defaults.worldScale;
     this.baseW = w;
     this.baseH = h;
     this.viewportW = w;
     this.viewportH = h;
+    this.zoom = 1 / defaults.worldScale;
+    this.friction = defaults.friction;
     this.randomiseInteractions();
-    this.setParticleCount(DEFAULT_PARTICLE_COUNT);
+    this.setParticleCount(defaults.particleCount);
   }
 
   private makeMatrix(value: number): number[][] {
@@ -152,7 +153,7 @@ export class AtomsCPU implements Simulation {
 
     const nextVX = new Float32Array(this.atoms.length);
     const nextVY = new Float32Array(this.atoms.length);
-    const frictionMultiplier = 1 - this.friction;
+    const frictionMultiplier = Math.exp(-this.friction);
 
     for (let i = 0; i < this.atoms.length; i++) {
       const atom = this.atoms[i];

@@ -638,7 +638,7 @@ export default function EmergenceExperience() {
                     ...(isTouchDevice ? [{ key: "worldScale", label: "world size", min: 0.5, max: 4, step: 0.05, decimals: 2 }] : []),
                     { key: "repel", label: "repel force", min: 0.01, max: 4, step: 0.01, decimals: 2 },
                     { key: "forceFactor", label: "force multiplier", min: 0.01, max: 2, step: 0.01, decimals: 2 },
-                    { key: "friction", label: "friction", min: 0, max: 1, step: 0.01, decimals: 2 },
+                    { key: "friction", label: "friction", min: 0, max: 4, step: 0.01, decimals: 2 },
                     { key: "particleSize", label: "particle size", min: 0.1, max: 6, step: 0.1, decimals: 1 },
                   ];
                   return (

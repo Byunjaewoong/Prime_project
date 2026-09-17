@@ -1,6 +1,7 @@
 import { Simulation } from "./types";
 import { AtomsCPU } from "./AtomsCPU";
 import { AtomsGPU } from "./AtomsGPU";
+import { DESKTOP_ATOM_DEFAULTS, MOBILE_ATOM_DEFAULTS } from "./AtomsDefaults";
 
 export class Atoms implements Simulation {
   private gpu: AtomsGPU;
@@ -13,7 +14,10 @@ export class Atoms implements Simulation {
   private lastTap: { time: number; x: number; y: number } | null = null;
 
   constructor(w: number, h: number, gpuCanvas: HTMLCanvasElement) {
-    this.gpu = new AtomsGPU(gpuCanvas, w, h);
+    const defaults = window.matchMedia("(pointer: coarse)").matches
+      ? MOBILE_ATOM_DEFAULTS
+      : DESKTOP_ATOM_DEFAULTS;
+    this.gpu = new AtomsGPU(gpuCanvas, w, h, defaults);
     gpuCanvas.style.display = "block";
     void this.gpu.init().then(supported => {
       if (this.destroyed) return;
@@ -21,7 +25,7 @@ export class Atoms implements Simulation {
         this.useGpu = true;
       } else {
         gpuCanvas.style.display = "none";
-        this.cpu = new AtomsCPU(w, h);
+        this.cpu = new AtomsCPU(w, h, defaults);
         this.cpu.setParam("colors", this.gpu.getParams().colors);
         this.cpu.setColors(this.gpu.getColors());
         this.cpu.setParam("depthMode", this.depthMode ? 1 : 0);
