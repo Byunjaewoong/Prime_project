@@ -1,176 +1,146 @@
 import * as THREE from "three";
 
-const RINGS = 14;
-const SIDES = 56;
-const TENTACLE_POINTS = 48;
+const POINTS = 64;
+const CYAN = 0x15dce9;
+const LIME = 0xd7f12e;
+const VIOLET = 0x8a72ff;
+const BLUE = 0x1653f0;
+
+type Strand = {
+  geometry: THREE.BufferGeometry;
+  positions: Float32Array;
+  anchorY: number;
+  length: number;
+  phase: number;
+  amplitude: number;
+};
+
+function lineMaterial(color: number, opacity: number) {
+  return new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+}
+
+function circle(cx: number, cy: number, radiusX: number, radiusY: number, segments = 16) {
+  const points: THREE.Vector3[] = [];
+  for (let i = 0; i < segments; i++) {
+    const angle = i / segments * Math.PI * 2;
+    points.push(new THREE.Vector3(cx + Math.cos(angle) * radiusX, cy + Math.sin(angle) * radiusY, 0.2));
+  }
+  return new THREE.BufferGeometry().setFromPoints(points);
+}
 
 export class JellyfishModel {
   readonly group = new THREE.Group();
-  private bellGeometry = new THREE.BufferGeometry();
-  private bellPositions = new Float32Array((RINGS + 1) * (SIDES + 1) * 3);
-  private tentacles: { geometry: THREE.BufferGeometry; positions: Float32Array; angle: number; length: number; phase: number; radius: number }[] = [];
-  private ribbons: { geometry: THREE.BufferGeometry; positions: Float32Array; angle: number; phase: number }[] = [];
+  private organism = new THREE.Group();
+  private bell = new THREE.Group();
+  private background = new THREE.Group();
+  private strands: Strand[] = [];
   private materials: THREE.Material[] = [];
-  private moteGeometry: THREE.BufferGeometry | null = null;
 
   constructor() {
-    const indices: number[] = [];
-    for (let ring = 0; ring < RINGS; ring++) {
-      for (let side = 0; side < SIDES; side++) {
-        const a = ring * (SIDES + 1) + side;
-        const b = a + SIDES + 1;
-        indices.push(a, b, a + 1, b, b + 1, a + 1);
-      }
+    this.group.add(this.background, this.organism);
+    this.organism.add(this.bell);
+
+    const shell = new THREE.Shape();
+    shell.moveTo(1.42, -1.12);
+    shell.lineTo(1.42, 1.12);
+    shell.bezierCurveTo(2.25, 1.28, 2.86, 0.86, 2.95, 0);
+    shell.bezierCurveTo(2.89, -0.88, 2.26, -1.28, 1.42, -1.12);
+    const fillMaterial = new THREE.MeshBasicMaterial({ color: 0x061535, transparent: true, opacity: 0.65, side: THREE.DoubleSide, depthWrite: false });
+    this.materials.push(fillMaterial);
+    this.bell.add(new THREE.Mesh(new THREE.ShapeGeometry(shell, 36), fillMaterial));
+
+    const outline = shell.getPoints(95).map(point => new THREE.Vector3(point.x, point.y, 0.05));
+    const outerMaterial = lineMaterial(BLUE, 0.9);
+    this.materials.push(outerMaterial);
+    this.bell.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(outline), outerMaterial));
+    for (let copy = 0; copy < 3; copy++) {
+      const points = shell.getPoints(75).map(point => new THREE.Vector3(point.x + 0.06 + copy * 0.035, point.y * (0.96 - copy * 0.035), -0.02 - copy * 0.01));
+      const material = lineMaterial(copy === 0 ? 0x3a55ed : BLUE, 0.27 - copy * 0.05);
+      this.materials.push(material);
+      this.bell.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), material));
     }
-    this.bellGeometry.setAttribute("position", new THREE.BufferAttribute(this.bellPositions, 3));
-    this.bellGeometry.setIndex(indices);
-    const bellMaterial = new THREE.MeshPhongMaterial({
-      color: 0x1a2028,
-      specular: 0xa8b4c0,
-      shininess: 78,
-      transparent: true,
-      opacity: 0.76,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    });
-    this.materials.push(bellMaterial);
-    this.group.add(new THREE.Mesh(this.bellGeometry, bellMaterial));
 
-    const innerMaterial = new THREE.MeshPhongMaterial({
-      color: 0x3a4149,
-      specular: 0xbac6d1,
-      shininess: 90,
-      transparent: true,
-      opacity: 0.28,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    });
-    this.materials.push(innerMaterial);
-    const inner = new THREE.Mesh(new THREE.SphereGeometry(0.82, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), innerMaterial);
-    inner.rotation.x = Math.PI;
-    inner.position.y = 0.55;
-    inner.scale.set(1, 0.5, 0.7);
-    this.group.add(inner);
+    const yellow = lineMaterial(0xe2f62b, 0.9);
+    const yellowDim = lineMaterial(0xaec520, 0.5);
+    this.materials.push(yellow, yellowDim);
+    for (let i = 0; i < 74; i++) {
+      const y = ((i * 29) % 74) / 74 * 1.98 - 0.99;
+      const x = 1.52 + ((i * 19) % 17) / 17 * 0.34 + Math.sin(y * 11) * 0.04;
+      const r = 0.037 + (i % 5) * 0.012;
+      this.bell.add(new THREE.LineLoop(circle(x, y, r, r * (0.85 + i % 3 * 0.11)), i % 3 === 0 ? yellow : yellowDim));
+    }
 
-    for (let i = 0; i < 18; i++) {
-      const positions = new Float32Array(TENTACLE_POINTS * 3);
+    for (let i = 0; i < 57; i++) {
+      const positions = new Float32Array(POINTS * 3);
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-      const material = new THREE.LineBasicMaterial({
-        color: i % 5 === 0 ? 0x191e25 : 0x414a54,
-        transparent: true,
-        opacity: i % 5 === 0 ? 0.68 : 0.38,
-        depthWrite: false,
-      });
+      const color = i % 11 < 6 ? CYAN : i % 11 < 8 ? LIME : i % 11 < 10 ? VIOLET : BLUE;
+      const material = lineMaterial(color, 0.46 + (i % 5) * 0.095);
       this.materials.push(material);
-      this.group.add(new THREE.Line(geometry, material));
-      this.tentacles.push({
+      this.organism.add(new THREE.Line(geometry, material));
+      this.strands.push({
         geometry,
         positions,
-        angle: i * Math.PI * 2 / 18,
-        length: 2.9 + (i * 7 % 9) * 0.22,
-        phase: i * 1.83,
-        radius: i % 3 === 0 ? 0.28 : 1.12,
+        anchorY: ((i * 23) % 57) / 57 * 2.08 - 1.04,
+        length: 2.0 + ((i * 13) % 31) / 31 * 3.9,
+        phase: i * 1.71,
+        amplitude: 0.055 + (i % 7) * 0.021,
       });
     }
 
-    for (let i = 0; i < 5; i++) {
-      const positions = new Float32Array(TENTACLE_POINTS * 2 * 3);
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-      const ribbonIndices: number[] = [];
-      for (let j = 0; j < TENTACLE_POINTS - 1; j++) {
-        const a = j * 2;
-        ribbonIndices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    const pink = lineMaterial(0xf25c94, 0.72);
+    const pinkDim = lineMaterial(0xc1417b, 0.4);
+    this.materials.push(pink, pinkDim);
+    for (let i = 0; i < 13; i++) {
+      const x = 0.65 + (i % 4) * 0.19;
+      const y = ((i * 7) % 13) / 13 * 2.5 - 1.25;
+      this.organism.add(new THREE.LineLoop(circle(x, y, 0.045 + i % 3 * 0.01, 0.035 + i % 4 * 0.008), i % 2 ? pink : pinkDim));
+    }
+
+    for (let i = 0; i < 10; i++) {
+      const points: THREE.Vector3[] = [];
+      const yBase = ((i * 7) % 10) / 10 * 7 - 3.6;
+      for (let j = 0; j < 90; j++) {
+        const x = -5.6 + j / 89 * 11.2;
+        const y = yBase + Math.sin(x * (0.55 + i % 4 * 0.13) + i * 2.3) * (0.30 + i % 3 * 0.19);
+        points.push(new THREE.Vector3(x, y, -2));
       }
-      geometry.setIndex(ribbonIndices);
-      const material = new THREE.MeshBasicMaterial({
-        color: 0x343c45,
-        transparent: true,
-        opacity: 0.16,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      });
+      const material = lineMaterial(i % 5 === 0 ? LIME : i % 3 === 0 ? BLUE : 0x116d93, 0.1 + i % 4 * 0.06);
       this.materials.push(material);
-      this.group.add(new THREE.Mesh(geometry, material));
-      this.ribbons.push({ geometry, positions, angle: i * Math.PI * 2 / 5, phase: i * 2.1 });
+      this.background.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), material));
     }
-
-    const motePositions = new Float32Array(150 * 3);
-    for (let i = 0; i < 150; i++) {
-      const n = i * 3;
-      motePositions[n] = Math.sin(i * 78.233) * 4.5;
-      motePositions[n + 1] = Math.sin(i * 19.317) * 4.2 - 0.6;
-      motePositions[n + 2] = -1.5 - (i % 5) * 0.3;
-    }
-    this.moteGeometry = new THREE.BufferGeometry();
-    this.moteGeometry.setAttribute("position", new THREE.BufferAttribute(motePositions, 3));
-    const moteMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.035, transparent: true, opacity: 0.35, depthWrite: false });
-    this.materials.push(moteMaterial);
-    this.group.add(new THREE.Points(this.moteGeometry, moteMaterial));
     this.update(0);
   }
 
   update(time: number) {
-    const pulse = Math.sin(time * 2.25);
-    const bellRadius = 1.42 * (1 + pulse * 0.12);
-    const bellHeight = 0.92 * (1 - pulse * 0.12);
-    for (let ring = 0; ring <= RINGS; ring++) {
-      const u = ring / RINGS;
-      const theta = u * Math.PI / 2;
-      for (let side = 0; side <= SIDES; side++) {
-        const angle = side / SIDES * Math.PI * 2;
-        const ripple = 1 + Math.pow(u, 5) * 0.035 * Math.sin(angle * 8 + time * 2.25);
-        const radius = Math.sin(theta) * bellRadius * ripple;
-        const k = (ring * (SIDES + 1) + side) * 3;
-        this.bellPositions[k] = Math.cos(angle) * radius;
-        this.bellPositions[k + 1] = 0.48 + Math.cos(theta) * bellHeight;
-        this.bellPositions[k + 2] = Math.sin(angle) * radius * 0.67;
-      }
-    }
-    this.bellGeometry.attributes.position.needsUpdate = true;
-    this.bellGeometry.computeVertexNormals();
-
-    for (const line of this.tentacles) {
-      for (let j = 0; j < TENTACLE_POINTS; j++) {
-        const u = j / (TENTACLE_POINTS - 1);
-        const sway = Math.sin(time * 1.25 - u * 4.3 + line.phase) * u * u * 0.45;
+    const pulse = Math.sin(time * 2.4);
+    this.bell.scale.set(1 + pulse * 0.035, 1 - pulse * 0.075, 1);
+    this.bell.position.x = pulse * 0.045;
+    for (const strand of this.strands) {
+      for (let j = 0; j < POINTS; j++) {
+        const u = j / (POINTS - 1);
+        const flow = Math.sin(time * 1.1 - u * 5.2 + strand.phase);
         const k = j * 3;
-        line.positions[k] = Math.cos(line.angle) * line.radius * (1 - u * 0.18) + sway;
-        line.positions[k + 1] = 0.48 - line.length * u + 0.12 * Math.sin(time * 1.8 - u * 5 + line.phase) * u;
-        line.positions[k + 2] = Math.sin(line.angle) * line.radius * 0.67 + Math.cos(time * 1.1 - u * 3 + line.phase) * u * 0.28;
+        strand.positions[k] = 1.45 - strand.length * u + Math.sin(time * 1.6 - u * 6 + strand.phase) * u * 0.12;
+        strand.positions[k + 1] = strand.anchorY * (1 - u * 0.09) + flow * u * strand.amplitude + Math.sin(strand.phase * 0.7) * u * u * 0.22;
+        strand.positions[k + 2] = 0.06 + Math.cos(time * 0.8 - u * 4 + strand.phase) * u * 0.06;
       }
-      line.geometry.attributes.position.needsUpdate = true;
+      strand.geometry.attributes.position.needsUpdate = true;
     }
-
-    for (const ribbon of this.ribbons) {
-      for (let j = 0; j < TENTACLE_POINTS; j++) {
-        const u = j / (TENTACLE_POINTS - 1);
-        const wave = Math.sin(u * 13 - time * 1.7 + ribbon.phase);
-        const baseX = Math.cos(ribbon.angle) * 0.24 + u * 0.4 * Math.sin(time * 0.8 + ribbon.phase);
-        const baseZ = Math.sin(ribbon.angle) * 0.18;
-        const width = (0.10 + u * 0.28) * Math.sin(Math.PI * u) * (0.7 + 0.3 * wave);
-        for (let edge = 0; edge < 2; edge++) {
-          const k = (j * 2 + edge) * 3;
-          ribbon.positions[k] = baseX + (edge ? 1 : -1) * width + wave * u * 0.12;
-          ribbon.positions[k + 1] = 0.4 - u * 3.65;
-          ribbon.positions[k + 2] = baseZ + Math.cos(u * 17 - time * 1.5 + ribbon.phase) * u * 0.18;
-        }
-      }
-      ribbon.geometry.attributes.position.needsUpdate = true;
-      ribbon.geometry.computeVertexNormals();
-    }
-
-    this.group.position.set(Math.sin(time * 0.32) * 0.28, Math.sin(time * 2.25 + 0.5) * 0.13, Math.sin(time * 0.46) * 0.08);
-    this.group.rotation.z = Math.sin(time * 0.48) * 0.09;
-    this.group.rotation.y = Math.sin(time * 0.28) * 0.18;
+    this.organism.position.set(Math.sin(time * 0.35) * 0.17, Math.sin(time * 0.6) * 0.13, 0);
+    this.organism.rotation.z = Math.sin(time * 0.27) * 0.035;
+    this.background.position.y = Math.sin(time * 0.18) * 0.1;
   }
 
   dispose() {
     this.group.traverse(object => {
-      if (object instanceof THREE.Mesh || object instanceof THREE.Line || object instanceof THREE.Points) {
-        object.geometry.dispose();
-      }
+      if (object instanceof THREE.Line || object instanceof THREE.Mesh) object.geometry.dispose();
     });
     for (const material of this.materials) material.dispose();
   }
