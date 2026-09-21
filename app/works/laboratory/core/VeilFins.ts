@@ -16,15 +16,16 @@ class VeilFin {
   readonly group = new THREE.Group();
   private geometry = new THREE.BufferGeometry();
   private positions = new Float32Array((LENGTH_STEPS + 1) * (WIDTH_STEPS + 1) * 3);
+  private colors = new Float32Array((LENGTH_STEPS + 1) * (WIDTH_STEPS + 1) * 4);
   private targets = new Float32Array((LENGTH_STEPS + 1) * (WIDTH_STEPS + 1) * 2);
   private velocities = new Float32Array((LENGTH_STEPS + 1) * (WIDTH_STEPS + 1) * 2);
   private smoothed = new Float32Array((LENGTH_STEPS + 1) * (WIDTH_STEPS + 1) * 3);
   private initialized = false;
   private ribs: Array<{ geometry: THREE.BufferGeometry; positions: Float32Array }> = [];
+  private ribMaterials: THREE.LineBasicMaterial[] = [];
   private materials: THREE.Material[] = [];
 
   constructor(private kind: FinKind) {
-    const colors = new Float32Array((LENGTH_STEPS + 1) * (WIDTH_STEPS + 1) * 4);
     const indices: number[] = [];
     for (let i = 0; i <= LENGTH_STEPS; i++) {
       const u = i / LENGTH_STEPS;
@@ -33,10 +34,10 @@ class VeilFin {
         const edge = kind === "tail" ? Math.abs(v * 2 - 1) : v;
         const fade = (1 - 0.86 * smoothstep((u - 0.5) / 0.5)) * (1 - 0.82 * Math.pow(edge, 2.1));
         const k = (i * (WIDTH_STEPS + 1) + j) * 4;
-        colors[k] = 0.12 + u * 0.54;
-        colors[k + 1] = 0.42 + u * 0.4;
-        colors[k + 2] = 0.73 + u * 0.21;
-        colors[k + 3] = Math.max(0.025, 0.72 * fade);
+        this.colors[k] = 0.12 + u * 0.54;
+        this.colors[k + 1] = 0.42 + u * 0.4;
+        this.colors[k + 2] = 0.73 + u * 0.21;
+        this.colors[k + 3] = Math.max(0.025, 0.72 * fade);
         if (i < LENGTH_STEPS && j < WIDTH_STEPS) {
           const a = i * (WIDTH_STEPS + 1) + j;
           const b = a + WIDTH_STEPS + 1;
@@ -45,7 +46,7 @@ class VeilFin {
       }
     }
     this.geometry.setAttribute("position", new THREE.BufferAttribute(this.positions, 3));
-    this.geometry.setAttribute("color", new THREE.BufferAttribute(colors, 4));
+    this.geometry.setAttribute("color", new THREE.BufferAttribute(this.colors, 4));
     this.geometry.setIndex(indices);
     const fabric = new THREE.MeshBasicMaterial({
       color: 0xffffff,
@@ -72,11 +73,49 @@ class VeilFin {
         depthWrite: false,
       });
       this.materials.push(material);
+      this.ribMaterials.push(material);
       const line = new THREE.Line(geometry, material);
       line.frustumCulled = false;
       line.renderOrder = 2;
       this.group.add(line);
       this.ribs.push({ geometry, positions });
+    }
+  }
+
+  setStyle(style: number) {
+    const palettes = [
+      { root: 0x244b74, tip: 0x8db1c7, alpha: 0.58, rib: 0x527fa1 },
+      { root: 0x145b82, tip: 0x4ee2ee, alpha: 0.18, rib: 0x56d8ec },
+      { root: 0x304b61, tip: 0xb2c8d2, alpha: 0.5, rib: 0x809cad },
+      { root: 0x19747d, tip: 0xa5f6ed, alpha: 0.3, rib: 0x6ce4df },
+      { root: 0x273bad, tip: 0xa080ec, alpha: 0.62, rib: 0x9684ee },
+      { root: 0x123967, tip: 0xf4f1e9, alpha: 0.48, rib: 0xff6457 },
+    ];
+    const palette = palettes[style] ?? palettes[1];
+    const root = new THREE.Color(palette.root);
+    const tip = new THREE.Color(palette.tip);
+    const color = new THREE.Color();
+    for (let i = 0; i <= LENGTH_STEPS; i++) {
+      const u = i / LENGTH_STEPS;
+      color.copy(root).lerp(tip, Math.pow(u, 0.78));
+      for (let j = 0; j <= WIDTH_STEPS; j++) {
+        const v = j / WIDTH_STEPS;
+        const edge = this.kind === "tail" ? Math.abs(v * 2 - 1) : v;
+        const fade = (1 - 0.86 * smoothstep((u - 0.5) / 0.5)) * (1 - 0.82 * Math.pow(edge, 2.1));
+        const k = (i * (WIDTH_STEPS + 1) + j) * 4;
+        const coral = style === 5 && ((this.kind === "tail" && v > 0.58) || (this.kind !== "tail" && v > 0.72));
+        const vertexColor = coral ? new THREE.Color(0xff5b4e) : color;
+        this.colors[k] = vertexColor.r;
+        this.colors[k + 1] = vertexColor.g;
+        this.colors[k + 2] = vertexColor.b;
+        this.colors[k + 3] = Math.max(0.018, palette.alpha * fade);
+      }
+    }
+    this.geometry.attributes.color.needsUpdate = true;
+    for (let rib = 0; rib < this.ribMaterials.length; rib++) {
+      const material = this.ribMaterials[rib];
+      material.color.setHex(style === 5 && rib > this.ribMaterials.length / 2 ? 0xff6457 : palette.rib);
+      material.opacity = style === 1 ? 0.78 : style === 3 ? 0.46 : 0.36;
     }
   }
 
@@ -188,6 +227,13 @@ export class VeilFins {
 
   constructor() {
     this.group.add(this.left.group, this.right.group, this.tail.group);
+    this.setStyle(1);
+  }
+
+  setStyle(style: number) {
+    this.left.setStyle(style);
+    this.right.setStyle(style);
+    this.tail.setStyle(style);
   }
 
   update(

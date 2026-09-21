@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { VeilFins } from "./VeilFins";
+import { fishStyleIndex, type FishStyle } from "./FishStyles";
 
 const BODY_LENGTH = 1.85;
 const SECTIONS = 42;
@@ -16,11 +17,63 @@ function headPath(time: number) {
   );
 }
 
-export type FishStyle = "classic" | "veil";
-
 function bodyWidth(u: number) {
   return 0.025 + 0.3 * Math.pow(Math.max(0, Math.sin(Math.PI * u)), 0.72) * (1 - u * 0.3);
 }
+
+const BODY_VERTEX_SHADER = /* glsl */ `
+  attribute vec2 bodyUv;
+  varying vec2 vBodyUv;
+  void main() {
+    vBodyUv = bodyUv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const BODY_FRAGMENT_SHADER = /* glsl */ `
+  uniform float style;
+  varying vec2 vBodyUv;
+
+  void main() {
+    float u = vBodyUv.x;
+    float v = vBodyUv.y;
+    float edge = abs(v);
+    vec3 color;
+    float alpha;
+
+    if (style < 0.5) {
+      color = mix(vec3(0.035, 0.12, 0.25), vec3(0.08, 0.28, 0.48), u * 0.55 + (1.0 - edge) * 0.18);
+      alpha = 0.98;
+    } else if (style < 1.5) {
+      color = mix(vec3(0.05, 0.34, 0.48), vec3(0.16, 0.76, 0.82), 1.0 - edge);
+      alpha = 0.035 + 0.075 * (1.0 - edge);
+    } else if (style < 2.5) {
+      float band = floor((v + 1.0) * 2.35);
+      color = band < 1.0 ? vec3(0.15, 0.25, 0.36) :
+              band < 2.0 ? vec3(0.29, 0.43, 0.56) :
+              band < 3.0 ? vec3(0.46, 0.61, 0.72) : vec3(0.24, 0.38, 0.52);
+      color += vec3(0.08, 0.12, 0.15) * (1.0 - edge) * sin(u * 3.14159);
+      alpha = 0.78 - edge * 0.18;
+    } else if (style < 3.5) {
+      float spine = exp(-edge * 5.5);
+      float rim = smoothstep(0.72, 1.0, edge);
+      color = mix(vec3(0.12, 0.56, 0.62), vec3(0.48, 0.93, 0.91), spine + rim * 0.38);
+      alpha = 0.12 + spine * 0.52 + rim * 0.22;
+    } else if (style < 4.5) {
+      float stripe = step(0.5, fract((v + 1.0) * 3.0 + u * 0.7));
+      color = mix(vec3(0.11, 0.22, 0.62), vec3(0.46, 0.33, 0.78), stripe);
+      color += vec3(0.08, 0.06, 0.13) * (1.0 - edge);
+      alpha = 0.92;
+    } else {
+      float diagonal = v + (u - 0.48) * 0.78;
+      if (diagonal > 0.46 && u > 0.34) color = vec3(0.96, 0.32, 0.25);
+      else if (diagonal < -0.24) color = vec3(0.73, 0.84, 0.87);
+      else color = vec3(0.035, 0.16, 0.34);
+      alpha = 0.96;
+    }
+    gl_FragColor = vec4(color, alpha);
+  }
+`;
 
 function finGeometry() {
   const shape = new THREE.Shape();
@@ -47,14 +100,25 @@ export class FishModel {
   private lastTime = 0;
   private bodyGeometry = new THREE.BufferGeometry();
   private bodyPositions = new Float32Array((SECTIONS + 1) * (ACROSS + 1) * 3);
+  private bodyUvs = new Float32Array((SECTIONS + 1) * (ACROSS + 1) * 2);
   private edgeGeometries: THREE.BufferGeometry[] = [];
   private edgePositions: Float32Array[] = [];
   private edgeMaterials: THREE.LineBasicMaterial[] = [];
+  private contourGeometries: THREE.BufferGeometry[] = [];
+  private contourPositions: Float32Array[] = [];
+  private contourMaterials: THREE.LineBasicMaterial[] = [];
   private leftFin = new THREE.Mesh(finGeometry());
   private rightFin = new THREE.Mesh(finGeometry());
   private tail = new THREE.Mesh(tailGeometry());
   private veil = new VeilFins();
-  private bodyMaterial = new THREE.MeshBasicMaterial({ color: 0x20c7c1, side: THREE.DoubleSide });
+  private bodyMaterial = new THREE.ShaderMaterial({
+    uniforms: { style: { value: 1 } },
+    vertexShader: BODY_VERTEX_SHADER,
+    fragmentShader: BODY_FRAGMENT_SHADER,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
   private materials: THREE.Material[] = [];
 
   constructor() {
@@ -67,6 +131,14 @@ export class FishModel {
       }
     }
     this.bodyGeometry.setAttribute("position", new THREE.BufferAttribute(this.bodyPositions, 3));
+    for (let section = 0; section <= SECTIONS; section++) {
+      for (let across = 0; across <= ACROSS; across++) {
+        const k = (section * (ACROSS + 1) + across) * 2;
+        this.bodyUvs[k] = section / SECTIONS;
+        this.bodyUvs[k + 1] = across / ACROSS * 2 - 1;
+      }
+    }
+    this.bodyGeometry.setAttribute("bodyUv", new THREE.BufferAttribute(this.bodyUvs, 2));
     this.bodyGeometry.setIndex(indices);
     this.materials.push(this.bodyMaterial);
     this.group.add(new THREE.Mesh(this.bodyGeometry, this.bodyMaterial));
@@ -83,6 +155,18 @@ export class FishModel {
       this.group.add(new THREE.Line(geometry, material));
     }
 
+    for (let line = 0; line < 5; line++) {
+      const positions = new Float32Array((SECTIONS + 1) * 3);
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      const material = new THREE.LineBasicMaterial({ color: 0x56d7e3, transparent: true, opacity: 0.75, depthWrite: false });
+      this.materials.push(material);
+      this.contourGeometries.push(geometry);
+      this.contourPositions.push(positions);
+      this.contourMaterials.push(material);
+      this.group.add(new THREE.Line(geometry, material));
+    }
+
     const finMaterial = new THREE.MeshBasicMaterial({ color: 0x1caaa7, side: THREE.DoubleSide });
     this.materials.push(finMaterial);
     this.leftFin.material = finMaterial;
@@ -94,22 +178,38 @@ export class FishModel {
     this.materials.push(tailMaterial);
     this.tail.material = tailMaterial;
     this.group.add(this.tail);
-    this.veil.group.visible = false;
+    this.leftFin.visible = false;
+    this.rightFin.visible = false;
+    this.tail.visible = false;
     this.group.add(this.veil.group);
 
     this.rebuildHistory(0);
+    this.setStyle("contour");
     this.update(0);
   }
 
   setStyle(style: FishStyle) {
-    const veil = style === "veil";
-    this.leftFin.visible = !veil;
-    this.rightFin.visible = !veil;
-    this.tail.visible = !veil;
-    this.veil.group.visible = veil;
-    this.bodyMaterial.color.setHex(veil ? 0x21548e : 0x20c7c1);
-    this.edgeMaterials[0].color.setHex(veil ? 0x4c94b8 : 0x4ff6e2);
-    this.edgeMaterials[1].color.setHex(veil ? 0x174275 : 0x288bc7);
+    const index = fishStyleIndex(style);
+    this.bodyMaterial.uniforms.style.value = index;
+    this.veil.setStyle(index);
+    const palettes = [
+      { edge: 0x315d86, contour: 0x416f94, edgeOpacity: 0.48, contourOpacity: 0 },
+      { edge: 0x4ee5ef, contour: 0x41b9e1, edgeOpacity: 0.95, contourOpacity: 0.86 },
+      { edge: 0x7896aa, contour: 0xa3bbc7, edgeOpacity: 0.58, contourOpacity: 0.22 },
+      { edge: 0x7ce9e4, contour: 0x51c6cb, edgeOpacity: 0.72, contourOpacity: 0.2 },
+      { edge: 0x7784e8, contour: 0x9d86ef, edgeOpacity: 0.76, contourOpacity: 0.34 },
+      { edge: 0xdce9ea, contour: 0xff5b4e, edgeOpacity: 0.68, contourOpacity: 0 },
+    ];
+    const palette = palettes[index];
+    for (const material of this.edgeMaterials) {
+      material.color.setHex(palette.edge);
+      material.opacity = palette.edgeOpacity;
+    }
+    for (const material of this.contourMaterials) {
+      material.color.setHex(palette.contour);
+      material.opacity = palette.contourOpacity;
+      material.visible = palette.contourOpacity > 0;
+    }
   }
 
   private rebuildHistory(time: number) {
@@ -174,6 +274,17 @@ export class FishModel {
     }
     this.bodyGeometry.attributes.position.needsUpdate = true;
     for (const geometry of this.edgeGeometries) geometry.attributes.position.needsUpdate = true;
+    for (let line = 0; line < this.contourPositions.length; line++) {
+      const v = (line + 1) / (this.contourPositions.length + 1) * 2 - 1;
+      const positions = this.contourPositions[line];
+      for (let section = 0; section <= SECTIONS; section++) {
+        const width = bodyWidth(section / SECTIONS);
+        positions[section * 3] = spine[section].x + normal[section].x * width * v;
+        positions[section * 3 + 1] = spine[section].y + normal[section].y * width * v;
+        positions[section * 3 + 2] = 0.015;
+      }
+      this.contourGeometries[line].attributes.position.needsUpdate = true;
+    }
 
     if (this.veil.group.visible) {
       const speed = headPath(time + 0.025).distanceTo(headPath(time - 0.025)) / 0.05;
@@ -202,6 +313,7 @@ export class FishModel {
     this.rightFin.geometry.dispose();
     this.tail.geometry.dispose();
     for (const geometry of this.edgeGeometries) geometry.dispose();
+    for (const geometry of this.contourGeometries) geometry.dispose();
     this.veil.dispose();
     for (const material of this.materials) material.dispose();
   }

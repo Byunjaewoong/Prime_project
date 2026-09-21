@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Home } from "lucide-react";
 import * as THREE from "three";
-import { FishModel, type FishStyle } from "./core/FishModel";
+import { FishModel } from "./core/FishModel";
+import { FISH_STYLE_OPTIONS, type FishStyle } from "./core/FishStyles";
 import { JellyfishModel } from "./core/JellyfishModel";
 
 type MarineStudyProps = { kind: "jellyfish" | "fish" };
@@ -12,9 +13,9 @@ type MarineStudyProps = { kind: "jellyfish" | "fish" };
 export default function MarineStudy({ kind }: MarineStudyProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fishRef = useRef<FishModel | null>(null);
-  const fishStyleRef = useRef<FishStyle>("classic");
+  const fishStyleRef = useRef<FishStyle>("contour");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [fishStyle, setFishStyle] = useState<FishStyle>("classic");
+  const [fishStyle, setFishStyle] = useState<FishStyle>("contour");
   const [unavailable, setUnavailable] = useState(false);
   const jellyfish = kind === "jellyfish";
 
@@ -111,20 +112,20 @@ export default function MarineStudy({ kind }: MarineStudyProps) {
                   {!jellyfish && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
                       <span style={{ fontSize: 11, opacity: 0.65 }}>Fish style</span>
-                      {(["classic", "veil"] as const).map(style => (
+                      {FISH_STYLE_OPTIONS.map(option => (
                         <button
-                          key={style}
+                          key={option.id}
                           type="button"
-                          aria-pressed={fishStyle === style}
-                          onClick={() => selectFishStyle(style)}
+                          aria-pressed={fishStyle === option.id}
+                          onClick={() => selectFishStyle(option.id)}
                           style={{
                             color: "#e5e7eb", textAlign: "left", cursor: "pointer", fontSize: 12,
                             padding: "9px 12px", borderRadius: 8,
-                            border: fishStyle === style ? "1px solid rgba(125,203,235,0.7)" : "1px solid rgba(255,255,255,0.15)",
-                            background: fishStyle === style ? "rgba(70,155,190,0.25)" : "rgba(255,255,255,0.04)",
+                            border: fishStyle === option.id ? "1px solid rgba(125,203,235,0.7)" : "1px solid rgba(255,255,255,0.15)",
+                            background: fishStyle === option.id ? "rgba(70,155,190,0.25)" : "rgba(255,255,255,0.04)",
                           }}
                         >
-                          {style === "classic" ? "Classic" : "Veil fins"}
+                          {option.label}
                         </button>
                       ))}
                     </div>
