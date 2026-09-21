@@ -92,8 +92,8 @@ export class SpraySystem {
     const sign=Math.random()<.5?-1:1;
     const turnSign=Math.sign(e.yawRate)||sign;
     const outsideBoost=sign===turnSign?1+Math.min(1.2,Math.abs(e.yawRate)*.8):1;
-    const along=bow?1.25:-.65-Math.random()*.5;
-    const lateral=(bow?.28:.55+Math.random()*.5)*sign;
+    const along=bow?.42:-.22-Math.random()*.18;
+    const lateral=(bow?.10:.18+Math.random()*.18)*sign;
     this.positions[j]=e.position.x+e.forward.x*along+this.side.x*lateral;
     this.positions[j+1]=.16+Math.random()*.12;
     this.positions[j+2]=e.position.z+e.forward.z*along+this.side.z*lateral;
@@ -102,7 +102,7 @@ export class SpraySystem {
     this.velocities[j+1]=(1.1+Math.random()*2.0)*settings.sprayHeight*(.65+e.speed*.15);
     this.velocities[j+2]=e.forward.z*(e.speed*.42+Math.random()*.4)+this.side.z*outward*sign;
     this.lives[i]=.45+Math.random()*.85;
-    this.sizes[i]=4+Math.random()*8;
+    this.sizes[i]=2+Math.random()*5;
   }
 
   dispose(){this.points.geometry.dispose();(this.points.material as THREE.Material).dispose();}

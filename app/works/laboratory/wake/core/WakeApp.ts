@@ -5,22 +5,28 @@ import { WakeSimulation, type WakeInput } from "./WakeSimulation";
 import { DEFAULT_WAKE_SETTINGS, QUALITY_PRESETS, resolveInitialQuality, type ResolvedWakeQuality, type WakeSettings } from "./WakeSettings";
 
 const WORLD_SIZE=48;
-const BOAT_LENGTH=2.8;
-// The supplied boat points 90 degrees away from this work's +Z forward axis.
-const BOAT_MODEL_YAW_CORRECTION=Math.PI/2;
+const BOAT_LENGTH=2.8/3;
+// The supplied model needs one additional 90 degree counter-clockwise correction.
+const BOAT_MODEL_YAW_CORRECTION=Math.PI;
 
 const surfaceVertex=/* glsl */`
 uniform sampler2D uState;
-uniform float uWaveHeight,uTime;
+uniform float uWaveHeight,uTime,uWorldSize;
 varying vec2 vUv;
 varying vec3 vWorldPosition;
+float fieldFade(vec2 p){
+ float edge=min(min(p.x,1.0-p.x),min(p.y,1.0-p.y));
+ return smoothstep(0.0,.075,edge);
+}
 void main(){
- vUv=uv;
- float h=texture2D(uState,uv).r*5.5*uWaveHeight;
- h+=(sin(position.x*.92+uTime*.75)+sin(position.y*1.27-uTime*.56))*.010*uWaveHeight;
- vec3 transformed=position;
- transformed.z+=h;
- vec4 world=modelMatrix*vec4(transformed,1.0);
+ vec4 world=modelMatrix*vec4(position,1.0);
+ vUv=vec2(world.x/uWorldSize+.5,.5-world.z/uWorldSize);
+ vec2 sampleUv=clamp(vUv,vec2(.001),vec2(.999));
+ float fluidHeight=texture2D(uState,sampleUv).r*fieldFade(vUv)*7.5*uWaveHeight;
+ float swell=sin(world.x*.43+world.z*.71+uTime*.42)*.030;
+ swell+=sin(world.x*1.17-world.z*.64-uTime*.57)*.014;
+ swell+=sin((world.x+world.z)*2.15+uTime*.31)*.006;
+ world.y+=(fluidHeight+swell*uWaveHeight);
  vWorldPosition=world.xyz;
  gl_Position=projectionMatrix*viewMatrix*world;
 }
@@ -33,27 +39,63 @@ uniform float uWaveHeight,uTime;
 uniform vec3 uDeepColor,uShallowColor,uFoamColor;
 varying vec2 vUv;
 varying vec3 vWorldPosition;
+float hash21(vec2 p){
+ p=fract(p*vec2(123.34,456.21));
+ p+=dot(p,p+45.32);
+ return fract(p.x*p.y);
+}
+float valueNoise(vec2 p){
+ vec2 i=floor(p),f=fract(p);
+ f=f*f*(3.0-2.0*f);
+ return mix(mix(hash21(i),hash21(i+vec2(1.0,0.0)),f.x),mix(hash21(i+vec2(0.0,1.0)),hash21(i+vec2(1.0,1.0)),f.x),f.y);
+}
+float waterNoise(vec2 p){
+ float value=.0;
+ value+=valueNoise(p)*.55;
+ p=mat2(1.6,-1.2,1.2,1.6)*p+3.7;
+ value+=valueNoise(p)*.28;
+ p=mat2(1.7,-1.1,1.1,1.7)*p+7.1;
+ value+=valueNoise(p)*.17;
+ return value;
+}
+float detailWave(vec2 p){
+ return sin(p.x*.43+p.y*.71+uTime*.42)*.030
+       +sin(p.x*1.17-p.y*.64-uTime*.57)*.014
+       +sin((p.x+p.y)*2.15+uTime*.31)*.006;
+}
 void main(){
- float l=texture2D(uState,vUv-vec2(uTexel.x,0.0)).r;
- float r=texture2D(uState,vUv+vec2(uTexel.x,0.0)).r;
- float b=texture2D(uState,vUv-vec2(0.0,uTexel.y)).r;
- float t=texture2D(uState,vUv+vec2(0.0,uTexel.y)).r;
- vec3 normal=normalize(vec3((l-r)*38.0*uWaveHeight,1.0,(b-t)*38.0*uWaveHeight));
+ vec2 sampleUv=clamp(vUv,uTexel,1.0-uTexel);
+ float l=texture2D(uState,clamp(sampleUv-vec2(uTexel.x,0.0),uTexel,1.0-uTexel)).r;
+ float r=texture2D(uState,clamp(sampleUv+vec2(uTexel.x,0.0),uTexel,1.0-uTexel)).r;
+ float b=texture2D(uState,clamp(sampleUv-vec2(0.0,uTexel.y),uTexel,1.0-uTexel)).r;
+ float t=texture2D(uState,clamp(sampleUv+vec2(0.0,uTexel.y),uTexel,1.0-uTexel)).r;
+ vec2 world=vWorldPosition.xz;
+ float eps=.08;
+ float waveL=detailWave(world-vec2(eps,0.0));
+ float waveR=detailWave(world+vec2(eps,0.0));
+ float waveB=detailWave(world-vec2(0.0,eps));
+ float waveT=detailWave(world+vec2(0.0,eps));
+ float fieldEdge=min(min(vUv.x,1.0-vUv.x),min(vUv.y,1.0-vUv.y));
+ float fieldMask=smoothstep(0.0,.075,fieldEdge);
+ vec3 normal=normalize(vec3(((l-r)*48.0*fieldMask+(waveL-waveR)*4.5)*uWaveHeight,1.0,((b-t)*48.0*fieldMask+(waveB-waveT)*4.5)*uWaveHeight));
  vec3 viewDir=normalize(cameraPosition-vWorldPosition);
  vec3 lightDir=normalize(vec3(-.45,.88,.32));
  float fresnel=pow(1.0-max(dot(viewDir,normal),0.0),3.2);
  float diffuse=.2+.8*max(dot(normal,lightDir),0.0);
- float spec=pow(max(dot(reflect(-lightDir,normal),viewDir),0.0),95.0);
- vec2 velocity=texture2D(uVelocity,vUv).xy;
- float micro=.5+.5*sin((vUv.x*960.0+vUv.y*730.0)+uTime*1.7+length(velocity)*16.0);
- float phase=vWorldPosition.z*4.7+vWorldPosition.x*.62+sin(vWorldPosition.x*.47)*1.45+sin(vWorldPosition.z*.31)*.58-uTime*.34;
- float ridge=smoothstep(.88,.995,sin(phase));
- float crossRidge=smoothstep(.94,.999,sin(vWorldPosition.x*5.8-vWorldPosition.z*.36+sin(vWorldPosition.z*.62)-uTime*.22));
- float glint=smoothstep(.82,.995,spec+micro*.07)*.72+ridge*(.055+fresnel*.28)+crossRidge*.018;
- float foam=texture2D(uState,vUv).b;
- foam=smoothstep(.08,.82,foam)*(0.76+micro*.24);
- vec3 water=mix(uDeepColor,uShallowColor,clamp(fresnel*.72+diffuse*.18,0.0,1.0));
- water+=vec3(spec*1.15+glint);
+ float reflection=max(dot(reflect(-lightDir,normal),viewDir),0.0);
+ float spec=pow(reflection,72.0);
+ vec2 velocity=texture2D(uVelocity,sampleUv).xy*fieldMask;
+ float grain=hash21(floor(world*18.0)+floor(uTime*3.0));
+ float broadNoise=waterNoise(world*.19+vec2(uTime*.018,-uTime*.012));
+ float fineNoise=waterNoise(world*.73+vec2(-uTime*.035,uTime*.026));
+ float waterTexture=clamp(broadNoise*.68+fineNoise*.32,0.0,1.0);
+ float sparkle=pow(reflection,180.0)*smoothstep(.58,1.0,grain)*(1.0+length(velocity)*.2);
+ sparkle+=smoothstep(.82,.98,waterTexture)*(.018+fresnel*.045);
+ float foam=texture2D(uState,sampleUv).b*fieldMask;
+ foam=smoothstep(.08,.82,foam)*(.82+grain*.18);
+ vec3 water=mix(uDeepColor,uShallowColor,clamp(fresnel*.62+diffuse*.31,0.0,1.0));
+ water*=.72+waterTexture*.48;
+ water+=vec3(spec*1.35+sparkle*1.8+waterTexture*.026);
  water=mix(water,uFoamColor,foam*.96);
  gl_FragColor=vec4(water,1.0);
 }
@@ -137,11 +179,11 @@ export class WakeApp {
 
   private createSurface(segments:number){
     const old=this.surface;
-    const geometry=new THREE.PlaneGeometry(WORLD_SIZE,WORLD_SIZE,segments,segments);
-    const material=old?.material??new THREE.ShaderMaterial({vertexShader:surfaceVertex,fragmentShader:surfaceFragment,side:THREE.DoubleSide,uniforms:{uState:{value:this.simulation.stateTexture},uVelocity:{value:this.simulation.velocityTexture},uTexel:{value:new THREE.Vector2(1/this.simulation.resolution,1/this.simulation.resolution)},uWaveHeight:{value:this.settings.waveHeight},uTime:{value:0},uDeepColor:{value:new THREE.Color()},uShallowColor:{value:new THREE.Color()},uFoamColor:{value:new THREE.Color()}}});
-    const surface=new THREE.Mesh(geometry,material);surface.rotation.x=-Math.PI/2;surface.position.y=-.03;surface.receiveShadow=true;
+    const geometry=new THREE.PlaneGeometry(1,1,segments,segments);
+    const material=old?.material??new THREE.ShaderMaterial({vertexShader:surfaceVertex,fragmentShader:surfaceFragment,side:THREE.DoubleSide,uniforms:{uState:{value:this.simulation.stateTexture},uVelocity:{value:this.simulation.velocityTexture},uTexel:{value:new THREE.Vector2(1/this.simulation.resolution,1/this.simulation.resolution)},uWaveHeight:{value:this.settings.waveHeight},uTime:{value:0},uWorldSize:{value:WORLD_SIZE},uDeepColor:{value:new THREE.Color()},uShallowColor:{value:new THREE.Color()},uFoamColor:{value:new THREE.Color()}}});
+    const surface=new THREE.Mesh(geometry,material);surface.rotation.x=-Math.PI/2;surface.position.y=-.03;surface.scale.set(120,120,1);surface.receiveShadow=true;surface.frustumCulled=false;
     if(old){this.scene.remove(old);old.geometry.dispose();}
-    this.surface=surface;this.scene.add(surface);
+    this.surface=surface;this.scene.add(surface);this.fitSurfaceToView();
   }
 
   private createFallbackBoat(){
@@ -152,7 +194,7 @@ export class WakeApp {
     hullGeometry.rotateX(Math.PI/2);hullGeometry.center();
     const hull=new THREE.Mesh(hullGeometry,new THREE.MeshStandardMaterial({color:0xf4f4f1,roughness:.34,metalness:.05}));hull.position.y=.23;group.add(hull);
     const cockpit=new THREE.Mesh(new THREE.CapsuleGeometry(.31,.72,5,12),new THREE.MeshStandardMaterial({color:0x11171a,roughness:.22,metalness:.3}));cockpit.rotation.x=Math.PI/2;cockpit.position.set(0,.54,-.18);cockpit.scale.set(1,.55,1);group.add(cockpit);
-    return group;
+    group.scale.setScalar(1/3);return group;
   }
 
   private loadBoat(url:string){
@@ -179,7 +221,7 @@ export class WakeApp {
 
   private applyPalette(){
     const mono=this.settings.palette==="monochrome";const uniforms=this.surface.material.uniforms;
-    uniforms.uDeepColor.value.set(mono?0x030506:0x031423);uniforms.uShallowColor.value.set(mono?0x293136:0x164c6b);uniforms.uFoamColor.value.set(mono?0xf4f6f7:0xdff7ff);
+    uniforms.uDeepColor.value.set(mono?0x05080a:0x031423);uniforms.uShallowColor.value.set(mono?0x7a858b:0x2e789d);uniforms.uFoamColor.value.set(mono?0xf4f6f7:0xdff7ff);
     (this.scene.background as THREE.Color).set(mono?0x060708:0x020e18);this.spray.setPalette(this.settings.palette);
   }
 
@@ -197,7 +239,19 @@ export class WakeApp {
 
   resize(){
     const width=Math.max(1,this.canvas.clientWidth),height=Math.max(1,this.canvas.clientHeight);const mobile=window.matchMedia("(pointer: coarse)").matches||width<760;
-    this.camera.aspect=width/height;this.camera.updateProjectionMatrix();this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,mobile?1.25:1.75));this.renderer.setSize(width,height,false);
+    this.camera.aspect=width/height;this.camera.updateProjectionMatrix();this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,mobile?1.25:1.75));this.renderer.setSize(width,height,false);this.fitSurfaceToView();
+  }
+
+  private fitSurfaceToView(){
+    if(!this.surface)return;
+    const plane=new THREE.Plane(new THREE.Vector3(0,1,0),.03);
+    const hits:THREE.Vector3[]=[];
+    for(const [x,y] of [[-1,-1],[1,-1],[-1,1],[1,1]] as const){
+      this.raycaster.setFromCamera(new THREE.Vector2(x,y),this.camera);const hit=new THREE.Vector3();if(this.raycaster.ray.intersectPlane(plane,hit))hits.push(hit);
+    }
+    if(hits.length!==4){this.surface.position.set(0,-.03,0);this.surface.scale.set(140,140,1);return;}
+    const margin=4;const minX=Math.min(...hits.map(hit=>hit.x))-margin,maxX=Math.max(...hits.map(hit=>hit.x))+margin;const minZ=Math.min(...hits.map(hit=>hit.z))-margin,maxZ=Math.max(...hits.map(hit=>hit.z))+margin;
+    this.surface.position.set((minX+maxX)/2,-.03,(minZ+maxZ)/2);this.surface.scale.set(maxX-minX,maxZ-minZ,1);this.surface.updateMatrixWorld(true);
   }
 
   private updateBoat(dt:number,time:number){
