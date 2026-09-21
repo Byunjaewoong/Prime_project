@@ -1,6 +1,6 @@
 import * as THREE from "three";
 
-const LENGTH_STEPS = 28;
+const LENGTH_STEPS = 36;
 const WIDTH_STEPS = 12;
 
 type FinKind = "left" | "right" | "tail";
@@ -16,6 +16,10 @@ class VeilFin {
   readonly group = new THREE.Group();
   private geometry = new THREE.BufferGeometry();
   private positions = new Float32Array((LENGTH_STEPS + 1) * (WIDTH_STEPS + 1) * 3);
+  private targets = new Float32Array((LENGTH_STEPS + 1) * (WIDTH_STEPS + 1) * 2);
+  private velocities = new Float32Array((LENGTH_STEPS + 1) * (WIDTH_STEPS + 1) * 2);
+  private smoothed = new Float32Array((LENGTH_STEPS + 1) * (WIDTH_STEPS + 1) * 3);
+  private initialized = false;
   private ribs: Array<{ geometry: THREE.BufferGeometry; positions: Float32Array }> = [];
   private materials: THREE.Material[] = [];
 
@@ -76,25 +80,91 @@ class VeilFin {
     }
   }
 
-  update(point: FinPoint) {
+  update(point: FinPoint, dt = 0) {
     for (let i = 0; i <= LENGTH_STEPS; i++) {
       const u = i / LENGTH_STEPS;
       for (let j = 0; j <= WIDTH_STEPS; j++) {
         const p = point(u, this.kind === "tail" ? j / WIDTH_STEPS * 2 - 1 : j / WIDTH_STEPS);
-        const k = (i * (WIDTH_STEPS + 1) + j) * 3;
-        this.positions[k] = p.x;
-        this.positions[k + 1] = p.y;
-        this.positions[k + 2] = -0.025;
+        const vertex = i * (WIDTH_STEPS + 1) + j;
+        this.targets[vertex * 2] = p.x;
+        this.targets[vertex * 2 + 1] = p.y;
+      }
+    }
+
+    if (!this.initialized || this.kind !== "tail") {
+      for (let vertex = 0; vertex < this.targets.length / 2; vertex++) {
+        this.positions[vertex * 3] = this.targets[vertex * 2];
+        this.positions[vertex * 3 + 1] = this.targets[vertex * 2 + 1];
+        this.positions[vertex * 3 + 2] = -0.025;
+      }
+      this.initialized = true;
+    } else {
+      // The root is fixed to the fish. Each following strip is a softer spring,
+      // so a turn travels down the fabric instead of rotating the whole tail.
+      const stepTime = Math.min(1 / 30, Math.max(1 / 240, dt / 2));
+      for (let substep = 0; substep < 2; substep++) {
+        for (let i = 0; i <= LENGTH_STEPS; i++) {
+          const u = i / LENGTH_STEPS;
+          for (let j = 0; j <= WIDTH_STEPS; j++) {
+            const vertex = i * (WIDTH_STEPS + 1) + j;
+            const pk = vertex * 3;
+            const tk = vertex * 2;
+            if (i === 0) {
+              this.positions[pk] = this.targets[tk];
+              this.positions[pk + 1] = this.targets[tk + 1];
+              this.velocities[tk] = 0;
+              this.velocities[tk + 1] = 0;
+              continue;
+            }
+
+            const previous = vertex - (WIDTH_STEPS + 1);
+            const previousPosition = previous * 3;
+            const previousTarget = previous * 2;
+            const carriedX = this.positions[previousPosition] + this.targets[tk] - this.targets[previousTarget];
+            const carriedY = this.positions[previousPosition + 1] + this.targets[tk + 1] - this.targets[previousTarget + 1];
+            const propagation = 32 - u * 21;
+            const tether = 4.8 - u * 3.2;
+            const accelerationX = (carriedX - this.positions[pk]) * propagation + (this.targets[tk] - this.positions[pk]) * tether;
+            const accelerationY = (carriedY - this.positions[pk + 1]) * propagation + (this.targets[tk + 1] - this.positions[pk + 1]) * tether;
+            const damping = Math.exp(-(5.4 - u * 2.1) * stepTime);
+            this.velocities[tk] = (this.velocities[tk] + accelerationX * stepTime) * damping;
+            this.velocities[tk + 1] = (this.velocities[tk + 1] + accelerationY * stepTime) * damping;
+            this.positions[pk] += this.velocities[tk] * stepTime;
+            this.positions[pk + 1] += this.velocities[tk + 1] * stepTime;
+            this.positions[pk + 2] = -0.025;
+          }
+        }
+      }
+      this.smoothed.set(this.positions);
+      for (let i = 1; i < LENGTH_STEPS; i++) {
+        for (let j = 0; j <= WIDTH_STEPS; j++) {
+          const pk = (i * (WIDTH_STEPS + 1) + j) * 3;
+          const before = pk - (WIDTH_STEPS + 1) * 3;
+          const after = pk + (WIDTH_STEPS + 1) * 3;
+          this.smoothed[pk] = this.positions[pk] * 0.62 + (this.positions[before] + this.positions[after]) * 0.19;
+          this.smoothed[pk + 1] = this.positions[pk + 1] * 0.62 + (this.positions[before + 1] + this.positions[after + 1]) * 0.19;
+        }
+      }
+      for (let i = 1; i < LENGTH_STEPS; i++) {
+        for (let j = 0; j <= WIDTH_STEPS; j++) {
+          const pk = (i * (WIDTH_STEPS + 1) + j) * 3;
+          this.positions[pk] = this.smoothed[pk];
+          this.positions[pk + 1] = this.smoothed[pk + 1];
+        }
       }
     }
     this.geometry.attributes.position.needsUpdate = true;
     for (let rib = 0; rib < this.ribs.length; rib++) {
       const { geometry, positions } = this.ribs[rib];
-      const v = this.kind === "tail" ? rib / (this.ribs.length - 1) * 2 - 1 : rib / (this.ribs.length - 1);
+      const across = rib / (this.ribs.length - 1) * WIDTH_STEPS;
+      const left = Math.floor(across);
+      const right = Math.min(WIDTH_STEPS, left + 1);
+      const mix = across - left;
       for (let i = 0; i <= LENGTH_STEPS; i++) {
-        const p = point(i / LENGTH_STEPS, v);
-        positions[i * 3] = p.x;
-        positions[i * 3 + 1] = p.y;
+        const leftVertex = (i * (WIDTH_STEPS + 1) + left) * 3;
+        const rightVertex = (i * (WIDTH_STEPS + 1) + right) * 3;
+        positions[i * 3] = this.positions[leftVertex] * (1 - mix) + this.positions[rightVertex] * mix;
+        positions[i * 3 + 1] = this.positions[leftVertex + 1] * (1 - mix) + this.positions[rightVertex + 1] * mix;
         positions[i * 3 + 2] = -0.015;
       }
       geometry.attributes.position.needsUpdate = true;
@@ -150,17 +220,19 @@ export class VeilFins {
         return center
           .addScaledVector(direction, -u * (0.25 + 0.4 * speedFactor + 0.07 * Math.sin(time * 0.9 + u * 7 + v * 3)))
           .addScaledVector(sideways, side * (widthAt(section / 42) * (1 - u * 0.24) + opened + flutter));
-      });
+      }, dt);
     }
 
     this.tail.update((u, v) => {
-      const fan = Math.pow(Math.sin(Math.PI * u * 0.5), 0.9) * 0.82 * this.spread;
-      const trailing = u * (1.12 + speedFactor * 0.38 + 0.2 * (1 - v * v) + 0.08 * Math.sin(v * 8 + time * 0.7) * u);
-      const flutter = Math.sin(time * 1.34 - u * 5 + v * 2.8) * u * u * 0.14;
+      const edge = Math.abs(v);
+      const fork = 0.68 + 0.4 * smoothstep((edge - 0.08) / 0.92);
+      const fan = Math.pow(Math.sin(Math.PI * u * 0.5), 0.82) * 1.22 * this.spread;
+      const trailing = u * (1.22 + speedFactor * 0.38) * fork;
+      const flutter = Math.sin(time * 1.17 - u * 5.3 + v * 3.4) * u * u * (0.08 + edge * 0.1);
       return spine[42].clone()
         .addScaledVector(tangent[42], -trailing)
-        .addScaledVector(normal[42], v * fan + flutter);
-    });
+        .addScaledVector(normal[42], v * fan * (0.82 + edge * 0.18) + flutter);
+    }, dt);
   }
 
   dispose() {
