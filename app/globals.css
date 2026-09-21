@@ -425,6 +425,91 @@ a:hover {
   .orbit-font-value {
     font-size: 11px;
   }
+
+  .orbit-fab__controls.wake-controls {
+    max-height: 68dvh;
+    padding: 14px 12px;
+  }
+}
+
+/* Wake laboratory */
+.wake-page {
+  position: relative;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background: #060708;
+  color: #e5e7eb;
+  font-family: var(--font-courier), monospace;
+}
+
+.wake-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.wake-controls {
+  width: min(390px, calc(100vw - 32px));
+  max-height: min(78dvh, 650px);
+  padding: 16px 18px;
+  display: block;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-width: thin;
+}
+
+.wake-menu-head,
+.wake-slider > span,
+.wake-select {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.wake-menu-head {
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid rgba(255,255,255,.12);
+  font-size: 14px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.wake-menu-links { display: flex; gap: 8px; }
+.wake-menu-links a {
+  width: 32px; height: 32px; display: grid; place-items: center;
+  color: rgba(255,255,255,.68); border: 1px solid rgba(255,255,255,.12);
+  border-radius: 50%; text-decoration: none;
+}
+
+.wake-section { padding: 11px 0 4px; }
+.wake-section + .wake-section { border-top: 1px solid rgba(255,255,255,.075); }
+.wake-section h4 { margin: 0 0 9px; font-size: 10px; letter-spacing: .13em; color: rgba(255,255,255,.48); text-transform: uppercase; }
+.wake-slider { display: block; margin: 8px 0 12px; font-size: 11px; color: rgba(255,255,255,.75); }
+.wake-slider output { color: rgba(255,255,255,.45); font-variant-numeric: tabular-nums; }
+.wake-slider-track { padding: 8px 18px 3px; }
+.wake-slider input { display: block; width: 100%; margin: 0; accent-color: #d7e0e6; touch-action: pan-x; }
+
+.wake-segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.wake-segmented button,
+.wake-select select {
+  border: 1px solid rgba(255,255,255,.13); border-radius: 8px;
+  background: rgba(255,255,255,.035); color: rgba(255,255,255,.63);
+  padding: 8px 10px; font: inherit; font-size: 11px;
+}
+.wake-segmented button { cursor: pointer; }
+.wake-segmented button.is-active { color: white; border-color: rgba(220,238,248,.5); background: rgba(185,210,224,.13); }
+.wake-select { gap: 16px; font-size: 11px; color: rgba(255,255,255,.75); }
+.wake-select select { min-width: 112px; }
+.wake-unavailable { position: absolute; inset: auto auto 24px 24px; font-size: 12px; }
+
+@media (max-width: 768px) {
+  .wake-controls { max-height: 68dvh; padding: 14px 12px; }
+  .wake-slider-track { padding-inline: 24px; }
+  .wake-fab { right: 16px; bottom: max(16px, env(safe-area-inset-bottom)); }
 }
 /* 🔹 모바일에서 FAB 패널 완전 안전하게 보이게 */
 @media (max-width: 768px) {
@@ -474,5 +559,13 @@ a:hover {
   .orbit-font-value {
     font-size: 11px;
   }
-}
 
+  .wake-fab .orbit-fab__actions--open {
+    transform: none;
+  }
+
+  .orbit-fab__controls.wake-controls {
+    max-height: 68dvh;
+    padding: 14px 12px;
+  }
+}
