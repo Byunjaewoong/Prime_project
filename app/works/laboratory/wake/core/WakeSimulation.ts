@@ -111,7 +111,7 @@ void main(){
 const stateFragment = /* glsl */`
 uniform sampler2D uState;
 uniform vec2 uTexel,uBoat,uDirection;
-uniform float uDt,uSpeed,uAcceleration,uYawRate,uWakeForce,uFieldScale,uWaveDamping;
+uniform float uDt,uSpeed,uAcceleration,uYawRate,uWakeForce,uFieldScale,uWaveSpeed,uWaveDamping;
 varying vec2 vUv;
 float gaussian(vec2 p, vec2 c, vec2 s){vec2 q=(p-c)/s;return exp(-dot(q,q)*2.5);}
 void main(){
@@ -121,7 +121,7 @@ void main(){
  float b=texture2D(uState,vUv-vec2(0.0,uTexel.y)).r;
  float t=texture2D(uState,vUv+vec2(0.0,uTexel.y)).r;
  float lap=l+r+b+t-4.0*center.r;
- float vertical=(center.g+lap*uDt*26.0)*exp(-uDt*uWaveDamping);
+ float vertical=(center.g+lap*uDt*26.0*uWaveSpeed*uWaveSpeed)*exp(-uDt*uWaveDamping);
  float height=center.r+vertical*uDt;
  vec2 side=vec2(-uDirection.y,uDirection.x);
  vec2 delta=vUv-uBoat;
@@ -221,7 +221,7 @@ export class WakeSimulation {
       Object.assign(this.pressureMaterial.uniforms,{uPressure:{value:this.pressure.read.texture},uDivergence:{value:this.divergence.texture}}); this.setCommon(this.pressureMaterial); this.run(this.pressureMaterial,this.pressure.write); swap(this.pressure);
     }
     Object.assign(this.gradientMaterial.uniforms,{uPressure:{value:this.pressure.read.texture},uVelocity:{value:this.velocity.read.texture}}); this.setCommon(this.gradientMaterial); this.run(this.gradientMaterial,this.velocity.write); swap(this.velocity);
-    Object.assign(this.stateMaterial.uniforms,{uState:{value:this.state.read.texture},uTexel:{value:new THREE.Vector2(1/this.size,1/this.size)},uBoat:{value:boat},uDirection:{value:direction},uDt:{value:dt},uSpeed:{value:input.speed},uAcceleration:{value:input.acceleration},uYawRate:{value:input.yawRate},uWakeForce:{value:settings.wakeForce},uFieldScale:{value:fieldScale},uWaveDamping:{value:settings.waveDamping}});
+    Object.assign(this.stateMaterial.uniforms,{uState:{value:this.state.read.texture},uTexel:{value:new THREE.Vector2(1/this.size,1/this.size)},uBoat:{value:boat},uDirection:{value:direction},uDt:{value:dt},uSpeed:{value:input.speed},uAcceleration:{value:input.acceleration},uYawRate:{value:input.yawRate},uWakeForce:{value:settings.wakeForce},uFieldScale:{value:fieldScale},uWaveSpeed:{value:settings.waveSpeed},uWaveDamping:{value:settings.waveDamping}});
     this.run(this.stateMaterial,this.state.write); swap(this.state);
   }
 

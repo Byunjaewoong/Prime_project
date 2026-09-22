@@ -6,6 +6,7 @@ export type WakeSettings = {
   cruiseSpeed: number;
   wakeForce: number;
   waveHeight: number;
+  waveSpeed: number;
   waveDamping: number;
   reflectionIntensity: number;
   lightDirection: number;
@@ -28,6 +29,7 @@ export const DEFAULT_WAKE_SETTINGS: WakeSettings = {
   cruiseSpeed: 1,
   wakeForce: 1,
   waveHeight: 0.8,
+  waveSpeed: 1,
   waveDamping: 1.25,
   reflectionIntensity: 1,
   lightDirection: 145,
@@ -50,6 +52,7 @@ export const WAKE2_DEFAULT_SETTINGS: WakeSettings = {
   cruiseSpeed: 1.85,
   wakeForce: 1.4,
   waveHeight: 0.3,
+  waveSpeed: 1,
   waveDamping: 1.25,
   reflectionIntensity: 2.5,
   lightDirection: 0,
