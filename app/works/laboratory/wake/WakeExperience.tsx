@@ -12,6 +12,10 @@ type ControlItem={key:NumericSetting;label:string;min:number;max:number;step:num
 const controls:{section:string;items:ControlItem[]}[]=[
   {section:"Motion",items:[{key:"cruiseSpeed",label:"Cruise speed",min:.5,max:2,step:.05}]},
   {section:"Water",items:[{key:"wakeForce",label:"Wake force",min:0,max:2,step:.05},{key:"waveHeight",label:"Wave height",min:0,max:1.5,step:.05}]},
+  {section:"Reflection",items:[
+    {key:"reflectionIntensity",label:"Light intensity",min:0,max:6,step:.1,decimals:1},
+    {key:"lightDirection",label:"Light direction",min:0,max:360,step:5,decimals:0,unit:"°"},
+  ]},
   {section:"Vortex Foam",items:[
     {key:"vorticity",label:"Vorticity",min:0,max:15,step:.5,decimals:1},
     {key:"dyeDecay",label:"Dye Decay",min:.98,max:1,step:.001,decimals:3},

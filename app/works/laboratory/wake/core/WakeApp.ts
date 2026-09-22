@@ -42,8 +42,8 @@ void main(){
 
 const surfaceFragment=/* glsl */`
 uniform sampler2D uState,uVelocity,uFoam;
-uniform vec2 uTexel,uFoamFieldCenter;
-uniform float uWaveHeight,uTime,uFoamScreenSpace;
+uniform vec2 uTexel,uFoamFieldCenter,uBoatWorld,uBoatDirection;
+uniform float uWaveHeight,uTime,uFoamScreenSpace,uReflectionIntensity,uLightDirection;
 uniform float uFoamFieldSize;
 uniform vec3 uDeepColor,uShallowColor;
 varying vec2 vUv;
@@ -74,11 +74,17 @@ void main(){
  float b=texture2D(uState,clamp(sampleUv-vec2(0.0,uTexel.y),uTexel,1.0-uTexel)).r;
  float t=texture2D(uState,clamp(sampleUv+vec2(0.0,uTexel.y),uTexel,1.0-uTexel)).r;
  vec2 world=vWorldPosition.xz;
+ vec2 boatSide=vec2(-uBoatDirection.y,uBoatDirection.x);
+ vec2 boatDelta=world-uBoatWorld;
+ vec2 boatLocal=vec2(dot(boatDelta,boatSide),dot(boatDelta,uBoatDirection));
+ float boatHull=dot(boatLocal/vec2(.68,1.55),boatLocal/vec2(.68,1.55));
+ if(uFoamScreenSpace>.5&&boatHull<1.0)discard;
  float fieldEdge=min(min(vUv.x,1.0-vUv.x),min(vUv.y,1.0-vUv.y));
  float fieldMask=smoothstep(0.0,.075,fieldEdge);
  vec3 normal=normalize(vec3((l-r)*48.0*fieldMask*uWaveHeight,1.0,(b-t)*48.0*fieldMask*uWaveHeight));
  vec3 viewDir=normalize(cameraPosition-vWorldPosition);
- vec3 lightDir=normalize(vec3(-.45,.88,.32));
+ float lightAngle=radians(uLightDirection);
+ vec3 lightDir=normalize(vec3(cos(lightAngle),.88,sin(lightAngle)));
  float fresnel=pow(1.0-max(dot(viewDir,normal),0.0),3.2);
  float diffuse=.2+.8*max(dot(normal,lightDir),0.0);
  float reflection=max(dot(reflect(-lightDir,normal),viewDir),0.0);
@@ -103,7 +109,7 @@ void main(){
   water*=.72+waterTexture*.48;
   water+=vec3(spec*1.35+sparkle*1.8+waterTexture*.026);
  vec3 backgroundDyeColor=uDeepColor;
- vec3 wakeReflection=vec3(spec*1.35+fresnel*.025);
+ vec3 wakeReflection=vec3((spec*1.35+fresnel*.025)*uReflectionIntensity);
  water=mix(water,wakeReflection,uFoamScreenSpace);
  water=mix(water,backgroundDyeColor,backgroundFoam);
  water=mix(water,max(water,visibleFoam),clamp(brightFoam,0.0,1.0));
@@ -208,7 +214,7 @@ export class WakeApp {
   private createSurface(segments:number){
     const old=this.surface;
     const geometry=new THREE.PlaneGeometry(1,1,segments,segments);
-    const material=old?.material??new THREE.ShaderMaterial({vertexShader:surfaceVertex,fragmentShader:surfaceFragment,side:THREE.DoubleSide,uniforms:{uState:{value:this.simulation.stateTexture},uVelocity:{value:this.simulation.velocityTexture},uFoam:{value:this.foam.texture},uTexel:{value:new THREE.Vector2(1/this.simulation.resolution,1/this.simulation.resolution)},uFoamFieldCenter:{value:this.foamFieldCenter},uFoamFieldSize:{value:this.foamFieldSize},uWaveHeight:{value:this.settings.waveHeight},uTime:{value:0},uWorldSize:{value:WORLD_SIZE},uFoamScreenSpace:{value:this.foamMode==="boat-mix"?1:0},uDeepColor:{value:new THREE.Color()},uShallowColor:{value:new THREE.Color()}}});
+    const material=old?.material??new THREE.ShaderMaterial({vertexShader:surfaceVertex,fragmentShader:surfaceFragment,side:THREE.DoubleSide,uniforms:{uState:{value:this.simulation.stateTexture},uVelocity:{value:this.simulation.velocityTexture},uFoam:{value:this.foam.texture},uTexel:{value:new THREE.Vector2(1/this.simulation.resolution,1/this.simulation.resolution)},uFoamFieldCenter:{value:this.foamFieldCenter},uFoamFieldSize:{value:this.foamFieldSize},uBoatWorld:{value:new THREE.Vector2()},uBoatDirection:{value:new THREE.Vector2(0,1)},uWaveHeight:{value:this.settings.waveHeight},uTime:{value:0},uWorldSize:{value:WORLD_SIZE},uFoamScreenSpace:{value:this.foamMode==="boat-mix"?1:0},uReflectionIntensity:{value:this.settings.reflectionIntensity},uLightDirection:{value:this.settings.lightDirection},uDeepColor:{value:new THREE.Color()},uShallowColor:{value:new THREE.Color()}}});
     const surface=new THREE.Mesh(geometry,material);surface.rotation.x=-Math.PI/2;surface.position.y=-.03;surface.scale.set(120,120,1);surface.receiveShadow=true;surface.frustumCulled=false;
     if(old){this.scene.remove(old);old.geometry.dispose();}
     this.surface=surface;this.scene.add(surface);this.fitSurfaceToView();
@@ -247,6 +253,8 @@ export class WakeApp {
     const previousQuality=this.settings.quality;Object.assign(this.settings,partial);
     if(partial.palette)this.applyPalette();
     if(partial.waveHeight!==undefined)this.surface.material.uniforms.uWaveHeight.value=partial.waveHeight;
+    if(partial.reflectionIntensity!==undefined)this.surface.material.uniforms.uReflectionIntensity.value=partial.reflectionIntensity;
+    if(partial.lightDirection!==undefined)this.surface.material.uniforms.uLightDirection.value=partial.lightDirection;
     if(partial.quality&&partial.quality!==previousQuality){const next=partial.quality==="auto"?resolveInitialQuality():partial.quality;this.applyQuality(next);}
   }
 
@@ -411,7 +419,7 @@ export class WakeApp {
       foamInput={...input,uv:new THREE.Vector2((this.position.x-this.foamFieldCenter.x)/this.foamFieldSize+.5,.5-(this.position.z-this.foamFieldCenter.y)/this.foamFieldSize),fieldScale:WORLD_SIZE/this.foamFieldSize};
     }
     this.foam.update(foamInput,this.settings,this.foamMode==="boat-mix");
-    const uniforms=this.surface.material.uniforms;uniforms.uState.value=this.simulation.stateTexture;uniforms.uVelocity.value=this.simulation.velocityTexture;uniforms.uFoam.value=this.foam.texture;uniforms.uTexel.value.setScalar(1/this.simulation.resolution);uniforms.uTime.value=time;uniforms.uWaveHeight.value=this.settings.waveHeight;
+    const uniforms=this.surface.material.uniforms;uniforms.uState.value=this.simulation.stateTexture;uniforms.uVelocity.value=this.simulation.velocityTexture;uniforms.uFoam.value=this.foam.texture;uniforms.uTexel.value.setScalar(1/this.simulation.resolution);uniforms.uBoatWorld.value.set(this.position.x,this.position.z);uniforms.uBoatDirection.value.set(this.forward.x,this.forward.z);uniforms.uTime.value=time;uniforms.uWaveHeight.value=this.settings.waveHeight;
     this.spray.update(dt,{position:this.position,forward:this.forward,speed:input.speed,acceleration:input.acceleration,yawRate:input.yawRate},this.settings);
     this.updateFallbackTrail();this.renderer.render(this.scene,this.camera);this.monitorQuality(rawDt);this.frame=requestAnimationFrame(this.animate);
   };
