@@ -103,7 +103,8 @@ void main(){
   water*=.72+waterTexture*.48;
   water+=vec3(spec*1.35+sparkle*1.8+waterTexture*.026);
  vec3 backgroundDyeColor=uDeepColor;
- water=mix(water,vec3(0.0),uFoamScreenSpace);
+ vec3 wakeReflection=vec3(spec*1.35+fresnel*.025);
+ water=mix(water,wakeReflection,uFoamScreenSpace);
  water=mix(water,backgroundDyeColor,backgroundFoam);
  water=mix(water,max(water,visibleFoam),clamp(brightFoam,0.0,1.0));
  gl_FragColor=vec4(water,1.0);
