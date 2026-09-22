@@ -42,8 +42,9 @@ void main(){
 
 const surfaceFragment=/* glsl */`
 uniform sampler2D uState,uVelocity,uFoam;
-uniform vec2 uTexel,uViewport;
+uniform vec2 uTexel,uFoamFieldCenter;
 uniform float uWaveHeight,uTime,uFoamScreenSpace;
+uniform float uFoamFieldSize;
 uniform vec3 uDeepColor,uShallowColor;
 varying vec2 vUv;
 varying vec3 vWorldPosition;
@@ -99,8 +100,8 @@ void main(){
  float waterTexture=clamp(broadNoise*.68+fineNoise*.32,0.0,1.0);
  float sparkle=pow(reflection,180.0)*smoothstep(.58,1.0,grain)*(1.0+length(velocity)*.2);
  sparkle+=smoothstep(.82,.98,waterTexture)*(.018+fresnel*.045);
- vec2 screenUv=gl_FragCoord.xy/uViewport;
- vec2 foamUv=mix(sampleUv,clamp(screenUv,uTexel,1.0-uTexel),uFoamScreenSpace);
+ vec2 worldFoamUv=vec2((vWorldPosition.x-uFoamFieldCenter.x)/uFoamFieldSize+.5,.5-(vWorldPosition.z-uFoamFieldCenter.y)/uFoamFieldSize);
+ vec2 foamUv=mix(sampleUv,clamp(worldFoamUv,uTexel,1.0-uTexel),uFoamScreenSpace);
  float foamFieldMask=mix(fieldMask,1.0,uFoamScreenSpace);
  vec3 foamDye=texture2D(uFoam,foamUv).rgb*foamFieldMask;
  float brightFoam=max(foamDye.g,foamDye.b);
@@ -160,6 +161,8 @@ export class WakeApp {
   private raycaster=new THREE.Raycaster();
   private pointer=new THREE.Vector2();
   private waterPlane=new THREE.Plane(new THREE.Vector3(0,1,0),0);
+  private foamFieldCenter=new THREE.Vector2();
+  private foamFieldSize=WORLD_SIZE;
   private frameSamples:number[]=[];
   private elapsed=0;
   private fallbackTrail:THREE.Line;
@@ -208,7 +211,7 @@ export class WakeApp {
   private createSurface(segments:number){
     const old=this.surface;
     const geometry=new THREE.PlaneGeometry(1,1,segments,segments);
-    const material=old?.material??new THREE.ShaderMaterial({vertexShader:surfaceVertex,fragmentShader:surfaceFragment,side:THREE.DoubleSide,uniforms:{uState:{value:this.simulation.stateTexture},uVelocity:{value:this.simulation.velocityTexture},uFoam:{value:this.foam.texture},uTexel:{value:new THREE.Vector2(1/this.simulation.resolution,1/this.simulation.resolution)},uViewport:{value:new THREE.Vector2(1,1)},uWaveHeight:{value:this.settings.waveHeight},uTime:{value:0},uWorldSize:{value:WORLD_SIZE},uFoamScreenSpace:{value:this.foamMode==="boat-mix"?1:0},uDeepColor:{value:new THREE.Color()},uShallowColor:{value:new THREE.Color()}}});
+    const material=old?.material??new THREE.ShaderMaterial({vertexShader:surfaceVertex,fragmentShader:surfaceFragment,side:THREE.DoubleSide,uniforms:{uState:{value:this.simulation.stateTexture},uVelocity:{value:this.simulation.velocityTexture},uFoam:{value:this.foam.texture},uTexel:{value:new THREE.Vector2(1/this.simulation.resolution,1/this.simulation.resolution)},uFoamFieldCenter:{value:this.foamFieldCenter},uFoamFieldSize:{value:this.foamFieldSize},uWaveHeight:{value:this.settings.waveHeight},uTime:{value:0},uWorldSize:{value:WORLD_SIZE},uFoamScreenSpace:{value:this.foamMode==="boat-mix"?1:0},uDeepColor:{value:new THREE.Color()},uShallowColor:{value:new THREE.Color()}}});
     const surface=new THREE.Mesh(geometry,material);surface.rotation.x=-Math.PI/2;surface.position.y=-.03;surface.scale.set(120,120,1);surface.receiveShadow=true;surface.frustumCulled=false;
     if(old){this.scene.remove(old);old.geometry.dispose();}
     this.surface=surface;this.scene.add(surface);this.fitSurfaceToView();
@@ -271,7 +274,7 @@ export class WakeApp {
 
   resize(){
     const width=Math.max(1,this.canvas.clientWidth),height=Math.max(1,this.canvas.clientHeight);const mobile=window.matchMedia("(pointer: coarse)").matches||width<760;
-    this.camera.aspect=width/height;this.camera.updateProjectionMatrix();this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,mobile?1.25:1.75));this.renderer.setSize(width,height,false);this.renderer.getDrawingBufferSize(this.surface.material.uniforms.uViewport.value);this.fitSurfaceToView();
+    this.camera.aspect=width/height;this.camera.updateProjectionMatrix();this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,mobile?1.25:1.75));this.renderer.setSize(width,height,false);this.fitSurfaceToView();
   }
 
   private fitSurfaceToView(){
@@ -283,6 +286,12 @@ export class WakeApp {
     }
     if(hits.length!==4){this.surface.position.set(0,-.03,0);this.surface.scale.set(140,140,1);return;}
     const margin=4;const minX=Math.min(...hits.map(hit=>hit.x))-margin,maxX=Math.max(...hits.map(hit=>hit.x))+margin;const minZ=Math.min(...hits.map(hit=>hit.z))-margin,maxZ=Math.max(...hits.map(hit=>hit.z))+margin;
+    if(this.foamMode==="boat-mix"){
+      this.foamFieldCenter.set((minX+maxX)/2,(minZ+maxZ)/2);
+      this.foamFieldSize=Math.max(maxX-minX,maxZ-minZ)*1.2;
+      this.surface.material.uniforms.uFoamFieldCenter.value.copy(this.foamFieldCenter);
+      this.surface.material.uniforms.uFoamFieldSize.value=this.foamFieldSize;
+    }
     this.pathRadius=Math.max(48,...hits.map(hit=>Math.hypot(hit.x,hit.z)))+10;
     this.surface.position.set((minX+maxX)/2,-.03,(minZ+maxZ)/2);this.surface.scale.set(maxX-minX,maxZ-minZ,1);this.surface.updateMatrixWorld(true);
   }
@@ -359,9 +368,7 @@ export class WakeApp {
     this.simulation.step(dt,input,this.settings,QUALITY_PRESETS[this.resolvedQuality].pressureIterations);
     let foamInput=input;
     if(this.foamMode==="boat-mix"){
-      const screenPosition=this.position.clone().project(this.camera);
-      const screenAhead=this.position.clone().add(this.forward).project(this.camera);
-      foamInput={...input,uv:new THREE.Vector2(screenPosition.x*.5+.5,screenPosition.y*.5+.5),direction:new THREE.Vector2(screenAhead.x-screenPosition.x,screenAhead.y-screenPosition.y).normalize()};
+      foamInput={...input,uv:new THREE.Vector2((this.position.x-this.foamFieldCenter.x)/this.foamFieldSize+.5,.5-(this.position.z-this.foamFieldCenter.y)/this.foamFieldSize),fieldScale:WORLD_SIZE/this.foamFieldSize};
     }
     this.foam.update(foamInput,this.settings,this.foamMode==="boat-mix");
     const uniforms=this.surface.material.uniforms;uniforms.uState.value=this.simulation.stateTexture;uniforms.uVelocity.value=this.simulation.velocityTexture;uniforms.uFoam.value=this.foam.texture;uniforms.uTexel.value.setScalar(1/this.simulation.resolution);uniforms.uTime.value=time;uniforms.uWaveHeight.value=this.settings.waveHeight;

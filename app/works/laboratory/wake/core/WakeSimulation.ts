@@ -7,6 +7,7 @@ export type WakeInput = {
   speed: number;
   acceleration: number;
   yawRate: number;
+  fieldScale?: number;
 };
 
 type DoubleTarget = { read: THREE.WebGLRenderTarget; write: THREE.WebGLRenderTarget };

@@ -48,6 +48,7 @@ export class VortexFoam {
       // Keep each pressure jet local enough that the opposing lateral forces do not cancel.
       const velocityRadius=Math.max(1,Math.round(2*scale));
       const dyeRadius=Math.max(1,Math.round(3*scale));
+      const fieldScale=input.fieldScale??1;
       const speed=THREE.MathUtils.clamp(input.speed,0,1.5);
       const cutStrength=Math.min(travelPixels,6)*THREE.MathUtils.lerp(.65,1.35,Math.min(speed,1));
       this.dyeTravel+=travelPixels;
@@ -55,7 +56,7 @@ export class VortexFoam {
       if(cutStrength>.001){
         const direction=input.direction.clone().normalize();
         const side=new THREE.Vector2(-direction.y,direction.x);
-        const stern=input.uv.clone().addScaledVector(direction,-STERN_OFFSET);
+        const stern=input.uv.clone().addScaledVector(direction,-STERN_OFFSET*fieldScale);
         const turn=THREE.MathUtils.clamp(input.yawRate,-1,1);
         const leftStrength=cutStrength*.52*(1+Math.max(0,-turn)*.7);
         const rightStrength=cutStrength*.52*(1+Math.max(0,turn)*.7);
@@ -76,8 +77,8 @@ export class VortexFoam {
           this.solver.addDye(gridX,gridY,color[0]*dyeStrength,color[1]*dyeStrength,color[2]*dyeStrength,dyeRadius);
         };
 
-        inject(stern.clone().addScaledVector(side,HULL_FORCE_HALF_WIDTH),1,leftStrength);
-        inject(stern.clone().addScaledVector(side,-HULL_FORCE_HALF_WIDTH),-1,rightStrength);
+        inject(stern.clone().addScaledVector(side,HULL_FORCE_HALF_WIDTH*fieldScale),1,leftStrength);
+        inject(stern.clone().addScaledVector(side,-HULL_FORCE_HALF_WIDTH*fieldScale),-1,rightStrength);
       }
     }
     this.previousUv=insideField?input.uv.clone():null;
