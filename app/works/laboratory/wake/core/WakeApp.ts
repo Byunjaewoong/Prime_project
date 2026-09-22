@@ -42,8 +42,8 @@ void main(){
 
 const surfaceFragment=/* glsl */`
 uniform sampler2D uState,uVelocity,uFoam;
-uniform vec2 uTexel;
-uniform float uWaveHeight,uTime;
+uniform vec2 uTexel,uViewport;
+uniform float uWaveHeight,uTime,uFoamScreenSpace;
 uniform vec3 uDeepColor,uShallowColor;
 varying vec2 vUv;
 varying vec3 vWorldPosition;
@@ -99,7 +99,10 @@ void main(){
  float waterTexture=clamp(broadNoise*.68+fineNoise*.32,0.0,1.0);
  float sparkle=pow(reflection,180.0)*smoothstep(.58,1.0,grain)*(1.0+length(velocity)*.2);
  sparkle+=smoothstep(.82,.98,waterTexture)*(.018+fresnel*.045);
- vec3 foamDye=texture2D(uFoam,sampleUv).rgb*fieldMask;
+ vec2 screenUv=gl_FragCoord.xy/uViewport;
+ vec2 foamUv=mix(sampleUv,clamp(screenUv,uTexel,1.0-uTexel),uFoamScreenSpace);
+ float foamFieldMask=mix(fieldMask,1.0,uFoamScreenSpace);
+ vec3 foamDye=texture2D(uFoam,foamUv).rgb*foamFieldMask;
  float brightFoam=max(foamDye.g,foamDye.b);
  float backgroundFoam=clamp((foamDye.r-max(foamDye.g,foamDye.b))*1.5,0.0,1.0);
  vec3 visibleFoam=foamDye;
@@ -205,7 +208,7 @@ export class WakeApp {
   private createSurface(segments:number){
     const old=this.surface;
     const geometry=new THREE.PlaneGeometry(1,1,segments,segments);
-    const material=old?.material??new THREE.ShaderMaterial({vertexShader:surfaceVertex,fragmentShader:surfaceFragment,side:THREE.DoubleSide,uniforms:{uState:{value:this.simulation.stateTexture},uVelocity:{value:this.simulation.velocityTexture},uFoam:{value:this.foam.texture},uTexel:{value:new THREE.Vector2(1/this.simulation.resolution,1/this.simulation.resolution)},uWaveHeight:{value:this.settings.waveHeight},uTime:{value:0},uWorldSize:{value:WORLD_SIZE},uDeepColor:{value:new THREE.Color()},uShallowColor:{value:new THREE.Color()}}});
+    const material=old?.material??new THREE.ShaderMaterial({vertexShader:surfaceVertex,fragmentShader:surfaceFragment,side:THREE.DoubleSide,uniforms:{uState:{value:this.simulation.stateTexture},uVelocity:{value:this.simulation.velocityTexture},uFoam:{value:this.foam.texture},uTexel:{value:new THREE.Vector2(1/this.simulation.resolution,1/this.simulation.resolution)},uViewport:{value:new THREE.Vector2(1,1)},uWaveHeight:{value:this.settings.waveHeight},uTime:{value:0},uWorldSize:{value:WORLD_SIZE},uFoamScreenSpace:{value:this.foamMode==="boat-mix"?1:0},uDeepColor:{value:new THREE.Color()},uShallowColor:{value:new THREE.Color()}}});
     const surface=new THREE.Mesh(geometry,material);surface.rotation.x=-Math.PI/2;surface.position.y=-.03;surface.scale.set(120,120,1);surface.receiveShadow=true;surface.frustumCulled=false;
     if(old){this.scene.remove(old);old.geometry.dispose();}
     this.surface=surface;this.scene.add(surface);this.fitSurfaceToView();
@@ -268,7 +271,7 @@ export class WakeApp {
 
   resize(){
     const width=Math.max(1,this.canvas.clientWidth),height=Math.max(1,this.canvas.clientHeight);const mobile=window.matchMedia("(pointer: coarse)").matches||width<760;
-    this.camera.aspect=width/height;this.camera.updateProjectionMatrix();this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,mobile?1.25:1.75));this.renderer.setSize(width,height,false);this.fitSurfaceToView();
+    this.camera.aspect=width/height;this.camera.updateProjectionMatrix();this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,mobile?1.25:1.75));this.renderer.setSize(width,height,false);this.renderer.getDrawingBufferSize(this.surface.material.uniforms.uViewport.value);this.fitSurfaceToView();
   }
 
   private fitSurfaceToView(){
@@ -354,7 +357,13 @@ export class WakeApp {
     const uv=new THREE.Vector2(this.position.x/WORLD_SIZE+.5,.5-this.position.z/WORLD_SIZE);const direction=new THREE.Vector2(this.forward.x,-this.forward.z).normalize();
     const input:WakeInput={uv,direction,speed:this.speed/3.2,acceleration:this.acceleration/3,yawRate:this.yawRate};
     this.simulation.step(dt,input,this.settings,QUALITY_PRESETS[this.resolvedQuality].pressureIterations);
-    this.foam.update(input,this.settings,this.foamMode==="boat-mix");
+    let foamInput=input;
+    if(this.foamMode==="boat-mix"){
+      const screenPosition=this.position.clone().project(this.camera);
+      const screenAhead=this.position.clone().add(this.forward).project(this.camera);
+      foamInput={...input,uv:new THREE.Vector2(screenPosition.x*.5+.5,screenPosition.y*.5+.5),direction:new THREE.Vector2(screenAhead.x-screenPosition.x,screenAhead.y-screenPosition.y).normalize()};
+    }
+    this.foam.update(foamInput,this.settings,this.foamMode==="boat-mix");
     const uniforms=this.surface.material.uniforms;uniforms.uState.value=this.simulation.stateTexture;uniforms.uVelocity.value=this.simulation.velocityTexture;uniforms.uFoam.value=this.foam.texture;uniforms.uTexel.value.setScalar(1/this.simulation.resolution);uniforms.uTime.value=time;uniforms.uWaveHeight.value=this.settings.waveHeight;
     this.spray.update(dt,{position:this.position,forward:this.forward,speed:this.speed/3.2,acceleration:this.acceleration/3,yawRate:this.yawRate},this.settings);
     this.updateFallbackTrail();this.renderer.render(this.scene,this.camera);this.monitorQuality(rawDt);this.frame=requestAnimationFrame(this.animate);
