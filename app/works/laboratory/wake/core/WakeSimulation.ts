@@ -25,7 +25,7 @@ void main() { gl_FragColor = texture2D(uTexture, vUv); }
 const velocityFragment = /* glsl */`
 uniform sampler2D uVelocity;
 uniform vec2 uTexel, uBoat, uDirection;
-uniform float uDt, uSpeed, uAcceleration, uYawRate, uWakeForce;
+uniform float uDt, uSpeed, uAcceleration, uYawRate, uWakeForce, uFieldScale;
 varying vec2 vUv;
 float gaussian(vec2 p, vec2 c, vec2 s) { vec2 q=(p-c)/s; return exp(-dot(q,q)*2.4); }
 void main() {
@@ -35,7 +35,7 @@ void main() {
   float ahead = dot(delta, uDirection);
   float across = dot(delta, side);
   vec2 local = vec2(across, ahead);
-  const float wakeScale=0.6666667;
+  float wakeScale=0.6666667*uFieldScale;
   float bow = gaussian(local, vec2(0.0, 0.016)*wakeScale, vec2(0.010, 0.022)*wakeScale);
   float sternL = gaussian(local, vec2(-0.011, -0.020)*wakeScale, vec2(0.012, 0.030)*wakeScale);
   float sternR = gaussian(local, vec2(0.011, -0.020)*wakeScale, vec2(0.012, 0.030)*wakeScale);
@@ -111,7 +111,7 @@ void main(){
 const stateFragment = /* glsl */`
 uniform sampler2D uState;
 uniform vec2 uTexel,uBoat,uDirection;
-uniform float uDt,uSpeed,uAcceleration,uYawRate,uWakeForce;
+uniform float uDt,uSpeed,uAcceleration,uYawRate,uWakeForce,uFieldScale;
 varying vec2 vUv;
 float gaussian(vec2 p, vec2 c, vec2 s){vec2 q=(p-c)/s;return exp(-dot(q,q)*2.5);}
 void main(){
@@ -126,7 +126,7 @@ void main(){
  vec2 side=vec2(-uDirection.y,uDirection.x);
  vec2 delta=vUv-uBoat;
  vec2 local=vec2(dot(delta,side),dot(delta,uDirection));
- const float wakeScale=0.6666667;
+ float wakeScale=0.6666667*uFieldScale;
  float bow=gaussian(local,vec2(0.0,0.018)*wakeScale,vec2(0.011,0.020)*wakeScale);
  float sternL=gaussian(local,vec2(-0.013,-0.024)*wakeScale,vec2(0.012,0.030)*wakeScale);
  float sternR=gaussian(local,vec2(0.013,-0.024)*wakeScale,vec2(0.012,0.030)*wakeScale);
@@ -210,8 +210,8 @@ export class WakeSimulation {
   step(dt:number,input:WakeInput,settings:WakeSettings,pressureIterations:number){
     if(!this.supported)return;
     dt=Math.min(dt,1/30);
-    const boat=input.uv, direction=input.direction;
-    Object.assign(this.velocityMaterial.uniforms,{uVelocity:{value:this.velocity.read.texture},uTexel:{value:new THREE.Vector2(1/this.size,1/this.size)},uBoat:{value:boat},uDirection:{value:direction},uDt:{value:dt},uSpeed:{value:input.speed},uAcceleration:{value:input.acceleration},uYawRate:{value:input.yawRate},uWakeForce:{value:settings.wakeForce}});
+    const boat=input.uv, direction=input.direction,fieldScale=input.fieldScale??1;
+    Object.assign(this.velocityMaterial.uniforms,{uVelocity:{value:this.velocity.read.texture},uTexel:{value:new THREE.Vector2(1/this.size,1/this.size)},uBoat:{value:boat},uDirection:{value:direction},uDt:{value:dt},uSpeed:{value:input.speed},uAcceleration:{value:input.acceleration},uYawRate:{value:input.yawRate},uWakeForce:{value:settings.wakeForce},uFieldScale:{value:fieldScale}});
     this.run(this.velocityMaterial,this.velocity.write); swap(this.velocity);
     Object.assign(this.curlMaterial.uniforms,{uVelocity:{value:this.velocity.read.texture}}); this.setCommon(this.curlMaterial); this.run(this.curlMaterial,this.curl);
     Object.assign(this.vorticityMaterial.uniforms,{uVelocity:{value:this.velocity.read.texture},uCurl:{value:this.curl.texture},uDt:{value:dt},uVorticity:{value:settings.vorticity}}); this.setCommon(this.vorticityMaterial); this.run(this.vorticityMaterial,this.velocity.write); swap(this.velocity);
@@ -221,7 +221,7 @@ export class WakeSimulation {
       Object.assign(this.pressureMaterial.uniforms,{uPressure:{value:this.pressure.read.texture},uDivergence:{value:this.divergence.texture}}); this.setCommon(this.pressureMaterial); this.run(this.pressureMaterial,this.pressure.write); swap(this.pressure);
     }
     Object.assign(this.gradientMaterial.uniforms,{uPressure:{value:this.pressure.read.texture},uVelocity:{value:this.velocity.read.texture}}); this.setCommon(this.gradientMaterial); this.run(this.gradientMaterial,this.velocity.write); swap(this.velocity);
-    Object.assign(this.stateMaterial.uniforms,{uState:{value:this.state.read.texture},uTexel:{value:new THREE.Vector2(1/this.size,1/this.size)},uBoat:{value:boat},uDirection:{value:direction},uDt:{value:dt},uSpeed:{value:input.speed},uAcceleration:{value:input.acceleration},uYawRate:{value:input.yawRate},uWakeForce:{value:settings.wakeForce}});
+    Object.assign(this.stateMaterial.uniforms,{uState:{value:this.state.read.texture},uTexel:{value:new THREE.Vector2(1/this.size,1/this.size)},uBoat:{value:boat},uDirection:{value:direction},uDt:{value:dt},uSpeed:{value:input.speed},uAcceleration:{value:input.acceleration},uYawRate:{value:input.yawRate},uWakeForce:{value:settings.wakeForce},uFieldScale:{value:fieldScale}});
     this.run(this.stateMaterial,this.state.write); swap(this.state);
   }
 

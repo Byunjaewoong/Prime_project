@@ -10,6 +10,7 @@ const BOAT_LENGTH=2.8;
 const WAKE2_RESPAWN_DELAY=3;
 const ROUTE_SCREEN_MARGIN=.12;
 const ROUTE_SAMPLE_COUNT=240;
+const WAKE2_SIMULATION_RESOLUTION:Record<ResolvedWakeQuality,number>={high:512,medium:256,low:192};
 // Three.js uses Y as the vertical axis (the water plane spans X/Z).
 const BOAT_WATERLINE_HEIGHT=.12;
 // The GLB's longitudinal axis is X; rotate it onto the study's Z-forward axis.
@@ -181,7 +182,7 @@ export class WakeApp {
     this.camera.lookAt(0,0,0);
     this.resolvedQuality=resolveInitialQuality();
     const preset=QUALITY_PRESETS[this.resolvedQuality];
-    this.simulation=new WakeSimulation(this.renderer,preset.simulation);
+    this.simulation=new WakeSimulation(this.renderer,this.waveResolution(this.resolvedQuality));
     const desktopFoam=foamMode==="boat-mix"&&!window.matchMedia("(pointer: coarse)").matches&&window.innerWidth>=760;
     this.foam=new VortexFoam(desktopFoam);
     this.spray=new SpraySystem(2400,preset.particles);
@@ -267,7 +268,11 @@ export class WakeApp {
 
   private applyQuality(next:ResolvedWakeQuality){
     if(next===this.resolvedQuality)return;this.resolvedQuality=next;const preset=QUALITY_PRESETS[next];
-    this.simulation.setResolution(preset.simulation);this.createSurface(preset.surfaceSegments);this.spray.setLimit(preset.particles);this.applyPalette();
+    this.simulation.setResolution(this.waveResolution(next));this.createSurface(preset.surfaceSegments);this.spray.setLimit(preset.particles);this.applyPalette();
+  }
+
+  private waveResolution(quality:ResolvedWakeQuality){
+    return this.foamMode==="boat-mix"?WAKE2_SIMULATION_RESOLUTION[quality]:QUALITY_PRESETS[quality].simulation;
   }
 
   setPointerTarget(clientX:number,clientY:number){
@@ -412,11 +417,12 @@ export class WakeApp {
     const worldUv=new THREE.Vector2(this.position.x/WORLD_SIZE+.5,.5-this.position.z/WORLD_SIZE);
     const fittedUv=new THREE.Vector2((this.position.x-this.foamFieldCenter.x)/this.foamFieldSize+.5,.5-(this.position.z-this.foamFieldCenter.y)/this.foamFieldSize);
     const uv=this.boatActive?(this.foamMode==="boat-mix"?fittedUv:worldUv):new THREE.Vector2(-10,-10);const direction=new THREE.Vector2(this.forward.x,-this.forward.z).normalize();
-    const input:WakeInput={uv,direction,speed:this.boatActive?this.speed/3.2:0,acceleration:this.boatActive?this.acceleration/3:0,yawRate:this.boatActive?this.yawRate:0};
+    const fieldScale=this.foamMode==="boat-mix"?WORLD_SIZE/this.foamFieldSize:1;
+    const input:WakeInput={uv,direction,speed:this.boatActive?this.speed/3.2:0,acceleration:this.boatActive?this.acceleration/3:0,yawRate:this.boatActive?this.yawRate:0,fieldScale};
     this.simulation.step(dt,input,this.settings,QUALITY_PRESETS[this.resolvedQuality].pressureIterations);
     let foamInput=input;
     if(this.foamMode==="boat-mix"&&this.boatActive){
-      foamInput={...input,fieldScale:WORLD_SIZE/this.foamFieldSize};
+      foamInput=input;
     }
     this.foam.update(foamInput,this.settings,this.foamMode==="boat-mix");
     const uniforms=this.surface.material.uniforms;uniforms.uState.value=this.simulation.stateTexture;uniforms.uVelocity.value=this.simulation.velocityTexture;uniforms.uFoam.value=this.foam.texture;uniforms.uTexel.value.setScalar(1/this.simulation.resolution);uniforms.uTime.value=time;uniforms.uWaveHeight.value=this.settings.waveHeight;
