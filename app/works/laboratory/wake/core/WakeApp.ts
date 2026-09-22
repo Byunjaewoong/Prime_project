@@ -167,7 +167,11 @@ export class WakeApp {
     this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure=1.08;
     this.scene.background=new THREE.Color(0x060708);
-    this.camera.position.set(0,92,18);
+    if(foamMode==="boat-mix"){
+      this.camera.far=220;
+      this.camera.position.set(20,112,38);
+    }
+    else this.camera.position.set(0,92,18);
     this.camera.lookAt(0,0,0);
     this.resolvedQuality=resolveInitialQuality();
     const preset=QUALITY_PRESETS[this.resolvedQuality];
