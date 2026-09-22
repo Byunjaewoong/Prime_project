@@ -195,7 +195,7 @@ export class WakeApp {
     }
     else this.camera.position.set(0,92,18);
     this.camera.lookAt(0,0,0);
-    this.resolvedQuality=resolveInitialQuality();
+    this.resolvedQuality=this.settings.quality==="auto"?resolveInitialQuality():this.settings.quality;
     const preset=QUALITY_PRESETS[this.resolvedQuality];
     this.simulation=new WakeSimulation(this.renderer,this.waveResolution(this.resolvedQuality));
     const desktopFoam=foamMode==="boat-mix"&&!window.matchMedia("(pointer: coarse)").matches&&window.innerWidth>=760;
@@ -343,30 +343,38 @@ export class WakeApp {
     return this.raycaster.ray.intersectPlane(this.waterPlane,new THREE.Vector3());
   }
 
+  private randomOffscreenPoint(){
+    const edge=Math.floor(Math.random()*4);
+    const outside=1.22+Math.random()*.16;
+    const along=THREE.MathUtils.lerp(-.86,.86,Math.random());
+    if(edge===0)return new THREE.Vector2(-outside,along);
+    if(edge===1)return new THREE.Vector2(outside,along);
+    if(edge===2)return new THREE.Vector2(along,-outside);
+    return new THREE.Vector2(along,outside);
+  }
+
   private resetPath(){
     for(let attempt=0;attempt<8;attempt++){
-      const desktopWake2=this.foamMode==="boat-mix"&&this.canvas.clientWidth>=760;
-      if(desktopWake2){
-        const direction=Math.random()<.5?1:-1;
-        const start=this.screenPointToWater(-direction*1.3,(Math.random()-.5)*1.05);
-        const end=this.screenPointToWater(direction*1.3,(Math.random()-.5)*1.05);
-        const control=this.screenPointToWater((Math.random()-.5)*.32,(Math.random()-.5)*.9);
-        if(!start||!end||!control)continue;
+      if(this.foamMode==="boat-mix"){
+        const startScreen=this.randomOffscreenPoint();
+        const endScreen=this.randomOffscreenPoint();
+        if(startScreen.distanceTo(endScreen)<1.4)continue;
+        const start=this.screenPointToWater(startScreen.x,startScreen.y);
+        const end=this.screenPointToWater(endScreen.x,endScreen.y);
+        const center=this.screenPointToWater((Math.random()-.5)*.32,(Math.random()-.5)*.28);
+        if(!start||!end||!center)continue;
+        // For a quadratic curve B(0.5)=(start+2*control+end)/4.
+        // Solve for the control point so every route crosses the chosen center point.
+        const control=center.clone().multiplyScalar(2).addScaledVector(start,-.5).addScaledVector(end,-.5);
         this.route=new THREE.QuadraticBezierCurve3(start,control,end);
         this.routeProgress=0;this.routeEndProgress=1;this.routeLength=Math.max(this.route.getLength(),.001);this.routeTarget.copy(end);
         this.position.copy(start);const tangent=this.route.getTangent(0).normalize();this.forward.copy(tangent);this.heading=Math.atan2(tangent.x,tangent.z);this.boatActive=true;this.boat.visible=true;this.fallbackTrail.visible=!this.simulation.supported;this.applyBoatTransform(0);return;
       }
       const startAngle=Math.random()*Math.PI*2;
-      let start=new THREE.Vector3(Math.cos(startAngle)*this.pathRadius,0,Math.sin(startAngle)*this.pathRadius);
+      const start=new THREE.Vector3(Math.cos(startAngle)*this.pathRadius,0,Math.sin(startAngle)*this.pathRadius);
       const endAngle=startAngle+Math.PI+(Math.random()-.5);
-      let end=new THREE.Vector3(Math.cos(endAngle)*this.pathRadius,0,Math.sin(endAngle)*this.pathRadius);
-      let control=new THREE.Vector3((Math.random()-.5)*30,0,(Math.random()-.5)*30);
-      if(this.foamMode==="boat-mix"){
-        const direction=Math.random()<.5?1:-1;
-        start=new THREE.Vector3(-direction*this.pathRadius,0,(Math.random()-.5)*this.pathRadius*.55);
-        end=new THREE.Vector3(direction*this.pathRadius,0,(Math.random()-.5)*this.pathRadius*.55);
-        control=new THREE.Vector3((Math.random()-.5)*this.pathRadius*.22,0,(Math.random()-.5)*this.pathRadius*.38);
-      }
+      const end=new THREE.Vector3(Math.cos(endAngle)*this.pathRadius,0,Math.sin(endAngle)*this.pathRadius);
+      const control=new THREE.Vector3((Math.random()-.5)*30,0,(Math.random()-.5)*30);
       this.route=new THREE.QuadraticBezierCurve3(start,control,end);
       const visible=this.calculateVisibleRange();
       if(visible.end-visible.start<.1)continue;

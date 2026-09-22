@@ -64,6 +64,7 @@ export const WAKE2_DEFAULT_SETTINGS: WakeSettings = {
   saturation: 1.1,
   brightness: 1.3,
   backgroundDyeRatio: 0,
+  quality: "high",
 };
 
 export type ResolvedWakeQuality = "high" | "medium" | "low";
