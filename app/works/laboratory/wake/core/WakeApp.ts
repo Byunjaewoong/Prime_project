@@ -22,7 +22,8 @@ export type WakeFoamMode="boat"|"boat-mix";
 
 const surfaceVertex=/* glsl */`
 uniform sampler2D uState;
-uniform float uWaveHeight,uTime,uWorldSize;
+uniform vec2 uFoamFieldCenter;
+uniform float uWaveHeight,uTime,uWorldSize,uFoamFieldSize,uFoamScreenSpace;
 varying vec2 vUv;
 varying vec3 vWorldPosition;
 float fieldFade(vec2 p){
@@ -31,7 +32,9 @@ float fieldFade(vec2 p){
 }
 void main(){
  vec4 world=modelMatrix*vec4(position,1.0);
- vUv=vec2(world.x/uWorldSize+.5,.5-world.z/uWorldSize);
+ vec2 worldUv=vec2(world.x/uWorldSize+.5,.5-world.z/uWorldSize);
+ vec2 fittedUv=vec2((world.x-uFoamFieldCenter.x)/uFoamFieldSize+.5,.5-(world.z-uFoamFieldCenter.y)/uFoamFieldSize);
+ vUv=mix(worldUv,fittedUv,uFoamScreenSpace);
  vec2 sampleUv=clamp(vUv,vec2(.001),vec2(.999));
  float fluidHeight=texture2D(uState,sampleUv).r*fieldFade(vUv)*7.5*uWaveHeight;
  world.y+=fluidHeight;
@@ -406,12 +409,14 @@ export class WakeApp {
   private animate=(now:number)=>{
     if(this.destroyed)return;const rawDt=this.clock.getDelta(),dt=Math.min(rawDt,.034),time=now*.001;this.elapsed+=rawDt;
     this.updateBoat(dt,time);
-    const uv=this.boatActive?new THREE.Vector2(this.position.x/WORLD_SIZE+.5,.5-this.position.z/WORLD_SIZE):new THREE.Vector2(-10,-10);const direction=new THREE.Vector2(this.forward.x,-this.forward.z).normalize();
+    const worldUv=new THREE.Vector2(this.position.x/WORLD_SIZE+.5,.5-this.position.z/WORLD_SIZE);
+    const fittedUv=new THREE.Vector2((this.position.x-this.foamFieldCenter.x)/this.foamFieldSize+.5,.5-(this.position.z-this.foamFieldCenter.y)/this.foamFieldSize);
+    const uv=this.boatActive?(this.foamMode==="boat-mix"?fittedUv:worldUv):new THREE.Vector2(-10,-10);const direction=new THREE.Vector2(this.forward.x,-this.forward.z).normalize();
     const input:WakeInput={uv,direction,speed:this.boatActive?this.speed/3.2:0,acceleration:this.boatActive?this.acceleration/3:0,yawRate:this.boatActive?this.yawRate:0};
     this.simulation.step(dt,input,this.settings,QUALITY_PRESETS[this.resolvedQuality].pressureIterations);
     let foamInput=input;
     if(this.foamMode==="boat-mix"&&this.boatActive){
-      foamInput={...input,uv:new THREE.Vector2((this.position.x-this.foamFieldCenter.x)/this.foamFieldSize+.5,.5-(this.position.z-this.foamFieldCenter.y)/this.foamFieldSize),fieldScale:WORLD_SIZE/this.foamFieldSize};
+      foamInput={...input,fieldScale:WORLD_SIZE/this.foamFieldSize};
     }
     this.foam.update(foamInput,this.settings,this.foamMode==="boat-mix");
     const uniforms=this.surface.material.uniforms;uniforms.uState.value=this.simulation.stateTexture;uniforms.uVelocity.value=this.simulation.velocityTexture;uniforms.uFoam.value=this.foam.texture;uniforms.uTexel.value.setScalar(1/this.simulation.resolution);uniforms.uTime.value=time;uniforms.uWaveHeight.value=this.settings.waveHeight;
