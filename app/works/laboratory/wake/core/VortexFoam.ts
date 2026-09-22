@@ -39,8 +39,9 @@ export class VortexFoam {
 
   update(input:WakeInput,settings:WakeSettings,alternateBackground=false){
     this.applySettings(settings);
+    const insideField=input.uv.x>=0&&input.uv.x<=1&&input.uv.y>=0&&input.uv.y<=1;
 
-    if(this.previousUv){
+    if(this.previousUv&&insideField){
       const travelPixels=input.uv.distanceTo(this.previousUv)*OUTPUT_SIZE;
       const scale=GRID_SIZE/REFERENCE_GRID;
       const invScale2=1/(scale*scale);
@@ -79,7 +80,7 @@ export class VortexFoam {
         inject(stern.clone().addScaledVector(side,-HULL_FORCE_HALF_WIDTH),-1,rightStrength);
       }
     }
-    this.previousUv=input.uv.clone();
+    this.previousUv=insideField?input.uv.clone():null;
 
     this.render(settings);
   }

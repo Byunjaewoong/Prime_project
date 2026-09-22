@@ -145,9 +145,15 @@ export class WakeApp {
   private speed=2.6;
   private acceleration=0;
   private yawRate=0;
-  private autoTarget=new THREE.Vector3(6,0,8);
+  private route:THREE.QuadraticBezierCurve3|null=null;
+  private routeProgress=0;
+  private routeEndProgress=1;
+  private routeLength=1;
+  private routeTarget=new THREE.Vector3();
+  private pathRadius=52;
+  private frustum=new THREE.Frustum();
+  private projectionScreenMatrix=new THREE.Matrix4();
   private pointerTarget:THREE.Vector3|null=null;
-  private autoTargetAge=0;
   private raycaster=new THREE.Raycaster();
   private pointer=new THREE.Vector2();
   private waterPlane=new THREE.Plane(new THREE.Vector3(0,1,0),0);
@@ -183,6 +189,7 @@ export class WakeApp {
     this.scene.add(this.fallbackTrail);
     this.applyPalette();
     this.resize();
+    this.resetPath();
     this.frame=requestAnimationFrame(this.animate);
   }
 
@@ -252,7 +259,7 @@ export class WakeApp {
     this.raycaster.setFromCamera(this.pointer,this.camera);const hit=new THREE.Vector3();
     if(this.raycaster.ray.intersectPlane(this.waterPlane,hit)){hit.x=THREE.MathUtils.clamp(hit.x,-29,29);hit.z=THREE.MathUtils.clamp(hit.z,-29,29);this.pointerTarget=hit;}
   }
-  clearPointerTarget(){this.pointerTarget=null;this.autoTarget.copy(this.position).addScaledVector(this.forward,7);this.autoTargetAge=0;}
+  clearPointerTarget(){this.pointerTarget=null;this.resumeOriginalRoute();}
   resetFoam(){this.foam.reset();}
 
   resize(){
@@ -269,26 +276,65 @@ export class WakeApp {
     }
     if(hits.length!==4){this.surface.position.set(0,-.03,0);this.surface.scale.set(140,140,1);return;}
     const margin=4;const minX=Math.min(...hits.map(hit=>hit.x))-margin,maxX=Math.max(...hits.map(hit=>hit.x))+margin;const minZ=Math.min(...hits.map(hit=>hit.z))-margin,maxZ=Math.max(...hits.map(hit=>hit.z))+margin;
+    this.pathRadius=Math.max(48,...hits.map(hit=>Math.hypot(hit.x,hit.z)))+10;
     this.surface.position.set((minX+maxX)/2,-.03,(minZ+maxZ)/2);this.surface.scale.set(maxX-minX,maxZ-minZ,1);this.surface.updateMatrixWorld(true);
   }
 
-  private updateBoat(dt:number,time:number){
-    this.autoTargetAge+=dt;
-    if(!this.pointerTarget&&(this.position.distanceTo(this.autoTarget)<2.2||this.autoTargetAge>7.5)){
-      const angle=Math.random()*Math.PI*2,radius=8+Math.random()*16;this.autoTarget.set(Math.sin(angle)*radius,0,Math.cos(angle)*radius);this.autoTargetAge=0;
+  private calculateVisibleRange(){
+    if(!this.route)return {start:0,end:1};
+    this.camera.updateMatrixWorld();this.projectionScreenMatrix.multiplyMatrices(this.camera.projectionMatrix,this.camera.matrixWorldInverse);this.frustum.setFromProjectionMatrix(this.projectionScreenMatrix);
+    let first=-1,last=-1;
+    for(let i=0;i<=100;i++){const progress=i/100;if(this.frustum.containsPoint(this.route.getPoint(progress))){if(first===-1)first=progress;last=progress;}}
+    if(first===-1)return {start:0,end:1};
+    return {start:Math.max(0,first-.05),end:Math.min(1,last+.05)};
+  }
+
+  private resetPath(){
+    for(let attempt=0;attempt<8;attempt++){
+      const startAngle=Math.random()*Math.PI*2;
+      const start=new THREE.Vector3(Math.cos(startAngle)*this.pathRadius,0,Math.sin(startAngle)*this.pathRadius);
+      const endAngle=startAngle+Math.PI+(Math.random()-.5);
+      const end=new THREE.Vector3(Math.cos(endAngle)*this.pathRadius,0,Math.sin(endAngle)*this.pathRadius);
+      const control=new THREE.Vector3((Math.random()-.5)*30,0,(Math.random()-.5)*30);
+      this.route=new THREE.QuadraticBezierCurve3(start,control,end);
+      const visible=this.calculateVisibleRange();
+      if(visible.end-visible.start<.1)continue;
+      this.routeProgress=visible.start;this.routeEndProgress=visible.end;this.routeLength=Math.max(this.route.getLength(),.001);this.routeTarget.copy(this.route.getPoint(visible.end));
+      this.position.copy(this.route.getPoint(visible.start));
+      const tangent=this.route.getTangent(visible.start).normalize();this.forward.copy(tangent);this.heading=Math.atan2(tangent.x,tangent.z);this.applyBoatTransform(0);return;
     }
-    const target=this.pointerTarget??this.autoTarget;
+  }
+
+  private resumeOriginalRoute(){
+    if(this.position.distanceTo(this.routeTarget)<2){this.resetPath();return;}
+    const control=this.position.clone().addScaledVector(this.forward,Math.min(14,this.position.distanceTo(this.routeTarget)*.35));
+    this.route=new THREE.QuadraticBezierCurve3(this.position.clone(),control,this.routeTarget.clone());
+    this.routeProgress=0;this.routeEndProgress=1;this.routeLength=Math.max(this.route.getLength(),.001);
+  }
+
+  private steerTo(target:THREE.Vector3,dt:number){
     const desired=target.clone().sub(this.position);
-    const edge=Math.max(Math.abs(this.position.x),Math.abs(this.position.z));
-    if(edge>22)desired.lerp(this.position.clone().multiplyScalar(-1),THREE.MathUtils.smoothstep(edge,22,31));
     const desiredHeading=Math.atan2(desired.x,desired.z);const error=shortestAngle(desiredHeading-this.heading);
     const previousHeading=this.heading;const maxTurn=(.62+Math.min(.7,Math.abs(error)))*dt;this.heading+=THREE.MathUtils.clamp(error*.86*dt,-maxTurn,maxTurn);
     this.yawRate=shortestAngle(this.heading-previousHeading)/Math.max(dt,.001);
     const targetSpeed=3.15*this.settings.cruiseSpeed*(1-.24*Math.min(1,Math.abs(error)));
     const oldSpeed=this.speed;this.speed=THREE.MathUtils.damp(this.speed,targetSpeed,1.35,dt);this.acceleration=(this.speed-oldSpeed)/Math.max(dt,.001);
     this.forward.set(Math.sin(this.heading),0,Math.cos(this.heading));this.position.addScaledVector(this.forward,this.speed*dt);
-    this.position.x=THREE.MathUtils.clamp(this.position.x,-31,31);this.position.z=THREE.MathUtils.clamp(this.position.z,-31,31);
+  }
+
+  private applyBoatTransform(time:number){
     this.boat.position.set(this.position.x,BOAT_WATERLINE_HEIGHT+Math.sin(time*2.1)*.025,this.position.z);this.boat.rotation.y=this.heading;
+  }
+
+  private updateBoat(dt:number,time:number){
+    if(this.pointerTarget)this.steerTo(this.pointerTarget,dt);
+    else if(this.route){
+      const oldSpeed=this.speed;this.speed=THREE.MathUtils.damp(this.speed,3.15*this.settings.cruiseSpeed,1.35,dt);this.acceleration=(this.speed-oldSpeed)/Math.max(dt,.001);
+      const previousHeading=this.heading;this.routeProgress+=this.speed*dt/this.routeLength;
+      if(this.routeProgress>this.routeEndProgress){this.resetPath();return;}
+      this.position.copy(this.route.getPoint(this.routeProgress));this.forward.copy(this.route.getTangent(this.routeProgress).normalize());this.heading=Math.atan2(this.forward.x,this.forward.z);this.yawRate=shortestAngle(this.heading-previousHeading)/Math.max(dt,.001);
+    }
+    this.applyBoatTransform(time);
     this.boat.rotation.z=THREE.MathUtils.damp(this.boat.rotation.z,-this.yawRate*.10,3.2,dt);this.boat.rotation.x=THREE.MathUtils.damp(this.boat.rotation.x,-this.acceleration*.025+Math.sin(time*2.1)*.012,2.8,dt);
   }
 
