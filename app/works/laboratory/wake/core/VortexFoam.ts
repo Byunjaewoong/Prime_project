@@ -66,9 +66,11 @@ export class VortexFoam {
 
         const inject=(position:THREE.Vector2,lateralDirection:number,strength:number)=>{
           const gridX=Math.max(1,Math.min(this.solver.W,Math.floor(1+position.x*this.solver.W)));
-          const gridY=Math.max(1,Math.min(this.solver.H,Math.floor(1+position.y*this.solver.H)));
+          // CanvasTexture flips its source vertically when it is uploaded to WebGL.
+          // Convert UV-space position and velocity into the canvas/grid coordinate system.
+          const gridY=Math.max(1,Math.min(this.solver.H,Math.floor(1+(1-position.y)*this.solver.H)));
           const velocity=direction.clone().multiplyScalar(forwardCarry).addScaledVector(side,lateralDirection*strength);
-          this.solver.addVelocity(gridX,gridY,velocity.x*settings.force*invScale2,velocity.y*settings.force*invScale2,velocityRadius);
+          this.solver.addVelocity(gridX,gridY,velocity.x*settings.force*invScale2,-velocity.y*settings.force*invScale2,velocityRadius);
           this.solver.addDye(gridX,gridY,color[0]*dyeStrength,color[1]*dyeStrength,color[2]*dyeStrength,dyeRadius);
         };
 
