@@ -22,28 +22,22 @@ export type WakeFoamMode="boat"|"boat-mix";
 
 const surfaceVertex=/* glsl */`
 uniform sampler2D uState;
-uniform float uWaveHeight,uTime,uWorldSize,uAmbientEnabled,uAmbientHeight,uAmbientScale,uAmbientSpeed,uAmbientDirection,uAmbientDetail;
+uniform float uWaveHeight,uTime,uWorldSize;
 varying vec2 vUv;
 varying vec3 vWorldPosition;
 float fieldFade(vec2 p){
  float edge=min(min(p.x,1.0-p.x),min(p.y,1.0-p.y));
  return smoothstep(0.0,.075,edge);
 }
-float ambientWave(vec2 p){
- float c=cos(uAmbientDirection),s=sin(uAmbientDirection);
- p=mat2(c,-s,s,c)*p*uAmbientScale;
- float phase=uTime*uAmbientSpeed;
- float wave=sin(p.x*.43+p.y*.71+phase*.42)*.030;
- wave+=sin(p.x*1.17-p.y*.64-phase*.57)*.014*uAmbientDetail;
- wave+=sin((p.x+p.y)*2.15+phase*.31)*.006*uAmbientDetail;
- return wave*uAmbientHeight*uAmbientEnabled;
-}
 void main(){
  vec4 world=modelMatrix*vec4(position,1.0);
  vUv=vec2(world.x/uWorldSize+.5,.5-world.z/uWorldSize);
  vec2 sampleUv=clamp(vUv,vec2(.001),vec2(.999));
  float fluidHeight=texture2D(uState,sampleUv).r*fieldFade(vUv)*7.5*uWaveHeight;
- world.y+=fluidHeight+ambientWave(world.xz);
+ float swell=sin(world.x*.43+world.z*.71+uTime*.42)*.030;
+ swell+=sin(world.x*1.17-world.z*.64-uTime*.57)*.014;
+ swell+=sin((world.x+world.z)*2.15+uTime*.31)*.006;
+ world.y+=(fluidHeight+swell*uWaveHeight);
  vWorldPosition=world.xyz;
  gl_Position=projectionMatrix*viewMatrix*world;
 }
@@ -52,7 +46,7 @@ void main(){
 const surfaceFragment=/* glsl */`
 uniform sampler2D uState,uVelocity,uFoam;
 uniform vec2 uTexel,uFoamFieldCenter;
-uniform float uWaveHeight,uTime,uFoamScreenSpace,uAmbientEnabled,uAmbientHeight,uAmbientScale,uAmbientSpeed,uAmbientDirection,uAmbientDetail;
+uniform float uWaveHeight,uTime,uFoamScreenSpace;
 uniform float uFoamFieldSize;
 uniform vec3 uDeepColor,uShallowColor;
 varying vec2 vUv;
@@ -77,13 +71,9 @@ float waterNoise(vec2 p){
  return value;
 }
 float detailWave(vec2 p){
- float c=cos(uAmbientDirection),s=sin(uAmbientDirection);
- p=mat2(c,-s,s,c)*p*uAmbientScale;
- float phase=uTime*uAmbientSpeed;
- float wave=sin(p.x*.43+p.y*.71+phase*.42)*.030;
- wave+=sin(p.x*1.17-p.y*.64-phase*.57)*.014*uAmbientDetail;
- wave+=sin((p.x+p.y)*2.15+phase*.31)*.006*uAmbientDetail;
- return wave*uAmbientHeight*uAmbientEnabled;
+ return sin(p.x*.43+p.y*.71+uTime*.42)*.030
+       +sin(p.x*1.17-p.y*.64-uTime*.57)*.014
+       +sin((p.x+p.y)*2.15+uTime*.31)*.006;
 }
 void main(){
  vec2 sampleUv=clamp(vUv,uTexel,1.0-uTexel);
@@ -99,7 +89,7 @@ void main(){
  float waveT=detailWave(world+vec2(0.0,eps));
  float fieldEdge=min(min(vUv.x,1.0-vUv.x),min(vUv.y,1.0-vUv.y));
  float fieldMask=smoothstep(0.0,.075,fieldEdge);
- vec3 normal=normalize(vec3((l-r)*48.0*fieldMask*uWaveHeight+(waveL-waveR)*4.5,1.0,(b-t)*48.0*fieldMask*uWaveHeight+(waveB-waveT)*4.5));
+ vec3 normal=normalize(vec3(((l-r)*48.0*fieldMask+(waveL-waveR)*4.5)*uWaveHeight,1.0,((b-t)*48.0*fieldMask+(waveB-waveT)*4.5)*uWaveHeight));
  vec3 viewDir=normalize(cameraPosition-vWorldPosition);
  vec3 lightDir=normalize(vec3(-.45,.88,.32));
  float fresnel=pow(1.0-max(dot(viewDir,normal),0.0),3.2);
@@ -225,7 +215,7 @@ export class WakeApp {
   private createSurface(segments:number){
     const old=this.surface;
     const geometry=new THREE.PlaneGeometry(1,1,segments,segments);
-    const material=old?.material??new THREE.ShaderMaterial({vertexShader:surfaceVertex,fragmentShader:surfaceFragment,side:THREE.DoubleSide,uniforms:{uState:{value:this.simulation.stateTexture},uVelocity:{value:this.simulation.velocityTexture},uFoam:{value:this.foam.texture},uTexel:{value:new THREE.Vector2(1/this.simulation.resolution,1/this.simulation.resolution)},uFoamFieldCenter:{value:this.foamFieldCenter},uFoamFieldSize:{value:this.foamFieldSize},uWaveHeight:{value:this.settings.waveHeight},uAmbientEnabled:{value:this.settings.ambientWaves?1:0},uAmbientHeight:{value:this.settings.ambientWaveHeight},uAmbientScale:{value:this.settings.ambientWaveScale},uAmbientSpeed:{value:this.settings.ambientWaveSpeed},uAmbientDirection:{value:THREE.MathUtils.degToRad(this.settings.ambientWaveDirection)},uAmbientDetail:{value:this.settings.ambientWaveDetail},uTime:{value:0},uWorldSize:{value:WORLD_SIZE},uFoamScreenSpace:{value:this.foamMode==="boat-mix"?1:0},uDeepColor:{value:new THREE.Color()},uShallowColor:{value:new THREE.Color()}}});
+    const material=old?.material??new THREE.ShaderMaterial({vertexShader:surfaceVertex,fragmentShader:surfaceFragment,side:THREE.DoubleSide,uniforms:{uState:{value:this.simulation.stateTexture},uVelocity:{value:this.simulation.velocityTexture},uFoam:{value:this.foam.texture},uTexel:{value:new THREE.Vector2(1/this.simulation.resolution,1/this.simulation.resolution)},uFoamFieldCenter:{value:this.foamFieldCenter},uFoamFieldSize:{value:this.foamFieldSize},uWaveHeight:{value:this.settings.waveHeight},uTime:{value:0},uWorldSize:{value:WORLD_SIZE},uFoamScreenSpace:{value:this.foamMode==="boat-mix"?1:0},uDeepColor:{value:new THREE.Color()},uShallowColor:{value:new THREE.Color()}}});
     const surface=new THREE.Mesh(geometry,material);surface.rotation.x=-Math.PI/2;surface.position.y=-.03;surface.scale.set(120,120,1);surface.receiveShadow=true;surface.frustumCulled=false;
     if(old){this.scene.remove(old);old.geometry.dispose();}
     this.surface=surface;this.scene.add(surface);this.fitSurfaceToView();
@@ -264,13 +254,6 @@ export class WakeApp {
     const previousQuality=this.settings.quality;Object.assign(this.settings,partial);
     if(partial.palette)this.applyPalette();
     if(partial.waveHeight!==undefined)this.surface.material.uniforms.uWaveHeight.value=partial.waveHeight;
-    const uniforms=this.surface.material.uniforms;
-    if(partial.ambientWaves!==undefined)uniforms.uAmbientEnabled.value=partial.ambientWaves?1:0;
-    if(partial.ambientWaveHeight!==undefined)uniforms.uAmbientHeight.value=partial.ambientWaveHeight;
-    if(partial.ambientWaveScale!==undefined)uniforms.uAmbientScale.value=partial.ambientWaveScale;
-    if(partial.ambientWaveSpeed!==undefined)uniforms.uAmbientSpeed.value=partial.ambientWaveSpeed;
-    if(partial.ambientWaveDirection!==undefined)uniforms.uAmbientDirection.value=THREE.MathUtils.degToRad(partial.ambientWaveDirection);
-    if(partial.ambientWaveDetail!==undefined)uniforms.uAmbientDetail.value=partial.ambientWaveDetail;
     if(partial.quality&&partial.quality!==previousQuality){const next=partial.quality==="auto"?resolveInitialQuality():partial.quality;this.applyQuality(next);}
   }
 

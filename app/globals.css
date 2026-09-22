@@ -462,22 +462,6 @@ a:hover {
   scrollbar-width: thin;
 }
 
-.wake-controls--atoms {
-  width: min(350px, calc(100vw - 32px));
-  background: rgba(0, 0, 0, .9);
-  border-color: rgba(255,255,255,.2);
-}
-
-.wake-menu-note {
-  margin: 10px 0 2px;
-  padding: 8px 9px;
-  border-radius: 5px;
-  background: rgba(255,255,255,.04);
-  color: rgba(255,255,255,.65);
-  font-size: 10px;
-  line-height: 1.55;
-}
-
 .wake-controls :is(a, button, input, select) {
   pointer-events: auto;
 }
@@ -513,30 +497,6 @@ a:hover {
 .wake-slider output { color: rgba(255,255,255,.45); font-variant-numeric: tabular-nums; }
 .wake-slider-track { padding: 8px 18px 3px; }
 .wake-slider input { display: block; width: 100%; margin: 0; accent-color: #d7e0e6; touch-action: pan-x; }
-
-.wake-controls--atoms .wake-slider > span > span { opacity: .5; }
-.wake-controls--atoms .wake-slider output { color: #aef; font-family: monospace; opacity: 1; }
-.wake-controls--atoms .wake-slider input { accent-color: #aef; }
-
-.wake-mode-switch {
-  margin: 0 0 6px;
-  padding: 5px 9px;
-  border: 1px solid rgba(255,255,255,.25);
-  border-radius: 4px;
-  background: rgba(255,255,255,.07);
-  color: inherit;
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-}
-.wake-mode-switch.is-active { background: rgba(155,205,255,.2); border-color: rgba(174,238,255,.45); }
-
-.wake-touch-slider { position: relative; width: 100%; height: 28px; touch-action: pan-y; cursor: ew-resize; user-select: none; }
-.wake-touch-slider__track,
-.wake-touch-slider__fill { position: absolute; top: 13px; left: 0; height: 3px; border-radius: 2px; }
-.wake-touch-slider__track { right: 0; background: rgba(255,255,255,.28); }
-.wake-touch-slider__fill { background: #aef; }
-.wake-touch-slider__thumb { position: absolute; top: 7px; width: 14px; height: 14px; border-radius: 50%; background: #aef; box-shadow: 0 0 0 2px rgba(12,19,34,.9); }
 
 .wake-segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 .wake-segmented button,
