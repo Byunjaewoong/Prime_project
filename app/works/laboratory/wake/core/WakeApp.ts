@@ -5,9 +5,12 @@ import { WakeSimulation, type WakeInput } from "./WakeSimulation";
 import { DEFAULT_WAKE_SETTINGS, QUALITY_PRESETS, resolveInitialQuality, type ResolvedWakeQuality, type WakeSettings } from "./WakeSettings";
 
 const WORLD_SIZE=48;
-const BOAT_LENGTH=2.8/3;
-// The supplied model needs one additional 90 degree counter-clockwise correction.
-const BOAT_MODEL_YAW_CORRECTION=Math.PI;
+const BOAT_LENGTH=2.8;
+// Three.js uses Y as the vertical axis (the water plane spans X/Z).
+// Keep the hull above the displaced surface so the model is not hidden by foam.
+const BOAT_WATERLINE_HEIGHT=3.2;
+// The GLB's longitudinal axis is X; rotate it onto the study's Z-forward axis.
+const BOAT_MODEL_YAW_CORRECTION=Math.PI/2;
 
 const surfaceVertex=/* glsl */`
 uniform sampler2D uState;
@@ -194,7 +197,7 @@ export class WakeApp {
     hullGeometry.rotateX(Math.PI/2);hullGeometry.center();
     const hull=new THREE.Mesh(hullGeometry,new THREE.MeshStandardMaterial({color:0xf4f4f1,roughness:.34,metalness:.05}));hull.position.y=.23;group.add(hull);
     const cockpit=new THREE.Mesh(new THREE.CapsuleGeometry(.31,.72,5,12),new THREE.MeshStandardMaterial({color:0x11171a,roughness:.22,metalness:.3}));cockpit.rotation.x=Math.PI/2;cockpit.position.set(0,.54,-.18);cockpit.scale.set(1,.55,1);group.add(cockpit);
-    group.scale.setScalar(1/3);return group;
+    return group;
   }
 
   private loadBoat(url:string){
@@ -270,7 +273,7 @@ export class WakeApp {
     const oldSpeed=this.speed;this.speed=THREE.MathUtils.damp(this.speed,targetSpeed,1.35,dt);this.acceleration=(this.speed-oldSpeed)/Math.max(dt,.001);
     this.forward.set(Math.sin(this.heading),0,Math.cos(this.heading));this.position.addScaledVector(this.forward,this.speed*dt);
     this.position.x=THREE.MathUtils.clamp(this.position.x,-20,20);this.position.z=THREE.MathUtils.clamp(this.position.z,-20,20);
-    this.boat.position.set(this.position.x,.12+Math.sin(time*2.1)*.025,this.position.z);this.boat.rotation.y=this.heading;
+    this.boat.position.set(this.position.x,BOAT_WATERLINE_HEIGHT+Math.sin(time*2.1)*.025,this.position.z);this.boat.rotation.y=this.heading;
     this.boat.rotation.z=THREE.MathUtils.damp(this.boat.rotation.z,-this.yawRate*.10,3.2,dt);this.boat.rotation.x=THREE.MathUtils.damp(this.boat.rotation.x,-this.acceleration*.025+Math.sin(time*2.1)*.012,2.8,dt);
   }
 

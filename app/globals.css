@@ -456,9 +456,14 @@ a:hover {
   max-height: min(78dvh, 650px);
   padding: 16px 18px;
   display: block;
+  pointer-events: auto;
   overscroll-behavior: contain;
   touch-action: pan-y;
   scrollbar-width: thin;
+}
+
+.wake-controls :is(a, button, input, select) {
+  pointer-events: auto;
 }
 
 .wake-menu-head,

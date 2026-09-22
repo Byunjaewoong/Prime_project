@@ -60,12 +60,12 @@ export default function WakeExperience(){
             <h4>{group.section}</h4>
             {group.items.map(item=><label className="wake-slider" key={item.key}>
               <span><span>{item.label}</span><output>{settings[item.key].toFixed(item.step<.1?2:1)}{item.unit}</output></span>
-              <div className="wake-slider-track"><input type="range" min={item.min} max={item.max} step={item.step} value={settings[item.key]} onChange={event=>update(item.key,Number(event.target.value))}/></div>
+              <div className="wake-slider-track"><input aria-label={item.label} type="range" min={item.min} max={item.max} step={item.step} value={settings[item.key]} onInput={event=>update(item.key,Number(event.currentTarget.value))}/></div>
             </label>)}
           </section>)}
           <section className="wake-section">
             <h4>Performance</h4>
-            <label className="wake-select"><span>Quality</span><select value={settings.quality} onChange={event=>update("quality",event.target.value as WakeQuality)}><option value="auto">Auto</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
+            <label className="wake-select"><span>Quality</span><select value={settings.quality} onInput={event=>update("quality",event.currentTarget.value as WakeQuality)}><option value="auto">Auto</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
           </section>
         </div>}
       <button type="button" className={"orbit-fab__main"+(menuOpen?" orbit-fab__main--active":"")} aria-label={menuOpen?"Close menu":"Open menu"} aria-expanded={menuOpen} onClick={()=>setMenuOpen(open=>!open)}>M</button>
