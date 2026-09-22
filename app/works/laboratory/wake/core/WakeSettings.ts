@@ -6,6 +6,7 @@ export type WakeSettings = {
   cruiseSpeed: number;
   wakeForce: number;
   waveHeight: number;
+  waveDamping: number;
   reflectionIntensity: number;
   lightDirection: number;
   vorticity: number;
@@ -27,6 +28,7 @@ export const DEFAULT_WAKE_SETTINGS: WakeSettings = {
   cruiseSpeed: 1,
   wakeForce: 1,
   waveHeight: 0.8,
+  waveDamping: 1.25,
   reflectionIntensity: 1,
   lightDirection: 145,
   vorticity: 6,
@@ -48,8 +50,9 @@ export const WAKE2_DEFAULT_SETTINGS: WakeSettings = {
   cruiseSpeed: 1.85,
   wakeForce: 1.4,
   waveHeight: 0.3,
+  waveDamping: 1.25,
   reflectionIntensity: 2.5,
-  lightDirection: 145,
+  lightDirection: 0,
   vorticity: 6.5,
   dyeDecay: 0.995,
   force: 0.088,
