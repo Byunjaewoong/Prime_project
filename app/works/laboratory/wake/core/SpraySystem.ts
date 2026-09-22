@@ -16,7 +16,7 @@ varying float vLife;
 void main(){
   vLife=aLife;
   vec4 mv=modelViewMatrix*vec4(position,1.0);
-  gl_PointSize=aSize*(40.0/max(1.0,-mv.z))*clamp(aLife*2.2,0.0,1.0);
+  gl_PointSize=aSize*(72.0/max(1.0,-mv.z))*clamp(aLife*3.0,0.0,1.0);
   gl_Position=projectionMatrix*mv;
 }
 `;
@@ -27,9 +27,15 @@ varying float vLife;
 void main(){
   vec2 p=gl_PointCoord-0.5;
   float d=length(p)*2.0;
-  float alpha=smoothstep(1.0,0.18,d)*smoothstep(0.0,0.22,vLife)*min(1.0,vLife*1.8);
-  if(alpha<0.015)discard;
-  gl_FragColor=vec4(uColor,alpha*0.62);
+  float angle=atan(p.y,p.x);
+  float fibers=0.78+0.22*sin(angle*7.0+d*19.0+vLife*8.0);
+  float core=smoothstep(0.92,0.12,d);
+  float rim=smoothstep(1.0,0.62,d)*smoothstep(0.18,0.7,d);
+  float lifeFade=smoothstep(0.0,0.16,vLife)*min(1.0,vLife*2.6);
+  float alpha=(core*fibers+rim*0.18)*lifeFade;
+  if(alpha<0.035)discard;
+  vec3 color=mix(uColor*0.82,uColor*1.16,smoothstep(0.72,0.0,d));
+  gl_FragColor=vec4(color,alpha*0.92);
 }
 `;
 
@@ -56,16 +62,16 @@ export class SpraySystem {
     geometry.setAttribute("aLife",new THREE.BufferAttribute(this.lives,1).setUsage(THREE.DynamicDrawUsage));
     geometry.setAttribute("aSize",new THREE.BufferAttribute(this.sizes,1).setUsage(THREE.DynamicDrawUsage));
     geometry.setDrawRange(0,capacity);
-    const material=new THREE.ShaderMaterial({vertexShader,fragmentShader,transparent:true,depthWrite:false,depthTest:true,blending:THREE.AdditiveBlending,uniforms:{uColor:{value:new THREE.Color(0xf7fbff)}}});
+    const material=new THREE.ShaderMaterial({vertexShader,fragmentShader,transparent:true,depthWrite:false,depthTest:true,blending:THREE.NormalBlending,uniforms:{uColor:{value:new THREE.Color(0xffffff)}}});
     this.points=new THREE.Points(geometry,material);
     this.points.frustumCulled=false;
   }
 
   setLimit(value:number){this.activeLimit=Math.min(this.capacity,value);this.cursor%=Math.max(1,this.activeLimit);}
-  setPalette(palette:WakePalette){(this.points.material as THREE.ShaderMaterial).uniforms.uColor.value.set(palette==="monochrome"?0xf8fafc:0xd9f3ff);}
+  setPalette(palette:WakePalette){(this.points.material as THREE.ShaderMaterial).uniforms.uColor.value.set(palette==="monochrome"?0xffffff:0xc6f0ff);}
 
   update(dt:number,emitter:SprayEmitter,settings:WakeSettings){
-    const drag=Math.exp(-dt*1.45);
+    const drag=Math.exp(-dt*2.15);
     for(let i=0;i<this.capacity;i++){
       if(this.lives[i]<=0)continue;
       const j=i*3;
@@ -75,8 +81,8 @@ export class SpraySystem {
       if(this.positions[j+1]<=0||this.lives[i]<=0){this.lives[i]=0;this.positions[j+1]=-100;}
     }
     const energy=Math.max(0,emitter.speed-.15)+Math.abs(emitter.acceleration)*.18+Math.abs(emitter.yawRate)*.55;
-    this.emissionRemainder+=dt*95*settings.sprayAmount*settings.wakeForce*energy;
-    const count=Math.min(40,Math.floor(this.emissionRemainder)); this.emissionRemainder-=count;
+    this.emissionRemainder+=dt*240*settings.sprayAmount*settings.wakeForce*energy;
+    const count=Math.min(72,Math.floor(this.emissionRemainder)); this.emissionRemainder-=count;
     this.side.set(-emitter.forward.z,0,emitter.forward.x);
     for(let n=0;n<count;n++)this.emit(emitter,settings,n/count);
     const geometry=this.points.geometry;
@@ -92,17 +98,17 @@ export class SpraySystem {
     const sign=Math.random()<.5?-1:1;
     const turnSign=Math.sign(e.yawRate)||sign;
     const outsideBoost=sign===turnSign?1+Math.min(1.2,Math.abs(e.yawRate)*.8):1;
-    const along=bow?.42:-.22-Math.random()*.18;
-    const lateral=(bow?.10:.18+Math.random()*.18)*sign;
+    const along=bow?.36:-.18-Math.random()*.13;
+    const lateral=(bow?.08:.14+Math.random()*.12)*sign;
     this.positions[j]=e.position.x+e.forward.x*along+this.side.x*lateral;
     this.positions[j+1]=.16+Math.random()*.12;
     this.positions[j+2]=e.position.z+e.forward.z*along+this.side.z*lateral;
-    const outward=(.7+Math.random()*1.2)*outsideBoost*settings.sprayAmount;
+    const outward=(.34+Math.random()*.58)*outsideBoost*settings.sprayAmount;
     this.velocities[j]=e.forward.x*(e.speed*.42+Math.random()*.4)+this.side.x*outward*sign;
-    this.velocities[j+1]=(1.1+Math.random()*2.0)*settings.sprayHeight*(.65+e.speed*.15);
+    this.velocities[j+1]=(.9+Math.random()*1.45)*settings.sprayHeight*(.65+e.speed*.15);
     this.velocities[j+2]=e.forward.z*(e.speed*.42+Math.random()*.4)+this.side.z*outward*sign;
-    this.lives[i]=.45+Math.random()*.85;
-    this.sizes[i]=2+Math.random()*5;
+    this.lives[i]=.38+Math.random()*.62;
+    this.sizes[i]=5+Math.random()*7;
   }
 
   dispose(){this.points.geometry.dispose();(this.points.material as THREE.Material).dispose();}

@@ -4,7 +4,7 @@ import { SpraySystem } from "./SpraySystem";
 import { WakeSimulation, type WakeInput } from "./WakeSimulation";
 import { DEFAULT_WAKE_SETTINGS, QUALITY_PRESETS, resolveInitialQuality, type ResolvedWakeQuality, type WakeSettings } from "./WakeSettings";
 
-const WORLD_SIZE=48;
+const WORLD_SIZE=72;
 const BOAT_LENGTH=2.8;
 // Three.js uses Y as the vertical axis (the water plane spans X/Z).
 const BOAT_WATERLINE_HEIGHT=.12;
@@ -97,12 +97,15 @@ void main(){
  float waterTexture=clamp(broadNoise*.68+fineNoise*.32,0.0,1.0);
  float sparkle=pow(reflection,180.0)*smoothstep(.58,1.0,grain)*(1.0+length(velocity)*.2);
  sparkle+=smoothstep(.82,.98,waterTexture)*(.018+fresnel*.045);
- float foam=texture2D(uState,sampleUv).b*fieldMask;
- foam=smoothstep(.08,.82,foam)*(.82+grain*.18);
- vec3 water=mix(uDeepColor,uShallowColor,clamp(fresnel*.62+diffuse*.31,0.0,1.0));
- water*=.72+waterTexture*.48;
- water+=vec3(spec*1.35+sparkle*1.8+waterTexture*.026);
- water=mix(water,uFoamColor,foam*.96);
+ float foamRaw=texture2D(uState,sampleUv).b*fieldMask;
+ float foamNoise=waterNoise(world*2.55+velocity*.42+vec2(uTime*.08,-uTime*.055));
+ float foam=smoothstep(.15,.68,foamRaw+(foamNoise-.5)*.10);
+ foam*=.62+foamNoise*.54+grain*.10;
+  vec3 water=mix(uDeepColor,uShallowColor,clamp(fresnel*.62+diffuse*.31,0.0,1.0));
+  water*=.72+waterTexture*.48;
+  water+=vec3(spec*1.35+sparkle*1.8+waterTexture*.026);
+ vec3 texturedFoam=mix(uFoamColor*.68,uFoamColor*1.12,smoothstep(.18,.88,foamNoise));
+ water=mix(water,texturedFoam,clamp(foam,0.0,1.0)*.98);
  gl_FragColor=vec4(water,1.0);
 }
 `;
@@ -154,8 +157,8 @@ export class WakeApp {
     this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure=1.08;
     this.scene.background=new THREE.Color(0x060708);
-    this.camera.position.set(0,27,20);
-    this.camera.lookAt(0,0,1.5);
+    this.camera.position.set(0,92,18);
+    this.camera.lookAt(0,0,0);
     this.resolvedQuality=resolveInitialQuality();
     const preset=QUALITY_PRESETS[this.resolvedQuality];
     this.simulation=new WakeSimulation(this.renderer,preset.simulation);
@@ -242,7 +245,7 @@ export class WakeApp {
   setPointerTarget(clientX:number,clientY:number){
     const rect=this.canvas.getBoundingClientRect();this.pointer.set((clientX-rect.left)/rect.width*2-1,-((clientY-rect.top)/rect.height)*2+1);
     this.raycaster.setFromCamera(this.pointer,this.camera);const hit=new THREE.Vector3();
-    if(this.raycaster.ray.intersectPlane(this.waterPlane,hit)){hit.x=THREE.MathUtils.clamp(hit.x,-19,19);hit.z=THREE.MathUtils.clamp(hit.z,-19,19);this.pointerTarget=hit;}
+    if(this.raycaster.ray.intersectPlane(this.waterPlane,hit)){hit.x=THREE.MathUtils.clamp(hit.x,-29,29);hit.z=THREE.MathUtils.clamp(hit.z,-29,29);this.pointerTarget=hit;}
   }
   clearPointerTarget(){this.pointerTarget=null;this.autoTarget.copy(this.position).addScaledVector(this.forward,7);this.autoTargetAge=0;}
 
@@ -266,19 +269,19 @@ export class WakeApp {
   private updateBoat(dt:number,time:number){
     this.autoTargetAge+=dt;
     if(!this.pointerTarget&&(this.position.distanceTo(this.autoTarget)<2.2||this.autoTargetAge>7.5)){
-      const angle=Math.random()*Math.PI*2,radius=5+Math.random()*10;this.autoTarget.set(Math.sin(angle)*radius,0,Math.cos(angle)*radius);this.autoTargetAge=0;
+      const angle=Math.random()*Math.PI*2,radius=8+Math.random()*16;this.autoTarget.set(Math.sin(angle)*radius,0,Math.cos(angle)*radius);this.autoTargetAge=0;
     }
     const target=this.pointerTarget??this.autoTarget;
     const desired=target.clone().sub(this.position);
     const edge=Math.max(Math.abs(this.position.x),Math.abs(this.position.z));
-    if(edge>14)desired.lerp(this.position.clone().multiplyScalar(-1),THREE.MathUtils.smoothstep(edge,14,20));
+    if(edge>22)desired.lerp(this.position.clone().multiplyScalar(-1),THREE.MathUtils.smoothstep(edge,22,31));
     const desiredHeading=Math.atan2(desired.x,desired.z);const error=shortestAngle(desiredHeading-this.heading);
     const previousHeading=this.heading;const maxTurn=(.62+Math.min(.7,Math.abs(error)))*dt;this.heading+=THREE.MathUtils.clamp(error*.86*dt,-maxTurn,maxTurn);
     this.yawRate=shortestAngle(this.heading-previousHeading)/Math.max(dt,.001);
     const targetSpeed=3.15*this.settings.cruiseSpeed*(1-.24*Math.min(1,Math.abs(error)));
     const oldSpeed=this.speed;this.speed=THREE.MathUtils.damp(this.speed,targetSpeed,1.35,dt);this.acceleration=(this.speed-oldSpeed)/Math.max(dt,.001);
     this.forward.set(Math.sin(this.heading),0,Math.cos(this.heading));this.position.addScaledVector(this.forward,this.speed*dt);
-    this.position.x=THREE.MathUtils.clamp(this.position.x,-20,20);this.position.z=THREE.MathUtils.clamp(this.position.z,-20,20);
+    this.position.x=THREE.MathUtils.clamp(this.position.x,-31,31);this.position.z=THREE.MathUtils.clamp(this.position.z,-31,31);
     this.boat.position.set(this.position.x,BOAT_WATERLINE_HEIGHT+Math.sin(time*2.1)*.025,this.position.z);this.boat.rotation.y=this.heading;
     this.boat.rotation.z=THREE.MathUtils.damp(this.boat.rotation.z,-this.yawRate*.10,3.2,dt);this.boat.rotation.x=THREE.MathUtils.damp(this.boat.rotation.x,-this.acceleration*.025+Math.sin(time*2.1)*.012,2.8,dt);
   }
