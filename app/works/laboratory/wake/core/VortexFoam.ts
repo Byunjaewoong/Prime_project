@@ -16,7 +16,6 @@ const DYE_SEGMENT_LENGTH=9;
 
 export class VortexFoam {
   readonly texture:THREE.CanvasTexture;
-  readonly texelSize:number;
   private solver:FluidSolver;
   private outputSize:number;
   private dyeCanvas=document.createElement("canvas");
@@ -31,7 +30,6 @@ export class VortexFoam {
   constructor(highDetail=false){
     const gridSize=highDetail?DESKTOP_GRID_SIZE:MOBILE_GRID_SIZE;
     this.outputSize=highDetail?DESKTOP_OUTPUT_SIZE:MOBILE_OUTPUT_SIZE;
-    this.texelSize=1/gridSize;
     this.solver=new FluidSolver(gridSize,gridSize);
     this.dyeRenderer=DyeRenderer.create(this.dyeCanvas);
     this.canvas.width=this.outputSize;this.canvas.height=this.outputSize;
@@ -78,22 +76,13 @@ export class VortexFoam {
         const dyeStrength=40*THREE.MathUtils.lerp(.45,1,Math.min(speed,1))*invScale2;
 
         const inject=(position:THREE.Vector2,lateralDirection:number,strength:number)=>{
-          const gridPositionX=THREE.MathUtils.clamp(1+position.x*this.solver.W,1,this.solver.W);
+          const gridX=Math.max(1,Math.min(this.solver.W,Math.floor(1+position.x*this.solver.W)));
           // CanvasTexture flips its source vertically when it is uploaded to WebGL.
           // Convert UV-space position and velocity into the canvas/grid coordinate system.
-          const gridPositionY=THREE.MathUtils.clamp(1+(1-position.y)*this.solver.H,1,this.solver.H);
-          const x0=Math.floor(gridPositionX),y0=Math.floor(gridPositionY);
-          const x1=Math.min(this.solver.W,x0+1),y1=Math.min(this.solver.H,y0+1);
-          const tx=gridPositionX-x0,ty=gridPositionY-y0;
+          const gridY=Math.max(1,Math.min(this.solver.H,Math.floor(1+(1-position.y)*this.solver.H)));
           const velocity=direction.clone().multiplyScalar(-aftCarry).addScaledVector(side,lateralDirection*strength);
-          const samples:[[number,number,number],[number,number,number],[number,number,number],[number,number,number]]=[
-            [x0,y0,(1-tx)*(1-ty)],[x1,y0,tx*(1-ty)],[x0,y1,(1-tx)*ty],[x1,y1,tx*ty],
-          ];
-          for(const [gridX,gridY,weight] of samples){
-            if(weight<=.0001)continue;
-            this.solver.addVelocity(gridX,gridY,velocity.x*settings.force*invScale2*weight,-velocity.y*settings.force*invScale2*weight,velocityRadius);
-            this.solver.addDye(gridX,gridY,color[0]*dyeStrength*weight,color[1]*dyeStrength*weight,color[2]*dyeStrength*weight,dyeRadius);
-          }
+          this.solver.addVelocity(gridX,gridY,velocity.x*settings.force*invScale2,-velocity.y*settings.force*invScale2,velocityRadius);
+          this.solver.addDye(gridX,gridY,color[0]*dyeStrength,color[1]*dyeStrength,color[2]*dyeStrength,dyeRadius);
         };
 
         inject(stern.clone().addScaledVector(side,HULL_FORCE_HALF_WIDTH*fieldScale),1,leftStrength);

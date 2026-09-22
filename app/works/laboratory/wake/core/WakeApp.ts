@@ -42,7 +42,7 @@ void main(){
 
 const surfaceFragment=/* glsl */`
 uniform sampler2D uState,uVelocity,uFoam;
-uniform vec2 uTexel,uFoamTexel,uFoamFieldCenter;
+uniform vec2 uTexel,uFoamFieldCenter;
 uniform float uWaveHeight,uTime,uFoamScreenSpace;
 uniform float uFoamFieldSize;
 uniform vec3 uDeepColor,uShallowColor;
@@ -94,12 +94,7 @@ void main(){
  vec2 worldFoamUv=vec2((vWorldPosition.x-uFoamFieldCenter.x)/uFoamFieldSize+.5,.5-(vWorldPosition.z-uFoamFieldCenter.y)/uFoamFieldSize);
  vec2 foamUv=mix(sampleUv,clamp(worldFoamUv,uTexel,1.0-uTexel),uFoamScreenSpace);
  float foamFieldMask=mix(fieldMask,1.0,uFoamScreenSpace);
- vec3 foamDye=texture2D(uFoam,foamUv).rgb*.5;
- foamDye+=texture2D(uFoam,clamp(foamUv+vec2(uFoamTexel.x,0.0),uFoamTexel,1.0-uFoamTexel)).rgb*.125;
- foamDye+=texture2D(uFoam,clamp(foamUv-vec2(uFoamTexel.x,0.0),uFoamTexel,1.0-uFoamTexel)).rgb*.125;
- foamDye+=texture2D(uFoam,clamp(foamUv+vec2(0.0,uFoamTexel.y),uFoamTexel,1.0-uFoamTexel)).rgb*.125;
- foamDye+=texture2D(uFoam,clamp(foamUv-vec2(0.0,uFoamTexel.y),uFoamTexel,1.0-uFoamTexel)).rgb*.125;
- foamDye*=foamFieldMask;
+ vec3 foamDye=texture2D(uFoam,foamUv).rgb*foamFieldMask;
  float brightFoam=max(foamDye.g,foamDye.b);
  float backgroundFoam=clamp((foamDye.r-max(foamDye.g,foamDye.b))*1.5,0.0,1.0);
  vec3 visibleFoam=foamDye;
@@ -209,7 +204,7 @@ export class WakeApp {
   private createSurface(segments:number){
     const old=this.surface;
     const geometry=new THREE.PlaneGeometry(1,1,segments,segments);
-    const material=old?.material??new THREE.ShaderMaterial({vertexShader:surfaceVertex,fragmentShader:surfaceFragment,side:THREE.DoubleSide,uniforms:{uState:{value:this.simulation.stateTexture},uVelocity:{value:this.simulation.velocityTexture},uFoam:{value:this.foam.texture},uTexel:{value:new THREE.Vector2(1/this.simulation.resolution,1/this.simulation.resolution)},uFoamTexel:{value:new THREE.Vector2(this.foam.texelSize,this.foam.texelSize)},uFoamFieldCenter:{value:this.foamFieldCenter},uFoamFieldSize:{value:this.foamFieldSize},uWaveHeight:{value:this.settings.waveHeight},uTime:{value:0},uWorldSize:{value:WORLD_SIZE},uFoamScreenSpace:{value:this.foamMode==="boat-mix"?1:0},uDeepColor:{value:new THREE.Color()},uShallowColor:{value:new THREE.Color()}}});
+    const material=old?.material??new THREE.ShaderMaterial({vertexShader:surfaceVertex,fragmentShader:surfaceFragment,side:THREE.DoubleSide,uniforms:{uState:{value:this.simulation.stateTexture},uVelocity:{value:this.simulation.velocityTexture},uFoam:{value:this.foam.texture},uTexel:{value:new THREE.Vector2(1/this.simulation.resolution,1/this.simulation.resolution)},uFoamFieldCenter:{value:this.foamFieldCenter},uFoamFieldSize:{value:this.foamFieldSize},uWaveHeight:{value:this.settings.waveHeight},uTime:{value:0},uWorldSize:{value:WORLD_SIZE},uFoamScreenSpace:{value:this.foamMode==="boat-mix"?1:0},uDeepColor:{value:new THREE.Color()},uShallowColor:{value:new THREE.Color()}}});
     const surface=new THREE.Mesh(geometry,material);surface.rotation.x=-Math.PI/2;surface.position.y=-.03;surface.scale.set(120,120,1);surface.receiveShadow=true;surface.frustumCulled=false;
     if(old){this.scene.remove(old);old.geometry.dispose();}
     this.surface=surface;this.scene.add(surface);this.fitSurfaceToView();
@@ -309,8 +304,25 @@ export class WakeApp {
     return {start:Math.max(0,(first-1)/ROUTE_SAMPLE_COUNT),end:Math.min(1,(last+1)/ROUTE_SAMPLE_COUNT)};
   }
 
+  private screenPointToWater(x:number,y:number){
+    this.camera.updateMatrixWorld(true);
+    this.raycaster.setFromCamera(new THREE.Vector2(x,y),this.camera);
+    return this.raycaster.ray.intersectPlane(this.waterPlane,new THREE.Vector3());
+  }
+
   private resetPath(){
     for(let attempt=0;attempt<8;attempt++){
+      const desktopWake2=this.foamMode==="boat-mix"&&this.canvas.clientWidth>=760;
+      if(desktopWake2){
+        const direction=Math.random()<.5?1:-1;
+        const start=this.screenPointToWater(-direction*1.3,(Math.random()-.5)*1.05);
+        const end=this.screenPointToWater(direction*1.3,(Math.random()-.5)*1.05);
+        const control=this.screenPointToWater((Math.random()-.5)*.32,(Math.random()-.5)*.9);
+        if(!start||!end||!control)continue;
+        this.route=new THREE.QuadraticBezierCurve3(start,control,end);
+        this.routeProgress=0;this.routeEndProgress=1;this.routeLength=Math.max(this.route.getLength(),.001);this.routeTarget.copy(end);
+        this.position.copy(start);const tangent=this.route.getTangent(0).normalize();this.forward.copy(tangent);this.heading=Math.atan2(tangent.x,tangent.z);this.boatActive=true;this.boat.visible=true;this.fallbackTrail.visible=!this.simulation.supported;this.applyBoatTransform(0);return;
+      }
       const startAngle=Math.random()*Math.PI*2;
       let start=new THREE.Vector3(Math.cos(startAngle)*this.pathRadius,0,Math.sin(startAngle)*this.pathRadius);
       const endAngle=startAngle+Math.PI+(Math.random()-.5);
@@ -390,7 +402,7 @@ export class WakeApp {
       foamInput={...input,uv:new THREE.Vector2((this.position.x-this.foamFieldCenter.x)/this.foamFieldSize+.5,.5-(this.position.z-this.foamFieldCenter.y)/this.foamFieldSize),fieldScale:WORLD_SIZE/this.foamFieldSize};
     }
     this.foam.update(foamInput,this.settings,this.foamMode==="boat-mix");
-    const uniforms=this.surface.material.uniforms;uniforms.uState.value=this.simulation.stateTexture;uniforms.uVelocity.value=this.simulation.velocityTexture;uniforms.uFoam.value=this.foam.texture;uniforms.uTexel.value.setScalar(1/this.simulation.resolution);uniforms.uFoamTexel.value.setScalar(this.foam.texelSize);uniforms.uTime.value=time;uniforms.uWaveHeight.value=this.settings.waveHeight;
+    const uniforms=this.surface.material.uniforms;uniforms.uState.value=this.simulation.stateTexture;uniforms.uVelocity.value=this.simulation.velocityTexture;uniforms.uFoam.value=this.foam.texture;uniforms.uTexel.value.setScalar(1/this.simulation.resolution);uniforms.uTime.value=time;uniforms.uWaveHeight.value=this.settings.waveHeight;
     this.spray.update(dt,{position:this.position,forward:this.forward,speed:input.speed,acceleration:input.acceleration,yawRate:input.yawRate},this.settings);
     this.updateFallbackTrail();this.renderer.render(this.scene,this.camera);this.monitorQuality(rawDt);this.frame=requestAnimationFrame(this.animate);
   };
