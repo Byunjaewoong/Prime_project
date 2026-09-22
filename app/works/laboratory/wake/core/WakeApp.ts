@@ -355,7 +355,9 @@ export class WakeApp {
 
   private resumeOriginalRoute(){
     if(this.position.distanceTo(this.routeTarget)<2){this.resetPath();return;}
-    const control=this.position.clone().addScaledVector(this.forward,Math.min(14,this.position.distanceTo(this.routeTarget)*.35));
+    const distance=this.position.distanceTo(this.routeTarget);
+    const turnLead=THREE.MathUtils.clamp(distance*.72,12,34);
+    const control=this.position.clone().addScaledVector(this.forward,turnLead);
     this.route=new THREE.QuadraticBezierCurve3(this.position.clone(),control,this.routeTarget.clone());
     this.routeProgress=0;this.routeEndProgress=1;this.routeLength=Math.max(this.route.getLength(),.001);
   }
