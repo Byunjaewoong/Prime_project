@@ -3,10 +3,13 @@ import { DyeRenderer } from "../../../Vortex/core/DyeRenderer";
 import { FluidSolver } from "../../../Vortex/core/FluidSolver";
 import { Renderer } from "../../../Vortex/core/Renderer";
 import type { WakePalette, WakeSettings } from "./WakeSettings";
+import type { WakeInput } from "./WakeSimulation";
 
 const GRID_SIZE=160;
 const OUTPUT_SIZE=768;
 const REFERENCE_GRID=144;
+const BOW_OFFSET=.012;
+const HULL_FORCE_HALF_WIDTH=.011;
 
 export class VortexFoam {
   readonly texture:THREE.CanvasTexture;
@@ -32,7 +35,7 @@ export class VortexFoam {
 
   setPalette(palette:WakePalette){this.palette=palette;}
 
-  update(uv:THREE.Vector2,settings:WakeSettings){
+  update(input:WakeInput,settings:WakeSettings){
     this.solver.vorticityEps=settings.vorticity;
     this.solver.dyeDecay=settings.dyeDecay;
     this.solver.velocityDecay=settings.drag;
@@ -40,20 +43,40 @@ export class VortexFoam {
     this.cpuRenderer.saturation=settings.saturation;
     this.cpuRenderer.brightness=settings.brightness;
 
-    const gridX=Math.max(1,Math.min(this.solver.W,Math.floor(1+uv.x*this.solver.W)));
-    const gridY=Math.max(1,Math.min(this.solver.H,Math.floor(1+uv.y*this.solver.H)));
     if(this.previousUv){
-      const dx=(uv.x-this.previousUv.x)*OUTPUT_SIZE;
-      const dy=(uv.y-this.previousUv.y)*OUTPUT_SIZE;
+      const travelPixels=input.uv.distanceTo(this.previousUv)*OUTPUT_SIZE;
       const scale=GRID_SIZE/REFERENCE_GRID;
       const invScale2=1/(scale*scale);
-      const velocityRadius=Math.max(1,Math.round(4*scale));
+      // Keep each pressure jet local enough that the opposing lateral forces do not cancel.
+      const velocityRadius=Math.max(1,Math.round(2*scale));
       const dyeRadius=Math.max(1,Math.round(3*scale));
-      this.solver.addVelocity(gridX,gridY,dx*settings.force*invScale2,dy*settings.force*invScale2,velocityRadius);
-      const color=this.palette==="monochrome"?[1,1,1] as const:[.12,.62,1] as const;
-      this.solver.addDye(gridX,gridY,color[0]*80*invScale2,color[1]*80*invScale2,color[2]*80*invScale2,dyeRadius);
+      const speed=THREE.MathUtils.clamp(input.speed,0,1.5);
+      const cutStrength=Math.min(travelPixels,6)*THREE.MathUtils.lerp(.65,1.35,Math.min(speed,1));
+
+      if(cutStrength>.001){
+        const direction=input.direction.clone().normalize();
+        const side=new THREE.Vector2(-direction.y,direction.x);
+        const bow=input.uv.clone().addScaledVector(direction,BOW_OFFSET);
+        const turn=THREE.MathUtils.clamp(input.yawRate,-1,1);
+        const leftStrength=cutStrength*(1+Math.max(0,-turn)*.7);
+        const rightStrength=cutStrength*(1+Math.max(0,turn)*.7);
+        const forwardCarry=cutStrength*.18;
+        const color=this.palette==="monochrome"?[1,1,1] as const:[.12,.62,1] as const;
+        const dyeStrength=40*THREE.MathUtils.lerp(.45,1,Math.min(speed,1))*invScale2;
+
+        const inject=(position:THREE.Vector2,lateralDirection:number,strength:number)=>{
+          const gridX=Math.max(1,Math.min(this.solver.W,Math.floor(1+position.x*this.solver.W)));
+          const gridY=Math.max(1,Math.min(this.solver.H,Math.floor(1+position.y*this.solver.H)));
+          const velocity=direction.clone().multiplyScalar(forwardCarry).addScaledVector(side,lateralDirection*strength);
+          this.solver.addVelocity(gridX,gridY,velocity.x*settings.force*invScale2,velocity.y*settings.force*invScale2,velocityRadius);
+          this.solver.addDye(gridX,gridY,color[0]*dyeStrength,color[1]*dyeStrength,color[2]*dyeStrength,dyeRadius);
+        };
+
+        inject(bow.clone().addScaledVector(side,HULL_FORCE_HALF_WIDTH),1,leftStrength);
+        inject(bow.clone().addScaledVector(side,-HULL_FORCE_HALF_WIDTH),-1,rightStrength);
+      }
     }
-    this.previousUv=uv.clone();
+    this.previousUv=input.uv.clone();
 
     this.dyeRenderer?.captureSources(this.solver);
     this.solver.step();
