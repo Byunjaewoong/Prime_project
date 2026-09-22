@@ -4,7 +4,7 @@ import Link from "next/link";
 import { FlaskConical, Home } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { WakeApp, type WakeFoamMode } from "./core/WakeApp";
-import { DEFAULT_WAKE_SETTINGS, WAKE2_DEFAULT_SETTINGS, type WakeQuality, type WakeSettings } from "./core/WakeSettings";
+import { DEFAULT_WAKE_SETTINGS, WAKE2_DEFAULT_SETTINGS, resolveInitialWakeSettings, type WakeQuality, type WakeSettings } from "./core/WakeSettings";
 
 type NumericSetting=Exclude<keyof WakeSettings,"palette"|"quality"|"showVectors">;
 type ControlItem={key:NumericSetting;label:string;min:number;max:number;step:number;decimals?:number;unit?:string};
@@ -54,6 +54,7 @@ export default function WakeExperience({mode="boat",title="Wake"}:{mode?:WakeFoa
 
   useEffect(()=>{
     const canvas=canvasRef.current;if(!canvas)return;
+    setSettings(resolveInitialWakeSettings(mode==="boat-mix"));
     let app:WakeApp;
     try{app=new WakeApp(canvas,"/boat.glb",mode);appRef.current=app;}catch(error){console.error(`${title} could not initialize`,error);const timer=window.setTimeout(()=>setUnavailable(true),0);return()=>window.clearTimeout(timer);}
     const observer=new ResizeObserver(()=>app.resize());observer.observe(canvas);

@@ -67,6 +67,23 @@ export const WAKE2_DEFAULT_SETTINGS: WakeSettings = {
   quality: "high",
 };
 
+export const WAKE2_MOBILE_DEFAULT_SETTINGS: WakeSettings = {
+  ...WAKE2_DEFAULT_SETTINGS,
+  palette: "monochrome",
+  cruiseSpeed: 1.8,
+  wakeForce: 1.45,
+  waveHeight: 0.9,
+  waveSpeed: 0.6,
+  waveDamping: 0.45,
+};
+
+export const isMobileWakeDevice = () =>
+  typeof window !== "undefined" && (window.matchMedia("(pointer: coarse)").matches || window.innerWidth < 760);
+
+export const resolveInitialWakeSettings = (wake2: boolean): WakeSettings => ({
+  ...(wake2 ? (isMobileWakeDevice() ? WAKE2_MOBILE_DEFAULT_SETTINGS : WAKE2_DEFAULT_SETTINGS) : DEFAULT_WAKE_SETTINGS),
+});
+
 export type ResolvedWakeQuality = "high" | "medium" | "low";
 
 export const QUALITY_PRESETS: Record<ResolvedWakeQuality, {
@@ -82,5 +99,5 @@ export const QUALITY_PRESETS: Record<ResolvedWakeQuality, {
 
 export const resolveInitialQuality = (): ResolvedWakeQuality => {
   if (typeof window === "undefined") return "medium";
-  return window.matchMedia("(pointer: coarse)").matches || window.innerWidth < 760 ? "medium" : "high";
+  return isMobileWakeDevice() ? "medium" : "high";
 };

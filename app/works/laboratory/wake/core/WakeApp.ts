@@ -3,7 +3,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { SpraySystem } from "./SpraySystem";
 import { VortexFoam } from "./VortexFoam";
 import { WakeSimulation, type WakeInput } from "./WakeSimulation";
-import { DEFAULT_WAKE_SETTINGS, QUALITY_PRESETS, WAKE2_DEFAULT_SETTINGS, resolveInitialQuality, type ResolvedWakeQuality, type WakeSettings } from "./WakeSettings";
+import { QUALITY_PRESETS, resolveInitialQuality, resolveInitialWakeSettings, type ResolvedWakeQuality, type WakeSettings } from "./WakeSettings";
 
 const WORLD_SIZE=72;
 const BOAT_LENGTH=2.8;
@@ -183,7 +183,7 @@ export class WakeApp {
   private fallbackTrail:THREE.Line;
 
   constructor(private canvas:HTMLCanvasElement,modelUrl="/boat.glb",private foamMode:WakeFoamMode="boat"){
-    this.settings={...(foamMode==="boat-mix"?WAKE2_DEFAULT_SETTINGS:DEFAULT_WAKE_SETTINGS)};
+    this.settings=resolveInitialWakeSettings(foamMode==="boat-mix");
     this.renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:"high-performance"});
     this.renderer.outputColorSpace=THREE.SRGBColorSpace;
     this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
