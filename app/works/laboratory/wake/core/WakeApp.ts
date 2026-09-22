@@ -34,10 +34,7 @@ void main(){
  vUv=vec2(world.x/uWorldSize+.5,.5-world.z/uWorldSize);
  vec2 sampleUv=clamp(vUv,vec2(.001),vec2(.999));
  float fluidHeight=texture2D(uState,sampleUv).r*fieldFade(vUv)*7.5*uWaveHeight;
- float swell=sin(world.x*.43+world.z*.71+uTime*.42)*.030;
- swell+=sin(world.x*1.17-world.z*.64-uTime*.57)*.014;
- swell+=sin((world.x+world.z)*2.15+uTime*.31)*.006;
- world.y+=(fluidHeight+swell*uWaveHeight);
+ world.y+=fluidHeight;
  vWorldPosition=world.xyz;
  gl_Position=projectionMatrix*viewMatrix*world;
 }
@@ -70,11 +67,6 @@ float waterNoise(vec2 p){
  value+=valueNoise(p)*.17;
  return value;
 }
-float detailWave(vec2 p){
- return sin(p.x*.43+p.y*.71+uTime*.42)*.030
-       +sin(p.x*1.17-p.y*.64-uTime*.57)*.014
-       +sin((p.x+p.y)*2.15+uTime*.31)*.006;
-}
 void main(){
  vec2 sampleUv=clamp(vUv,uTexel,1.0-uTexel);
  float l=texture2D(uState,clamp(sampleUv-vec2(uTexel.x,0.0),uTexel,1.0-uTexel)).r;
@@ -82,14 +74,9 @@ void main(){
  float b=texture2D(uState,clamp(sampleUv-vec2(0.0,uTexel.y),uTexel,1.0-uTexel)).r;
  float t=texture2D(uState,clamp(sampleUv+vec2(0.0,uTexel.y),uTexel,1.0-uTexel)).r;
  vec2 world=vWorldPosition.xz;
- float eps=.08;
- float waveL=detailWave(world-vec2(eps,0.0));
- float waveR=detailWave(world+vec2(eps,0.0));
- float waveB=detailWave(world-vec2(0.0,eps));
- float waveT=detailWave(world+vec2(0.0,eps));
  float fieldEdge=min(min(vUv.x,1.0-vUv.x),min(vUv.y,1.0-vUv.y));
  float fieldMask=smoothstep(0.0,.075,fieldEdge);
- vec3 normal=normalize(vec3(((l-r)*48.0*fieldMask+(waveL-waveR)*4.5)*uWaveHeight,1.0,((b-t)*48.0*fieldMask+(waveB-waveT)*4.5)*uWaveHeight));
+ vec3 normal=normalize(vec3((l-r)*48.0*fieldMask*uWaveHeight,1.0,(b-t)*48.0*fieldMask*uWaveHeight));
  vec3 viewDir=normalize(cameraPosition-vWorldPosition);
  vec3 lightDir=normalize(vec3(-.45,.88,.32));
  float fresnel=pow(1.0-max(dot(viewDir,normal),0.0),3.2);
@@ -97,7 +84,7 @@ void main(){
  float reflection=max(dot(reflect(-lightDir,normal),viewDir),0.0);
  float spec=pow(reflection,72.0);
  vec2 velocity=texture2D(uVelocity,sampleUv).xy*fieldMask;
- float grain=hash21(floor(world*18.0)+floor(uTime*3.0));
+ float grain=waterNoise(world*3.7+vec2(uTime*.21,-uTime*.16));
  float broadNoise=waterNoise(world*.19+vec2(uTime*.018,-uTime*.012));
  float fineNoise=waterNoise(world*.73+vec2(-uTime*.035,uTime*.026));
  float waterTexture=clamp(broadNoise*.68+fineNoise*.32,0.0,1.0);
