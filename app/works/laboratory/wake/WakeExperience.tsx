@@ -4,7 +4,7 @@ import Link from "next/link";
 import { FlaskConical, Home } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { WakeApp, type WakeFoamMode } from "./core/WakeApp";
-import { DEFAULT_WAKE_SETTINGS, type WakeQuality, type WakeSettings } from "./core/WakeSettings";
+import { DEFAULT_WAKE_SETTINGS, WAKE2_DEFAULT_SETTINGS, type WakeQuality, type WakeSettings } from "./core/WakeSettings";
 
 type NumericSetting=Exclude<keyof WakeSettings,"palette"|"quality"|"showVectors">;
 type ControlItem={key:NumericSetting;label:string;min:number;max:number;step:number;decimals?:number;unit?:string};
@@ -41,7 +41,7 @@ export default function WakeExperience({mode="boat",title="Wake"}:{mode?:WakeFoa
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const appRef=useRef<WakeApp|null>(null);
   const pointerActive=useRef(false);
-  const [settings,setSettings]=useState<WakeSettings>(DEFAULT_WAKE_SETTINGS);
+  const [settings,setSettings]=useState<WakeSettings>(()=>({...mode==="boat-mix"?WAKE2_DEFAULT_SETTINGS:DEFAULT_WAKE_SETTINGS}));
   const [menuOpen,setMenuOpen]=useState(false);
   const [unavailable,setUnavailable]=useState(false);
   const [isTouchDevice,setIsTouchDevice]=useState(false);

@@ -39,6 +39,21 @@ export const DEFAULT_WAKE_SETTINGS: WakeSettings = {
   quality: "auto",
 };
 
+export const WAKE2_DEFAULT_SETTINGS: WakeSettings = {
+  ...DEFAULT_WAKE_SETTINGS,
+  cruiseSpeed: 1.85,
+  wakeForce: 1.4,
+  waveHeight: 0.3,
+  vorticity: 6.5,
+  dyeDecay: 0.995,
+  force: 0.088,
+  drag: 0.97,
+  viscosity: 0.00001,
+  saturation: 1.1,
+  brightness: 1.3,
+  backgroundDyeRatio: 0,
+};
+
 export type ResolvedWakeQuality = "high" | "medium" | "low";
 
 export const QUALITY_PRESETS: Record<ResolvedWakeQuality, {

@@ -3,7 +3,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { SpraySystem } from "./SpraySystem";
 import { VortexFoam } from "./VortexFoam";
 import { WakeSimulation, type WakeInput } from "./WakeSimulation";
-import { DEFAULT_WAKE_SETTINGS, QUALITY_PRESETS, resolveInitialQuality, type ResolvedWakeQuality, type WakeSettings } from "./WakeSettings";
+import { DEFAULT_WAKE_SETTINGS, QUALITY_PRESETS, WAKE2_DEFAULT_SETTINGS, resolveInitialQuality, type ResolvedWakeQuality, type WakeSettings } from "./WakeSettings";
 
 const WORLD_SIZE=72;
 const BOAT_LENGTH=2.8;
@@ -103,6 +103,7 @@ void main(){
   water*=.72+waterTexture*.48;
   water+=vec3(spec*1.35+sparkle*1.8+waterTexture*.026);
  vec3 backgroundDyeColor=mix(uDeepColor,vec3(1.0),.5);
+ water=mix(water,vec3(0.0),uFoamScreenSpace);
  water=mix(water,backgroundDyeColor,backgroundFoam);
  water=mix(water,max(water,visibleFoam),clamp(brightFoam,0.0,1.0));
  gl_FragColor=vec4(water,1.0);
@@ -133,7 +134,7 @@ export class WakeApp {
   private boat=new THREE.Group();
   private boatVisual=new THREE.Group();
   private fallbackBoat:THREE.Group;
-  private settings={...DEFAULT_WAKE_SETTINGS};
+  private settings:WakeSettings;
   private resolvedQuality:ResolvedWakeQuality;
   private position=new THREE.Vector3(0,0,1);
   private forward=new THREE.Vector3(0,0,1);
@@ -161,6 +162,7 @@ export class WakeApp {
   private fallbackTrail:THREE.Line;
 
   constructor(private canvas:HTMLCanvasElement,modelUrl="/boat.glb",private foamMode:WakeFoamMode="boat"){
+    this.settings={...(foamMode==="boat-mix"?WAKE2_DEFAULT_SETTINGS:DEFAULT_WAKE_SETTINGS)};
     this.renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:"high-performance"});
     this.renderer.outputColorSpace=THREE.SRGBColorSpace;
     this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
@@ -250,9 +252,9 @@ export class WakeApp {
   private applyPalette(){
     const mono=this.settings.palette==="monochrome";const uniforms=this.surface.material.uniforms;
     const wake2=this.foamMode==="boat-mix";
-    uniforms.uDeepColor.value.set(wake2?(mono?0x010203:0x010812):(mono?0x05080a:0x031423));
-    uniforms.uShallowColor.value.set(wake2?(mono?0x283137:0x123b55):(mono?0x7a858b:0x2e789d));
-    (this.scene.background as THREE.Color).set(wake2?(mono?0x010203:0x01060c):(mono?0x060708:0x020e18));
+    uniforms.uDeepColor.value.set(wake2?0x000000:(mono?0x05080a:0x031423));
+    uniforms.uShallowColor.value.set(wake2?0x000000:(mono?0x7a858b:0x2e789d));
+    (this.scene.background as THREE.Color).set(wake2?0x000000:(mono?0x060708:0x020e18));
     this.spray.setPalette(this.settings.palette);this.foam.setPalette(this.settings.palette);
   }
 

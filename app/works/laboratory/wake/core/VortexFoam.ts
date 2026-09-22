@@ -20,12 +20,6 @@ function hash1(value:number){
   return result-Math.floor(result);
 }
 
-function smoothNoise1(value:number){
-  const cell=Math.floor(value),fraction=value-cell;
-  const eased=fraction*fraction*(3-2*fraction);
-  return THREE.MathUtils.lerp(hash1(cell),hash1(cell+1),eased);
-}
-
 export class VortexFoam {
   readonly texture:THREE.CanvasTexture;
   private solver:FluidSolver;
@@ -83,21 +77,11 @@ export class VortexFoam {
         const aftCarry=cutStrength*.85;
         const ratio=Math.round(THREE.MathUtils.clamp(settings.backgroundDyeRatio,0,5));
         const backgroundShare=ratio/(ratio+1);
-        const noise=smoothNoise1(this.dyeTravel*.42)+Math.sin(this.dyeTravel*.17)*.12;
-        const backgroundMix=alternateBackground&&ratio>0
-          ?THREE.MathUtils.smoothstep(backgroundShare-noise,-.18,.18)
-          :0;
-        // Red is an internal background-dye marker. A continuous mix creates soft,
-        // irregular transitions instead of fixed color blocks.
         const whiteColor=this.palette==="monochrome"?[1,1,1] as const:[.12,.62,1] as const;
-        const color=[
-          THREE.MathUtils.lerp(whiteColor[0],1,backgroundMix),
-          whiteColor[1]*(1-backgroundMix),
-          whiteColor[2]*(1-backgroundMix),
-        ] as const;
+        const backgroundColor=[1,0,0] as const;
         const dyeStrength=40*THREE.MathUtils.lerp(.45,1,Math.min(speed,1))*invScale2;
 
-        const inject=(position:THREE.Vector2,lateralDirection:number,strength:number,weight:number)=>{
+        const inject=(position:THREE.Vector2,lateralDirection:number,strength:number,weight:number,color:readonly [number,number,number])=>{
           const gridX=Math.max(1,Math.min(this.solver.W,Math.floor(1+position.x*this.solver.W)));
           // CanvasTexture flips its source vertically when it is uploaded to WebGL.
           // Convert UV-space position and velocity into the canvas/grid coordinate system.
@@ -108,13 +92,16 @@ export class VortexFoam {
         };
 
         const weightTotal=TRAIL_SAMPLES*(1+.18)*.5;
+        const randomStep=Math.floor(this.dyeTravel*2.5);
         for(let sample=0;sample<TRAIL_SAMPLES;sample++){
           const progress=sample/(TRAIL_SAMPLES-1);
           const weight=THREE.MathUtils.lerp(1,.18,progress)/weightTotal;
           const trailCenter=stern.clone().addScaledVector(direction,-TRAIL_LENGTH*fieldScale*progress);
           const halfWidth=THREE.MathUtils.lerp(HULL_FORCE_HALF_WIDTH,HULL_FORCE_HALF_WIDTH*1.85,progress)*fieldScale;
-          inject(trailCenter.clone().addScaledVector(side,halfWidth),1,leftStrength,weight);
-          inject(trailCenter.clone().addScaledVector(side,-halfWidth),-1,rightStrength,weight);
+          const useBackground=alternateBackground&&ratio>0&&hash1(randomStep*TRAIL_SAMPLES+sample)<backgroundShare;
+          const color=useBackground?backgroundColor:whiteColor;
+          inject(trailCenter.clone().addScaledVector(side,halfWidth),1,leftStrength,weight,color);
+          inject(trailCenter.clone().addScaledVector(side,-halfWidth),-1,rightStrength,weight,color);
         }
       }
     }
