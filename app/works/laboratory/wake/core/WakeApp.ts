@@ -22,28 +22,56 @@ export type WakeFoamMode="boat"|"boat-mix";
 
 const surfaceVertex=/* glsl */`
 uniform sampler2D uState;
-uniform float uWaveHeight,uTime,uWorldSize,uAmbientEnabled,uAmbientHeight,uAmbientScale,uAmbientSpeed,uAmbientDirection,uAmbientDetail;
+uniform vec2 uFoamFieldCenter;
+uniform float uWaveHeight,uTime,uWorldSize,uAmbientEnabled,uAmbientHeight,uAmbientScale,uAmbientSpeed,uAmbientDirection,uAmbientDetail,uAmbientPackets;
+uniform float uFoamFieldSize;
 varying vec2 vUv;
 varying vec3 vWorldPosition;
+varying float vAmbientWave;
 float fieldFade(vec2 p){
  float edge=min(min(p.x,1.0-p.x),min(p.y,1.0-p.y));
  return smoothstep(0.0,.075,edge);
 }
+float waveHash(float n){return fract(sin(n)*43758.5453123);}
+vec2 waveHash2(vec2 p){return fract(sin(vec2(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3))))*43758.5453);}
 float ambientWave(vec2 p){
- float c=cos(uAmbientDirection),s=sin(uAmbientDirection);
- p=mat2(c,-s,s,c)*p*uAmbientScale;
- float phase=uTime*uAmbientSpeed;
- float wave=sin(p.x*.43+p.y*.71+phase*.42)*.030;
- wave+=sin(p.x*1.17-p.y*.64-phase*.57)*.014*uAmbientDetail;
- wave+=sin((p.x+p.y)*2.15+phase*.31)*.006*uAmbientDetail;
- return wave*uAmbientHeight*uAmbientEnabled;
+ if(uAmbientPackets<.5){
+  float c=cos(uAmbientDirection),s=sin(uAmbientDirection);
+  p=mat2(c,-s,s,c)*p*uAmbientScale;
+  float phase=uTime*uAmbientSpeed;
+  float legacy=sin(p.x*.43+p.y*.71+phase*.42)*.030;
+  legacy+=sin(p.x*1.17-p.y*.64-phase*.57)*.014*uAmbientDetail;
+  legacy+=sin((p.x+p.y)*2.15+phase*.31)*.006*uAmbientDetail;
+  return legacy*uAmbientHeight*uAmbientEnabled;
+ }
+ float timeline=uTime*uAmbientSpeed*.085;
+ vec2 travel=vec2(cos(uAmbientDirection),sin(uAmbientDirection));
+ float wave=0.0;
+ for(int i=0;i<7;i++){
+  float id=float(i),offset=waveHash(id*19.73+2.17)*4.0;
+  float localTime=timeline+offset,generation=floor(localTime),age=fract(localTime);
+  vec2 random=waveHash2(vec2(id*7.31+generation,generation*3.17+id));
+  vec2 center=uFoamFieldCenter+(random-.5)*uFoamFieldSize*.82;
+  center+=travel*(age-.5)*uFoamFieldSize*.07;
+  float distanceToCenter=length(p-center);
+  float radius=mix(uFoamFieldSize*.018,uFoamFieldSize*.13,age);
+  float width=uFoamFieldSize*mix(.012,.026,age);
+  float packet=exp(-pow((distanceToCenter-radius)/max(width,.001),2.0));
+  float life=sin(age*3.14159265);life*=life;
+  float detailGate=1.0-smoothstep(uAmbientDetail*7.0,uAmbientDetail*7.0+1.0,id);
+  float phase=distanceToCenter*(.42+uAmbientScale*1.05)-age*(5.0+uAmbientScale*4.0)+random.x*6.2831853;
+  wave+=sin(phase)*packet*life*detailGate*(.7+random.y*.45);
+ }
+ wave=wave/(1.0+abs(wave)*.35);
+ return wave*.034*uAmbientHeight*uAmbientEnabled;
 }
 void main(){
  vec4 world=modelMatrix*vec4(position,1.0);
  vUv=vec2(world.x/uWorldSize+.5,.5-world.z/uWorldSize);
  vec2 sampleUv=clamp(vUv,vec2(.001),vec2(.999));
  float fluidHeight=texture2D(uState,sampleUv).r*fieldFade(vUv)*7.5*uWaveHeight;
- world.y+=fluidHeight+ambientWave(world.xz);
+ vAmbientWave=ambientWave(world.xz);
+ world.y+=fluidHeight+vAmbientWave;
  vWorldPosition=world.xyz;
  gl_Position=projectionMatrix*viewMatrix*world;
 }
@@ -57,6 +85,7 @@ uniform float uFoamFieldSize;
 uniform vec3 uDeepColor,uShallowColor;
 varying vec2 vUv;
 varying vec3 vWorldPosition;
+varying float vAmbientWave;
 float hash21(vec2 p){
  p=fract(p*vec2(123.34,456.21));
  p+=dot(p,p+45.32);
@@ -76,30 +105,13 @@ float waterNoise(vec2 p){
  value+=valueNoise(p)*.17;
  return value;
 }
-float detailWave(vec2 p){
- float c=cos(uAmbientDirection),s=sin(uAmbientDirection);
- p=mat2(c,-s,s,c)*p*uAmbientScale;
- float phase=uTime*uAmbientSpeed;
- float wave=sin(p.x*.43+p.y*.71+phase*.42)*.030;
- wave+=sin(p.x*1.17-p.y*.64-phase*.57)*.014*uAmbientDetail;
- wave+=sin((p.x+p.y)*2.15+phase*.31)*.006*uAmbientDetail;
- return wave*uAmbientHeight*uAmbientEnabled;
-}
 void main(){
  vec2 sampleUv=clamp(vUv,uTexel,1.0-uTexel);
- float l=texture2D(uState,clamp(sampleUv-vec2(uTexel.x,0.0),uTexel,1.0-uTexel)).r;
- float r=texture2D(uState,clamp(sampleUv+vec2(uTexel.x,0.0),uTexel,1.0-uTexel)).r;
- float b=texture2D(uState,clamp(sampleUv-vec2(0.0,uTexel.y),uTexel,1.0-uTexel)).r;
- float t=texture2D(uState,clamp(sampleUv+vec2(0.0,uTexel.y),uTexel,1.0-uTexel)).r;
  vec2 world=vWorldPosition.xz;
- float eps=.08;
- float waveL=detailWave(world-vec2(eps,0.0));
- float waveR=detailWave(world+vec2(eps,0.0));
- float waveB=detailWave(world-vec2(0.0,eps));
- float waveT=detailWave(world+vec2(0.0,eps));
  float fieldEdge=min(min(vUv.x,1.0-vUv.x),min(vUv.y,1.0-vUv.y));
  float fieldMask=smoothstep(0.0,.075,fieldEdge);
- vec3 normal=normalize(vec3((l-r)*48.0*fieldMask*uWaveHeight+(waveL-waveR)*4.5,1.0,(b-t)*48.0*fieldMask*uWaveHeight+(waveB-waveT)*4.5));
+ vec3 normal=normalize(cross(dFdx(vWorldPosition),dFdy(vWorldPosition)));
+ if(normal.y<0.0)normal=-normal;
  vec3 viewDir=normalize(cameraPosition-vWorldPosition);
  vec3 lightDir=normalize(vec3(-.45,.88,.32));
  float fresnel=pow(1.0-max(dot(viewDir,normal),0.0),3.2);
@@ -124,6 +136,9 @@ void main(){
   vec3 water=mix(uDeepColor,uShallowColor,clamp(fresnel*.62+diffuse*.31,0.0,1.0));
   water*=.72+waterTexture*.48;
   water+=vec3(spec*1.35+sparkle*1.8+waterTexture*.026);
+ float crestSignal=vAmbientWave/max(.001,uAmbientHeight*.034)*.5+.5;
+ float crest=smoothstep(.58,.9,crestSignal)*uAmbientEnabled;
+ water+=vec3(crest*(.018+uAmbientHeight*.025)+(1.0-normal.y)*.035*uAmbientEnabled);
  water=mix(water,uDeepColor,backgroundFoam);
  water=mix(water,max(water,visibleFoam),clamp(brightFoam,0.0,1.0));
  gl_FragColor=vec4(water,1.0);
@@ -225,7 +240,7 @@ export class WakeApp {
   private createSurface(segments:number){
     const old=this.surface;
     const geometry=new THREE.PlaneGeometry(1,1,segments,segments);
-    const material=old?.material??new THREE.ShaderMaterial({vertexShader:surfaceVertex,fragmentShader:surfaceFragment,side:THREE.DoubleSide,uniforms:{uState:{value:this.simulation.stateTexture},uVelocity:{value:this.simulation.velocityTexture},uFoam:{value:this.foam.texture},uTexel:{value:new THREE.Vector2(1/this.simulation.resolution,1/this.simulation.resolution)},uFoamFieldCenter:{value:this.foamFieldCenter},uFoamFieldSize:{value:this.foamFieldSize},uWaveHeight:{value:this.settings.waveHeight},uAmbientEnabled:{value:this.settings.ambientWaves?1:0},uAmbientHeight:{value:this.settings.ambientWaveHeight},uAmbientScale:{value:this.settings.ambientWaveScale},uAmbientSpeed:{value:this.settings.ambientWaveSpeed},uAmbientDirection:{value:THREE.MathUtils.degToRad(this.settings.ambientWaveDirection)},uAmbientDetail:{value:this.settings.ambientWaveDetail},uTime:{value:0},uWorldSize:{value:WORLD_SIZE},uFoamScreenSpace:{value:this.foamMode==="boat-mix"?1:0},uDeepColor:{value:new THREE.Color()},uShallowColor:{value:new THREE.Color()}}});
+    const material=old?.material??new THREE.ShaderMaterial({vertexShader:surfaceVertex,fragmentShader:surfaceFragment,side:THREE.DoubleSide,uniforms:{uState:{value:this.simulation.stateTexture},uVelocity:{value:this.simulation.velocityTexture},uFoam:{value:this.foam.texture},uTexel:{value:new THREE.Vector2(1/this.simulation.resolution,1/this.simulation.resolution)},uFoamFieldCenter:{value:this.foamFieldCenter},uFoamFieldSize:{value:this.foamFieldSize},uWaveHeight:{value:this.settings.waveHeight},uAmbientEnabled:{value:this.settings.ambientWaves?1:0},uAmbientHeight:{value:this.settings.ambientWaveHeight},uAmbientScale:{value:this.settings.ambientWaveScale},uAmbientSpeed:{value:this.settings.ambientWaveSpeed},uAmbientDirection:{value:THREE.MathUtils.degToRad(this.settings.ambientWaveDirection)},uAmbientDetail:{value:this.settings.ambientWaveDetail},uAmbientPackets:{value:this.foamMode==="boat-mix"?1:0},uTime:{value:0},uWorldSize:{value:WORLD_SIZE},uFoamScreenSpace:{value:this.foamMode==="boat-mix"?1:0},uDeepColor:{value:new THREE.Color()},uShallowColor:{value:new THREE.Color()}}});
     const surface=new THREE.Mesh(geometry,material);surface.rotation.x=-Math.PI/2;surface.position.y=-.03;surface.scale.set(120,120,1);surface.receiveShadow=true;surface.frustumCulled=false;
     if(old){this.scene.remove(old);old.geometry.dispose();}
     this.surface=surface;this.scene.add(surface);this.fitSurfaceToView();
