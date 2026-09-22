@@ -10,7 +10,7 @@ const OUTPUT_SIZE=768;
 const REFERENCE_GRID=144;
 const STERN_OFFSET=.018;
 const HULL_FORCE_HALF_WIDTH=.011;
-const DYE_SEGMENT_LENGTH=18;
+const DYE_SEGMENT_LENGTH=9;
 
 export class VortexFoam {
   readonly texture:THREE.CanvasTexture;
