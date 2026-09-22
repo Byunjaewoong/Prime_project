@@ -7,10 +7,13 @@ import { DEFAULT_WAKE_SETTINGS, QUALITY_PRESETS, resolveInitialQuality, type Res
 const WORLD_SIZE=48;
 const BOAT_LENGTH=2.8;
 // Three.js uses Y as the vertical axis (the water plane spans X/Z).
-// Keep the hull above the displaced surface so the model is not hidden by foam.
-const BOAT_WATERLINE_HEIGHT=3.2;
+const BOAT_WATERLINE_HEIGHT=.12;
 // The GLB's longitudinal axis is X; rotate it onto the study's Z-forward axis.
 const BOAT_MODEL_YAW_CORRECTION=Math.PI/2;
+// Corrections requested in rendered space: roll around the forward axis, then
+// reverse the bow/stern direction around the water plane's vertical axis.
+const BOAT_MODEL_ROLL_CORRECTION=Math.PI/2;
+const BOAT_MODEL_DIRECTION_CORRECTION=Math.PI;
 
 const surfaceVertex=/* glsl */`
 uniform sampler2D uState;
@@ -204,7 +207,10 @@ export class WakeApp {
     new GLTFLoader().load(url,gltf=>{
       if(this.destroyed){disposeObject(gltf.scene);return;}
       const model=gltf.scene;
-      model.rotation.y=BOAT_MODEL_YAW_CORRECTION;
+      const alignToForward=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),BOAT_MODEL_YAW_CORRECTION);
+      const rollCounterClockwise=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),BOAT_MODEL_ROLL_CORRECTION);
+      const reverseDirection=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),BOAT_MODEL_DIRECTION_CORRECTION);
+      model.quaternion.copy(reverseDirection).multiply(rollCounterClockwise).multiply(alignToForward);
       model.updateMatrixWorld(true);
       let box=new THREE.Box3().setFromObject(model);const size=box.getSize(new THREE.Vector3());
       const scale=BOAT_LENGTH/Math.max(size.x,size.z,.001);model.scale.setScalar(scale);model.updateMatrixWorld(true);
