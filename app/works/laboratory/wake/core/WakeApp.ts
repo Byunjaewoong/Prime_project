@@ -8,6 +8,8 @@ import { DEFAULT_WAKE_SETTINGS, QUALITY_PRESETS, resolveInitialQuality, type Res
 const WORLD_SIZE=72;
 const BOAT_LENGTH=2.8;
 const WAKE2_RESPAWN_DELAY=3;
+const ROUTE_SCREEN_MARGIN=.12;
+const ROUTE_SAMPLE_COUNT=240;
 // Three.js uses Y as the vertical axis (the water plane spans X/Z).
 const BOAT_WATERLINE_HEIGHT=.12;
 // The GLB's longitudinal axis is X; rotate it onto the study's Z-forward axis.
@@ -158,8 +160,7 @@ export class WakeApp {
   private boatActive=true;
   private respawnDelay=0;
   private pathRadius=52;
-  private frustum=new THREE.Frustum();
-  private projectionScreenMatrix=new THREE.Matrix4();
+  private routeProjection=new THREE.Vector3();
   private pointerTarget:THREE.Vector3|null=null;
   private raycaster=new THREE.Raycaster();
   private pointer=new THREE.Vector2();
@@ -177,7 +178,7 @@ export class WakeApp {
     this.renderer.toneMappingExposure=1.08;
     this.scene.background=new THREE.Color(0x060708);
     if(foamMode==="boat-mix"){
-      this.camera.far=220;
+      this.camera.far=300;
       this.camera.position.set(20,112,38);
     }
     else this.camera.position.set(0,92,18);
@@ -296,17 +297,21 @@ export class WakeApp {
       this.surface.material.uniforms.uFoamFieldCenter.value.copy(this.foamFieldCenter);
       this.surface.material.uniforms.uFoamFieldSize.value=this.foamFieldSize;
     }
-    this.pathRadius=Math.max(48,...hits.map(hit=>Math.hypot(hit.x,hit.z)))+10;
+    this.pathRadius=Math.max(48,...hits.map(hit=>Math.hypot(hit.x,hit.z)))+(this.foamMode==="boat-mix"?28:10);
     this.surface.position.set((minX+maxX)/2,-.03,(minZ+maxZ)/2);this.surface.scale.set(maxX-minX,maxZ-minZ,1);this.surface.updateMatrixWorld(true);
   }
 
   private calculateVisibleRange(){
     if(!this.route)return {start:0,end:1};
-    this.camera.updateMatrixWorld();this.projectionScreenMatrix.multiplyMatrices(this.camera.projectionMatrix,this.camera.matrixWorldInverse);this.frustum.setFromProjectionMatrix(this.projectionScreenMatrix);
+    this.camera.updateMatrixWorld();
     let first=-1,last=-1;
-    for(let i=0;i<=100;i++){const progress=i/100;if(this.frustum.containsPoint(this.route.getPoint(progress))){if(first===-1)first=progress;last=progress;}}
+    for(let i=0;i<=ROUTE_SAMPLE_COUNT;i++){
+      const progress=i/ROUTE_SAMPLE_COUNT;this.routeProjection.copy(this.route.getPoint(progress)).project(this.camera);
+      const inside=this.routeProjection.z>=-1&&this.routeProjection.z<=1&&Math.abs(this.routeProjection.x)<=1+ROUTE_SCREEN_MARGIN&&Math.abs(this.routeProjection.y)<=1+ROUTE_SCREEN_MARGIN;
+      if(inside){if(first===-1)first=i;last=i;}
+    }
     if(first===-1)return {start:0,end:1};
-    return {start:Math.max(0,first-.05),end:Math.min(1,last+.05)};
+    return {start:Math.max(0,(first-1)/ROUTE_SAMPLE_COUNT),end:Math.min(1,(last+1)/ROUTE_SAMPLE_COUNT)};
   }
 
   private resetPath(){
