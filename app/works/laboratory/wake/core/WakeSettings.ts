@@ -47,7 +47,7 @@ export const WAKE2_DEFAULT_SETTINGS: WakeSettings = {
   vorticity: 6.5,
   dyeDecay: 0.995,
   force: 0.088,
-  drag: 0.97,
+  drag: 0.92,
   viscosity: 0.00001,
   saturation: 1.1,
   brightness: 1.3,
