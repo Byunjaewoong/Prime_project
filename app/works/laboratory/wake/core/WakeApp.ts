@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { ReflectionForceField } from "./ReflectionForceField";
 import { SpraySystem } from "./SpraySystem";
 import { VortexFoam } from "./VortexFoam";
 import { WakeSimulation, type WakeInput } from "./WakeSimulation";
@@ -15,6 +16,7 @@ const BOAT_MODEL_YAW_CORRECTION=Math.PI/2;
 // reverse the bow/stern direction around the water plane's vertical axis.
 const BOAT_MODEL_ROLL_CORRECTION=Math.PI/2;
 const BOAT_MODEL_DIRECTION_CORRECTION=Math.PI;
+export type WakeFoamMode="boat"|"reflection";
 
 const surfaceVertex=/* glsl */`
 uniform sampler2D uState;
@@ -127,6 +129,7 @@ export class WakeApp {
   private destroyed=false;
   private simulation:WakeSimulation;
   private foam:VortexFoam;
+  private reflectionField:ReflectionForceField|null;
   private surface!:THREE.Mesh<THREE.PlaneGeometry,THREE.ShaderMaterial>;
   private spray:SpraySystem;
   private boat=new THREE.Group();
@@ -150,7 +153,7 @@ export class WakeApp {
   private elapsed=0;
   private fallbackTrail:THREE.Line;
 
-  constructor(private canvas:HTMLCanvasElement,modelUrl="/boat.glb"){
+  constructor(private canvas:HTMLCanvasElement,modelUrl="/boat.glb",private foamMode:WakeFoamMode="boat"){
     this.renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:"high-performance"});
     this.renderer.outputColorSpace=THREE.SRGBColorSpace;
     this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
@@ -162,6 +165,7 @@ export class WakeApp {
     const preset=QUALITY_PRESETS[this.resolvedQuality];
     this.simulation=new WakeSimulation(this.renderer,preset.simulation);
     this.foam=new VortexFoam();
+    this.reflectionField=foamMode==="reflection"?new ReflectionForceField(this.renderer):null;
     this.spray=new SpraySystem(2400,preset.particles);
     this.scene.add(this.spray.points);
     this.createSurface(preset.surfaceSegments);
@@ -299,7 +303,10 @@ export class WakeApp {
     const uv=new THREE.Vector2(this.position.x/WORLD_SIZE+.5,.5-this.position.z/WORLD_SIZE);const direction=new THREE.Vector2(this.forward.x,-this.forward.z).normalize();
     const input:WakeInput={uv,direction,speed:this.speed/3.2,acceleration:this.acceleration/3,yawRate:this.yawRate};
     this.simulation.step(dt,input,this.settings,QUALITY_PRESETS[this.resolvedQuality].pressureIterations);
-    this.foam.update(input,this.settings);
+    if(this.reflectionField){
+      const impulses=this.reflectionField.sample(this.simulation.stateTexture,1/this.simulation.resolution,this.settings.waveHeight,time,this.camera.position);
+      this.foam.updateFromReflection(impulses,this.settings);
+    }else this.foam.update(input,this.settings);
     const uniforms=this.surface.material.uniforms;uniforms.uState.value=this.simulation.stateTexture;uniforms.uVelocity.value=this.simulation.velocityTexture;uniforms.uFoam.value=this.foam.texture;uniforms.uTexel.value.setScalar(1/this.simulation.resolution);uniforms.uTime.value=time;uniforms.uWaveHeight.value=this.settings.waveHeight;
     this.spray.update(dt,{position:this.position,forward:this.forward,speed:this.speed/3.2,acceleration:this.acceleration/3,yawRate:this.yawRate},this.settings);
     this.updateFallbackTrail();this.renderer.render(this.scene,this.camera);this.monitorQuality(rawDt);this.frame=requestAnimationFrame(this.animate);
@@ -312,6 +319,6 @@ export class WakeApp {
   }
 
   destroy(){
-    this.destroyed=true;cancelAnimationFrame(this.frame);this.simulation.dispose();this.foam.dispose();this.spray.dispose();this.surface.geometry.dispose();this.surface.material.dispose();disposeObject(this.boat);this.fallbackTrail.geometry.dispose();(this.fallbackTrail.material as THREE.Material).dispose();this.renderer.dispose();
+    this.destroyed=true;cancelAnimationFrame(this.frame);this.simulation.dispose();this.foam.dispose();this.reflectionField?.dispose();this.spray.dispose();this.surface.geometry.dispose();this.surface.material.dispose();disposeObject(this.boat);this.fallbackTrail.geometry.dispose();(this.fallbackTrail.material as THREE.Material).dispose();this.renderer.dispose();
   }
 }

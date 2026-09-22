@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { DyeRenderer } from "../../../Vortex/core/DyeRenderer";
 import { FluidSolver } from "../../../Vortex/core/FluidSolver";
 import { Renderer } from "../../../Vortex/core/Renderer";
+import type { ReflectionImpulse } from "./ReflectionForceField";
 import type { WakePalette, WakeSettings } from "./WakeSettings";
 import type { WakeInput } from "./WakeSimulation";
 
@@ -36,12 +37,7 @@ export class VortexFoam {
   setPalette(palette:WakePalette){this.palette=palette;}
 
   update(input:WakeInput,settings:WakeSettings){
-    this.solver.vorticityEps=settings.vorticity;
-    this.solver.dyeDecay=settings.dyeDecay;
-    this.solver.velocityDecay=settings.drag;
-    this.solver.diffusion=settings.viscosity;
-    this.cpuRenderer.saturation=settings.saturation;
-    this.cpuRenderer.brightness=settings.brightness;
+    this.applySettings(settings);
 
     if(this.previousUv){
       const travelPixels=input.uv.distanceTo(this.previousUv)*OUTPUT_SIZE;
@@ -80,6 +76,37 @@ export class VortexFoam {
     }
     this.previousUv=input.uv.clone();
 
+    this.render(settings);
+  }
+
+  updateFromReflection(impulses:ReflectionImpulse[],settings:WakeSettings){
+    this.applySettings(settings);
+    const scale=GRID_SIZE/REFERENCE_GRID;
+    const invScale2=1/(scale*scale);
+    const velocityRadius=Math.max(1,Math.round(3*scale));
+    const dyeRadius=Math.max(1,Math.round(2*scale));
+    for(const impulse of impulses){
+      const gridX=Math.max(1,Math.min(this.solver.W,Math.floor(1+impulse.uv.x*this.solver.W)));
+      const gridY=Math.max(1,Math.min(this.solver.H,Math.floor(1+(1-impulse.uv.y)*this.solver.H)));
+      const strength=impulse.intensity*settings.force*2.4*invScale2;
+      this.solver.addVelocity(gridX,gridY,impulse.direction.x*strength,-impulse.direction.y*strength,velocityRadius);
+      const dye=impulse.intensity*24*invScale2;
+      const tint=this.palette==="monochrome"?impulse.color:new THREE.Color(.28,.72,1).lerp(impulse.color,.55);
+      this.solver.addDye(gridX,gridY,tint.r*dye,tint.g*dye,tint.b*dye,dyeRadius);
+    }
+    this.render(settings);
+  }
+
+  private applySettings(settings:WakeSettings){
+    this.solver.vorticityEps=settings.vorticity;
+    this.solver.dyeDecay=settings.dyeDecay;
+    this.solver.velocityDecay=settings.drag;
+    this.solver.diffusion=settings.viscosity;
+    this.cpuRenderer.saturation=settings.saturation;
+    this.cpuRenderer.brightness=settings.brightness;
+  }
+
+  private render(settings:WakeSettings){
     this.dyeRenderer?.captureSources(this.solver);
     this.solver.step();
     const gpuRendered=this.dyeRenderer?.render(this.solver,settings.saturation,settings.brightness)??false;

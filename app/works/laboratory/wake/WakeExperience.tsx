@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FlaskConical, Home } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { WakeApp } from "./core/WakeApp";
+import { WakeApp, type WakeFoamMode } from "./core/WakeApp";
 import { DEFAULT_WAKE_SETTINGS, type WakeQuality, type WakeSettings } from "./core/WakeSettings";
 
 type NumericSetting=Exclude<keyof WakeSettings,"palette"|"quality"|"showVectors">;
@@ -23,7 +23,7 @@ const controls:{section:string;items:{key:NumericSetting;label:string;min:number
   {section:"Spray",items:[{key:"sprayAmount",label:"Amount",min:0,max:2,step:.05},{key:"sprayHeight",label:"Height",min:0,max:2,step:.05}]},
 ];
 
-export default function WakeExperience(){
+export default function WakeExperience({mode="boat",title="Wake"}:{mode?:WakeFoamMode;title?:string}){
   const canvasRef=useRef<HTMLCanvasElement>(null);
   const appRef=useRef<WakeApp|null>(null);
   const pointerActive=useRef(false);
@@ -34,10 +34,10 @@ export default function WakeExperience(){
   useEffect(()=>{
     const canvas=canvasRef.current;if(!canvas)return;
     let app:WakeApp;
-    try{app=new WakeApp(canvas,"/boat.glb");appRef.current=app;}catch(error){console.error("Wake could not initialize",error);const timer=window.setTimeout(()=>setUnavailable(true),0);return()=>window.clearTimeout(timer);}
+    try{app=new WakeApp(canvas,"/boat.glb",mode);appRef.current=app;}catch(error){console.error(`${title} could not initialize`,error);const timer=window.setTimeout(()=>setUnavailable(true),0);return()=>window.clearTimeout(timer);}
     const observer=new ResizeObserver(()=>app.resize());observer.observe(canvas);
     return()=>{observer.disconnect();app.destroy();appRef.current=null;};
-  },[]);
+  },[mode,title]);
 
   const update=<K extends keyof WakeSettings>(key:K,value:WakeSettings[K])=>{
     setSettings(current=>({...current,[key]:value}));appRef.current?.setSettings({[key]:value} as Partial<WakeSettings>);
@@ -54,7 +54,7 @@ export default function WakeExperience(){
     <div className="orbit-fab wake-fab">
       {menuOpen&&<div className="orbit-fab__controls wake-controls" onClick={event=>event.stopPropagation()} onPointerDown={event=>event.stopPropagation()}>
           <div className="wake-menu-head">
-            <span>Wake</span>
+            <span>{title}</span>
             <div className="wake-menu-links"><Link href="/" aria-label="Home"><Home size={17}/></Link><Link href="/works/laboratory" aria-label="Laboratory"><FlaskConical size={17}/></Link></div>
           </div>
           <section className="wake-section">
