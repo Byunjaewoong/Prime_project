@@ -6,12 +6,20 @@ import { useEffect, useRef, useState } from "react";
 import { WakeApp } from "./core/WakeApp";
 import { DEFAULT_WAKE_SETTINGS, type WakeQuality, type WakeSettings } from "./core/WakeSettings";
 
-type NumericSetting=Exclude<keyof WakeSettings,"palette"|"quality">;
+type NumericSetting=Exclude<keyof WakeSettings,"palette"|"quality"|"showVectors">;
 
-const controls:{section:string;items:{key:NumericSetting;label:string;min:number;max:number;step:number;unit?:string}[]}[]=[
+const controls:{section:string;items:{key:NumericSetting;label:string;min:number;max:number;step:number;decimals?:number;unit?:string}[]}[]=[
   {section:"Motion",items:[{key:"cruiseSpeed",label:"Cruise speed",min:.5,max:2,step:.05}]},
-  {section:"Water",items:[{key:"wakeForce",label:"Wake force",min:0,max:2,step:.05},{key:"waveHeight",label:"Wave height",min:0,max:1.5,step:.05},{key:"vorticity",label:"Vorticity",min:0,max:10,step:.25}]},
-  {section:"Foam",items:[{key:"foamSensitivity",label:"Sensitivity",min:.1,max:1,step:.05},{key:"foamPersistence",label:"Persistence",min:.5,max:8,step:.25,unit:"s"}]},
+  {section:"Water",items:[{key:"wakeForce",label:"Wake force",min:0,max:2,step:.05},{key:"waveHeight",label:"Wave height",min:0,max:1.5,step:.05}]},
+  {section:"Vortex Foam",items:[
+    {key:"vorticity",label:"Vorticity",min:0,max:15,step:.5,decimals:1},
+    {key:"dyeDecay",label:"Dye Decay",min:.98,max:1,step:.001,decimals:3},
+    {key:"force",label:"Force",min:.1,max:2,step:.1,decimals:2},
+    {key:"drag",label:"Drag",min:.9,max:1,step:.005,decimals:3},
+    {key:"viscosity",label:"Viscosity",min:0,max:.0002,step:.00001,decimals:5},
+    {key:"saturation",label:"Saturation",min:.5,max:3,step:.1,decimals:1},
+    {key:"brightness",label:"Brightness",min:.5,max:3,step:.1,decimals:1},
+  ]},
   {section:"Spray",items:[{key:"sprayAmount",label:"Amount",min:0,max:2,step:.05},{key:"sprayHeight",label:"Height",min:0,max:2,step:.05}]},
 ];
 
@@ -59,9 +67,13 @@ export default function WakeExperience(){
           {controls.map(group=><section className="wake-section" key={group.section}>
             <h4>{group.section}</h4>
             {group.items.map(item=><label className="wake-slider" key={item.key}>
-              <span><span>{item.label}</span><output>{settings[item.key].toFixed(item.step<.1?2:1)}{item.unit}</output></span>
+              <span><span>{item.label}</span><output>{settings[item.key].toFixed(item.decimals??(item.step<.1?2:1))}{item.unit}</output></span>
               <div className="wake-slider-track"><input aria-label={item.label} type="range" min={item.min} max={item.max} step={item.step} value={settings[item.key]} onInput={event=>update(item.key,Number(event.currentTarget.value))}/></div>
             </label>)}
+            {group.section==="Vortex Foam"&&<div className="wake-segmented">
+              <button type="button" className={settings.showVectors?"is-active":""} onClick={()=>update("showVectors",!settings.showVectors)}>{settings.showVectors?"⇢ vectors ON":"⇢ vectors"}</button>
+              <button type="button" onClick={()=>appRef.current?.resetFoam()}>↺ reset</button>
+            </div>}
           </section>)}
           <section className="wake-section">
             <h4>Performance</h4>

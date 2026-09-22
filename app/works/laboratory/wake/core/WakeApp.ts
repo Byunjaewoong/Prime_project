@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { SpraySystem } from "./SpraySystem";
+import { VortexFoam } from "./VortexFoam";
 import { WakeSimulation, type WakeInput } from "./WakeSimulation";
 import { DEFAULT_WAKE_SETTINGS, QUALITY_PRESETS, resolveInitialQuality, type ResolvedWakeQuality, type WakeSettings } from "./WakeSettings";
 
@@ -39,10 +40,10 @@ void main(){
 `;
 
 const surfaceFragment=/* glsl */`
-uniform sampler2D uState,uVelocity;
+uniform sampler2D uState,uVelocity,uFoam;
 uniform vec2 uTexel;
 uniform float uWaveHeight,uTime;
-uniform vec3 uDeepColor,uShallowColor,uFoamColor;
+uniform vec3 uDeepColor,uShallowColor;
 varying vec2 vUv;
 varying vec3 vWorldPosition;
 float hash21(vec2 p){
@@ -97,18 +98,12 @@ void main(){
  float waterTexture=clamp(broadNoise*.68+fineNoise*.32,0.0,1.0);
  float sparkle=pow(reflection,180.0)*smoothstep(.58,1.0,grain)*(1.0+length(velocity)*.2);
  sparkle+=smoothstep(.82,.98,waterTexture)*(.018+fresnel*.045);
- float foamRaw=texture2D(uState,sampleUv).b*fieldMask;
- float foamNoise=waterNoise(world*2.55+velocity*.42+vec2(uTime*.08,-uTime*.055));
- // Vortex's dye display curve preserves transported curls instead of using
- // procedural noise to define the foam silhouette.
- float foam=smoothstep(.08,.78,foamRaw);
- foam=pow(clamp(foam,0.0,1.0),.75);
- foam=floor(foam*255.0)/255.0;
+ vec3 foamDye=texture2D(uFoam,sampleUv).rgb*fieldMask;
+ float foam=max(foamDye.r,max(foamDye.g,foamDye.b));
   vec3 water=mix(uDeepColor,uShallowColor,clamp(fresnel*.62+diffuse*.31,0.0,1.0));
   water*=.72+waterTexture*.48;
   water+=vec3(spec*1.35+sparkle*1.8+waterTexture*.026);
- vec3 texturedFoam=mix(uFoamColor*.76,uFoamColor*1.10,smoothstep(.2,.84,foamNoise+grain*.08));
- water=mix(water,texturedFoam,clamp(foam,0.0,1.0)*.98);
+ water=mix(water,max(water,foamDye),clamp(foam,0.0,1.0));
  gl_FragColor=vec4(water,1.0);
 }
 `;
@@ -131,6 +126,7 @@ export class WakeApp {
   private frame=0;
   private destroyed=false;
   private simulation:WakeSimulation;
+  private foam:VortexFoam;
   private surface!:THREE.Mesh<THREE.PlaneGeometry,THREE.ShaderMaterial>;
   private spray:SpraySystem;
   private boat=new THREE.Group();
@@ -165,6 +161,7 @@ export class WakeApp {
     this.resolvedQuality=resolveInitialQuality();
     const preset=QUALITY_PRESETS[this.resolvedQuality];
     this.simulation=new WakeSimulation(this.renderer,preset.simulation);
+    this.foam=new VortexFoam();
     this.spray=new SpraySystem(2400,preset.particles);
     this.scene.add(this.spray.points);
     this.createSurface(preset.surfaceSegments);
@@ -192,7 +189,7 @@ export class WakeApp {
   private createSurface(segments:number){
     const old=this.surface;
     const geometry=new THREE.PlaneGeometry(1,1,segments,segments);
-    const material=old?.material??new THREE.ShaderMaterial({vertexShader:surfaceVertex,fragmentShader:surfaceFragment,side:THREE.DoubleSide,uniforms:{uState:{value:this.simulation.stateTexture},uVelocity:{value:this.simulation.velocityTexture},uTexel:{value:new THREE.Vector2(1/this.simulation.resolution,1/this.simulation.resolution)},uWaveHeight:{value:this.settings.waveHeight},uTime:{value:0},uWorldSize:{value:WORLD_SIZE},uDeepColor:{value:new THREE.Color()},uShallowColor:{value:new THREE.Color()},uFoamColor:{value:new THREE.Color()}}});
+    const material=old?.material??new THREE.ShaderMaterial({vertexShader:surfaceVertex,fragmentShader:surfaceFragment,side:THREE.DoubleSide,uniforms:{uState:{value:this.simulation.stateTexture},uVelocity:{value:this.simulation.velocityTexture},uFoam:{value:this.foam.texture},uTexel:{value:new THREE.Vector2(1/this.simulation.resolution,1/this.simulation.resolution)},uWaveHeight:{value:this.settings.waveHeight},uTime:{value:0},uWorldSize:{value:WORLD_SIZE},uDeepColor:{value:new THREE.Color()},uShallowColor:{value:new THREE.Color()}}});
     const surface=new THREE.Mesh(geometry,material);surface.rotation.x=-Math.PI/2;surface.position.y=-.03;surface.scale.set(120,120,1);surface.receiveShadow=true;surface.frustumCulled=false;
     if(old){this.scene.remove(old);old.geometry.dispose();}
     this.surface=surface;this.scene.add(surface);this.fitSurfaceToView();
@@ -236,8 +233,8 @@ export class WakeApp {
 
   private applyPalette(){
     const mono=this.settings.palette==="monochrome";const uniforms=this.surface.material.uniforms;
-    uniforms.uDeepColor.value.set(mono?0x05080a:0x031423);uniforms.uShallowColor.value.set(mono?0x7a858b:0x2e789d);uniforms.uFoamColor.value.set(mono?0xf4f6f7:0xdff7ff);
-    (this.scene.background as THREE.Color).set(mono?0x060708:0x020e18);this.spray.setPalette(this.settings.palette);
+    uniforms.uDeepColor.value.set(mono?0x05080a:0x031423);uniforms.uShallowColor.value.set(mono?0x7a858b:0x2e789d);
+    (this.scene.background as THREE.Color).set(mono?0x060708:0x020e18);this.spray.setPalette(this.settings.palette);this.foam.setPalette(this.settings.palette);
   }
 
   private applyQuality(next:ResolvedWakeQuality){
@@ -251,6 +248,7 @@ export class WakeApp {
     if(this.raycaster.ray.intersectPlane(this.waterPlane,hit)){hit.x=THREE.MathUtils.clamp(hit.x,-29,29);hit.z=THREE.MathUtils.clamp(hit.z,-29,29);this.pointerTarget=hit;}
   }
   clearPointerTarget(){this.pointerTarget=null;this.autoTarget.copy(this.position).addScaledVector(this.forward,7);this.autoTargetAge=0;}
+  resetFoam(){this.foam.reset();}
 
   resize(){
     const width=Math.max(1,this.canvas.clientWidth),height=Math.max(1,this.canvas.clientHeight);const mobile=window.matchMedia("(pointer: coarse)").matches||width<760;
@@ -301,7 +299,8 @@ export class WakeApp {
     const uv=new THREE.Vector2(this.position.x/WORLD_SIZE+.5,.5-this.position.z/WORLD_SIZE);const direction=new THREE.Vector2(this.forward.x,-this.forward.z).normalize();
     const input:WakeInput={uv,direction,speed:this.speed/3.2,acceleration:this.acceleration/3,yawRate:this.yawRate};
     this.simulation.step(dt,input,this.settings,QUALITY_PRESETS[this.resolvedQuality].pressureIterations);
-    const uniforms=this.surface.material.uniforms;uniforms.uState.value=this.simulation.stateTexture;uniforms.uVelocity.value=this.simulation.velocityTexture;uniforms.uTexel.value.setScalar(1/this.simulation.resolution);uniforms.uTime.value=time;uniforms.uWaveHeight.value=this.settings.waveHeight;
+    this.foam.update(uv,this.settings);
+    const uniforms=this.surface.material.uniforms;uniforms.uState.value=this.simulation.stateTexture;uniforms.uVelocity.value=this.simulation.velocityTexture;uniforms.uFoam.value=this.foam.texture;uniforms.uTexel.value.setScalar(1/this.simulation.resolution);uniforms.uTime.value=time;uniforms.uWaveHeight.value=this.settings.waveHeight;
     this.spray.update(dt,{position:this.position,forward:this.forward,speed:this.speed/3.2,acceleration:this.acceleration/3,yawRate:this.yawRate},this.settings);
     this.updateFallbackTrail();this.renderer.render(this.scene,this.camera);this.monitorQuality(rawDt);this.frame=requestAnimationFrame(this.animate);
   };
@@ -313,6 +312,6 @@ export class WakeApp {
   }
 
   destroy(){
-    this.destroyed=true;cancelAnimationFrame(this.frame);this.simulation.dispose();this.spray.dispose();this.surface.geometry.dispose();this.surface.material.dispose();disposeObject(this.boat);this.fallbackTrail.geometry.dispose();(this.fallbackTrail.material as THREE.Material).dispose();this.renderer.dispose();
+    this.destroyed=true;cancelAnimationFrame(this.frame);this.simulation.dispose();this.foam.dispose();this.spray.dispose();this.surface.geometry.dispose();this.surface.material.dispose();disposeObject(this.boat);this.fallbackTrail.geometry.dispose();(this.fallbackTrail.material as THREE.Material).dispose();this.renderer.dispose();
   }
 }

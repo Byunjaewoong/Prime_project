@@ -108,9 +108,9 @@ void main(){
 `;
 
 const stateFragment = /* glsl */`
-uniform sampler2D uState,uVelocity,uCurl;
+uniform sampler2D uState;
 uniform vec2 uTexel,uBoat,uDirection;
-uniform float uDt,uSpeed,uAcceleration,uYawRate,uWakeForce,uFoamSensitivity,uFoamDecay;
+uniform float uDt,uSpeed,uAcceleration,uYawRate,uWakeForce;
 varying vec2 vUv;
 float gaussian(vec2 p, vec2 c, vec2 s){vec2 q=(p-c)/s;return exp(-dot(q,q)*2.5);}
 void main(){
@@ -132,28 +132,8 @@ void main(){
  float hull=gaussian(local,vec2(0.0,-0.002)*wakeScale,vec2(0.010,0.030)*wakeScale);
  vertical += (bow*1.65-(sternL+sternR)*0.48-hull*0.32)*uWakeForce*(0.25+uSpeed)*uDt;
  vertical += (sternR-sternL)*uYawRate*uWakeForce*uDt*0.8;
- vec2 vel=texture2D(uVelocity,vUv).xy;
- vec2 prevUv=clamp(vUv-vel*uDt*uTexel*1.45,uTexel,1.0-uTexel);
- // Match works/Vortex's dye presentation: transport from upstream, then retain
- // part of the reference field so repeated bilinear advection does not blur
- // the fine curl structure away.
- float transportedFoam=texture2D(uState,prevUv).b;
- float referenceFoam=center.b;
- float foam=mix(transportedFoam,referenceFoam,0.25)*exp(-uDt*uFoamDecay);
- vec2 vl=texture2D(uVelocity,vUv-vec2(uTexel.x,0.0)).xy;
- vec2 vr=texture2D(uVelocity,vUv+vec2(uTexel.x,0.0)).xy;
- vec2 vb=texture2D(uVelocity,vUv-vec2(0.0,uTexel.y)).xy;
- vec2 vt=texture2D(uVelocity,vUv+vec2(0.0,uTexel.y)).xy;
- float strain=abs(vr.x-vl.x)+abs(vt.y-vb.y)+abs(vr.y-vl.y+vb.x-vt.x);
- float slope=abs(r-l)+abs(t-b);
- float curve=abs(l+r+b+t-4.0*center.r);
- float curl=abs(texture2D(uCurl,vUv).r);
- float energetic=smoothstep(0.006,0.12,(slope*2.0+curve*5.0+curl*0.7+strain*0.35)*uFoamSensitivity);
- float outer=mix(sternL,sternR,step(0.0,uYawRate))*abs(uYawRate);
- float boatFoam=(bow*0.38+(sternL+sternR)*0.75+outer*1.2)*(0.16+uSpeed*0.8+abs(uAcceleration)*0.2)*uWakeForce;
- foam=clamp(foam+(energetic*0.035+boatFoam)*uDt*2.35,0.0,1.0);
  float edge=smoothstep(0.0,0.05,min(min(vUv.x,1.0-vUv.x),min(vUv.y,1.0-vUv.y)));
- gl_FragColor=vec4(height*edge,vertical*edge,foam*edge,1.0);
+ gl_FragColor=vec4(height*edge,vertical*edge,0.0,1.0);
 }
 `;
 
@@ -240,7 +220,7 @@ export class WakeSimulation {
       Object.assign(this.pressureMaterial.uniforms,{uPressure:{value:this.pressure.read.texture},uDivergence:{value:this.divergence.texture}}); this.setCommon(this.pressureMaterial); this.run(this.pressureMaterial,this.pressure.write); swap(this.pressure);
     }
     Object.assign(this.gradientMaterial.uniforms,{uPressure:{value:this.pressure.read.texture},uVelocity:{value:this.velocity.read.texture}}); this.setCommon(this.gradientMaterial); this.run(this.gradientMaterial,this.velocity.write); swap(this.velocity);
-    Object.assign(this.stateMaterial.uniforms,{uState:{value:this.state.read.texture},uVelocity:{value:this.velocity.read.texture},uCurl:{value:this.curl.texture},uTexel:{value:new THREE.Vector2(1/this.size,1/this.size)},uBoat:{value:boat},uDirection:{value:direction},uDt:{value:dt},uSpeed:{value:input.speed},uAcceleration:{value:input.acceleration},uYawRate:{value:input.yawRate},uWakeForce:{value:settings.wakeForce},uFoamSensitivity:{value:settings.foamSensitivity},uFoamDecay:{value:1/Math.max(.25,settings.foamPersistence)}});
+    Object.assign(this.stateMaterial.uniforms,{uState:{value:this.state.read.texture},uTexel:{value:new THREE.Vector2(1/this.size,1/this.size)},uBoat:{value:boat},uDirection:{value:direction},uDt:{value:dt},uSpeed:{value:input.speed},uAcceleration:{value:input.acceleration},uYawRate:{value:input.yawRate},uWakeForce:{value:settings.wakeForce}});
     this.run(this.stateMaterial,this.state.write); swap(this.state);
   }
 

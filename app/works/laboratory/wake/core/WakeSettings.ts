@@ -7,8 +7,13 @@ export type WakeSettings = {
   wakeForce: number;
   waveHeight: number;
   vorticity: number;
-  foamSensitivity: number;
-  foamPersistence: number;
+  dyeDecay: number;
+  force: number;
+  drag: number;
+  viscosity: number;
+  saturation: number;
+  brightness: number;
+  showVectors: boolean;
   sprayAmount: number;
   sprayHeight: number;
   quality: WakeQuality;
@@ -19,9 +24,14 @@ export const DEFAULT_WAKE_SETTINGS: WakeSettings = {
   cruiseSpeed: 1,
   wakeForce: 1,
   waveHeight: 0.8,
-  vorticity: 4,
-  foamSensitivity: 0.55,
-  foamPersistence: 4,
+  vorticity: 6,
+  dyeDecay: 0.981,
+  force: 0.1,
+  drag: 0.995,
+  viscosity: 0.00002,
+  saturation: 0.9,
+  brightness: 0.6,
+  showVectors: false,
   sprayAmount: 1,
   sprayHeight: 1,
   quality: "auto",
