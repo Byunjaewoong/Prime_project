@@ -66,10 +66,10 @@ export default function WakeExperience({mode="boat",title="Wake"}:{mode?:WakeFoa
           </section>
           {controls.map(group=><section className="wake-section" key={group.section}>
             <h4>{group.section}</h4>
-            {group.items.map(item=><label className="wake-slider" key={item.key}>
+            {group.items.map(item=>{const fineForce=mode==="boat"&&item.key==="force";return <label className="wake-slider" key={item.key}>
               <span><span>{item.label}</span><output>{settings[item.key].toFixed(item.decimals??(item.step<.1?2:1))}{item.unit}</output></span>
-              <div className="wake-slider-track"><input aria-label={item.label} type="range" min={item.min} max={item.max} step={item.step} value={settings[item.key]} onInput={event=>update(item.key,Number(event.currentTarget.value))}/></div>
-            </label>)}
+              <div className="wake-slider-track"><input aria-label={item.label} type="range" min={fineForce?.01:item.min} max={item.max} step={fineForce?.01:item.step} value={settings[item.key]} onInput={event=>update(item.key,Number(event.currentTarget.value))}/></div>
+            </label>;})}
             {group.section==="Vortex Foam"&&<div className="wake-segmented">
               <button type="button" className={settings.showVectors?"is-active":""} onClick={()=>update("showVectors",!settings.showVectors)}>{settings.showVectors?"⇢ vectors ON":"⇢ vectors"}</button>
               <button type="button" onClick={()=>appRef.current?.resetFoam()}>↺ reset</button>

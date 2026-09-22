@@ -9,7 +9,7 @@ import type { WakeInput } from "./WakeSimulation";
 const GRID_SIZE=160;
 const OUTPUT_SIZE=768;
 const REFERENCE_GRID=144;
-const BOW_OFFSET=.012;
+const STERN_OFFSET=.018;
 const HULL_FORCE_HALF_WIDTH=.011;
 
 export class VortexFoam {
@@ -52,11 +52,11 @@ export class VortexFoam {
       if(cutStrength>.001){
         const direction=input.direction.clone().normalize();
         const side=new THREE.Vector2(-direction.y,direction.x);
-        const bow=input.uv.clone().addScaledVector(direction,BOW_OFFSET);
+        const stern=input.uv.clone().addScaledVector(direction,-STERN_OFFSET);
         const turn=THREE.MathUtils.clamp(input.yawRate,-1,1);
-        const leftStrength=cutStrength*(1+Math.max(0,-turn)*.7);
-        const rightStrength=cutStrength*(1+Math.max(0,turn)*.7);
-        const forwardCarry=cutStrength*.18;
+        const leftStrength=cutStrength*.52*(1+Math.max(0,-turn)*.7);
+        const rightStrength=cutStrength*.52*(1+Math.max(0,turn)*.7);
+        const aftCarry=cutStrength*.85;
         const color=this.palette==="monochrome"?[1,1,1] as const:[.12,.62,1] as const;
         const dyeStrength=40*THREE.MathUtils.lerp(.45,1,Math.min(speed,1))*invScale2;
 
@@ -65,13 +65,13 @@ export class VortexFoam {
           // CanvasTexture flips its source vertically when it is uploaded to WebGL.
           // Convert UV-space position and velocity into the canvas/grid coordinate system.
           const gridY=Math.max(1,Math.min(this.solver.H,Math.floor(1+(1-position.y)*this.solver.H)));
-          const velocity=direction.clone().multiplyScalar(forwardCarry).addScaledVector(side,lateralDirection*strength);
+          const velocity=direction.clone().multiplyScalar(-aftCarry).addScaledVector(side,lateralDirection*strength);
           this.solver.addVelocity(gridX,gridY,velocity.x*settings.force*invScale2,-velocity.y*settings.force*invScale2,velocityRadius);
           this.solver.addDye(gridX,gridY,color[0]*dyeStrength,color[1]*dyeStrength,color[2]*dyeStrength,dyeRadius);
         };
 
-        inject(bow.clone().addScaledVector(side,HULL_FORCE_HALF_WIDTH),1,leftStrength);
-        inject(bow.clone().addScaledVector(side,-HULL_FORCE_HALF_WIDTH),-1,rightStrength);
+        inject(stern.clone().addScaledVector(side,HULL_FORCE_HALF_WIDTH),1,leftStrength);
+        inject(stern.clone().addScaledVector(side,-HULL_FORCE_HALF_WIDTH),-1,rightStrength);
       }
     }
     this.previousUv=input.uv.clone();
