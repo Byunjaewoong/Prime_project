@@ -248,8 +248,11 @@ export class WakeApp {
 
   private applyPalette(){
     const mono=this.settings.palette==="monochrome";const uniforms=this.surface.material.uniforms;
-    uniforms.uDeepColor.value.set(mono?0x05080a:0x031423);uniforms.uShallowColor.value.set(mono?0x7a858b:0x2e789d);
-    (this.scene.background as THREE.Color).set(mono?0x060708:0x020e18);this.spray.setPalette(this.settings.palette);this.foam.setPalette(this.settings.palette);
+    const wake2=this.foamMode==="boat-mix";
+    uniforms.uDeepColor.value.set(wake2?(mono?0x010203:0x010812):(mono?0x05080a:0x031423));
+    uniforms.uShallowColor.value.set(wake2?(mono?0x283137:0x123b55):(mono?0x7a858b:0x2e789d));
+    (this.scene.background as THREE.Color).set(wake2?(mono?0x010203:0x01060c):(mono?0x060708:0x020e18));
+    this.spray.setPalette(this.settings.palette);this.foam.setPalette(this.settings.palette);
   }
 
   private applyQuality(next:ResolvedWakeQuality){
