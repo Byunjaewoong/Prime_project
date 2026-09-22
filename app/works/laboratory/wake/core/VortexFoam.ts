@@ -12,7 +12,19 @@ const DESKTOP_OUTPUT_SIZE=1024;
 const REFERENCE_GRID=144;
 const STERN_OFFSET=.018;
 const HULL_FORCE_HALF_WIDTH=.011;
-const DYE_SEGMENT_LENGTH=9;
+const TRAIL_LENGTH=.055;
+const TRAIL_SAMPLES=7;
+
+function hash1(value:number){
+  const result=Math.sin(value*127.1)*43758.5453123;
+  return result-Math.floor(result);
+}
+
+function smoothNoise1(value:number){
+  const cell=Math.floor(value),fraction=value-cell;
+  const eased=fraction*fraction*(3-2*fraction);
+  return THREE.MathUtils.lerp(hash1(cell),hash1(cell+1),eased);
+}
 
 export class VortexFoam {
   readonly texture:THREE.CanvasTexture;
@@ -56,10 +68,10 @@ export class VortexFoam {
       // Keep each pressure jet local enough that the opposing lateral forces do not cancel.
       const fieldScale=input.fieldScale??1;
       const velocityRadius=Math.max(1,Math.round(2*scale*fieldScale));
-      const dyeRadius=Math.max(1,Math.round(3*scale*fieldScale));
+      const dyeRadius=Math.max(1,Math.round(1.5*scale*fieldScale));
       const speed=THREE.MathUtils.clamp(input.speed,0,1.5);
       const cutStrength=Math.min(travelPixels,6)*THREE.MathUtils.lerp(.65,1.35,Math.min(speed,1));
-      this.dyeTravel+=travelPixels;
+      this.dyeTravel+=input.uv.distanceTo(this.previousUv)*REFERENCE_GRID;
 
       if(cutStrength>.001){
         const direction=input.direction.clone().normalize();
@@ -70,23 +82,40 @@ export class VortexFoam {
         const rightStrength=cutStrength*.52*(1+Math.max(0,turn)*.7);
         const aftCarry=cutStrength*.85;
         const ratio=Math.round(THREE.MathUtils.clamp(settings.backgroundDyeRatio,0,5));
-        const backgroundSegment=alternateBackground&&ratio>0&&Math.floor(this.dyeTravel/DYE_SEGMENT_LENGTH)%(ratio+1)!==0;
-        // Pure red is an internal background-dye marker decoded by the water shader.
-        const color=backgroundSegment?[1,0,0] as const:this.palette==="monochrome"?[1,1,1] as const:[.12,.62,1] as const;
+        const backgroundShare=ratio/(ratio+1);
+        const noise=smoothNoise1(this.dyeTravel*.42)+Math.sin(this.dyeTravel*.17)*.12;
+        const backgroundMix=alternateBackground&&ratio>0
+          ?THREE.MathUtils.smoothstep(backgroundShare-noise,-.18,.18)
+          :0;
+        // Red is an internal background-dye marker. A continuous mix creates soft,
+        // irregular transitions instead of fixed color blocks.
+        const whiteColor=this.palette==="monochrome"?[1,1,1] as const:[.12,.62,1] as const;
+        const color=[
+          THREE.MathUtils.lerp(whiteColor[0],1,backgroundMix),
+          whiteColor[1]*(1-backgroundMix),
+          whiteColor[2]*(1-backgroundMix),
+        ] as const;
         const dyeStrength=40*THREE.MathUtils.lerp(.45,1,Math.min(speed,1))*invScale2;
 
-        const inject=(position:THREE.Vector2,lateralDirection:number,strength:number)=>{
+        const inject=(position:THREE.Vector2,lateralDirection:number,strength:number,weight:number)=>{
           const gridX=Math.max(1,Math.min(this.solver.W,Math.floor(1+position.x*this.solver.W)));
           // CanvasTexture flips its source vertically when it is uploaded to WebGL.
           // Convert UV-space position and velocity into the canvas/grid coordinate system.
           const gridY=Math.max(1,Math.min(this.solver.H,Math.floor(1+(1-position.y)*this.solver.H)));
           const velocity=direction.clone().multiplyScalar(-aftCarry).addScaledVector(side,lateralDirection*strength);
-          this.solver.addVelocity(gridX,gridY,velocity.x*settings.force*invScale2,-velocity.y*settings.force*invScale2,velocityRadius);
-          this.solver.addDye(gridX,gridY,color[0]*dyeStrength,color[1]*dyeStrength,color[2]*dyeStrength,dyeRadius);
+          this.solver.addVelocity(gridX,gridY,velocity.x*settings.force*invScale2*weight,-velocity.y*settings.force*invScale2*weight,velocityRadius);
+          this.solver.addDye(gridX,gridY,color[0]*dyeStrength*weight,color[1]*dyeStrength*weight,color[2]*dyeStrength*weight,dyeRadius);
         };
 
-        inject(stern.clone().addScaledVector(side,HULL_FORCE_HALF_WIDTH*fieldScale),1,leftStrength);
-        inject(stern.clone().addScaledVector(side,-HULL_FORCE_HALF_WIDTH*fieldScale),-1,rightStrength);
+        const weightTotal=TRAIL_SAMPLES*(1+.18)*.5;
+        for(let sample=0;sample<TRAIL_SAMPLES;sample++){
+          const progress=sample/(TRAIL_SAMPLES-1);
+          const weight=THREE.MathUtils.lerp(1,.18,progress)/weightTotal;
+          const trailCenter=stern.clone().addScaledVector(direction,-TRAIL_LENGTH*fieldScale*progress);
+          const halfWidth=THREE.MathUtils.lerp(HULL_FORCE_HALF_WIDTH,HULL_FORCE_HALF_WIDTH*1.85,progress)*fieldScale;
+          inject(trailCenter.clone().addScaledVector(side,halfWidth),1,leftStrength,weight);
+          inject(trailCenter.clone().addScaledVector(side,-halfWidth),-1,rightStrength,weight);
+        }
       }
     }
     this.previousUv=insideField?input.uv.clone():null;
