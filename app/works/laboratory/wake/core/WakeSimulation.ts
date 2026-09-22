@@ -134,7 +134,12 @@ void main(){
  vertical += (sternR-sternL)*uYawRate*uWakeForce*uDt*0.8;
  vec2 vel=texture2D(uVelocity,vUv).xy;
  vec2 prevUv=clamp(vUv-vel*uDt*uTexel*1.45,uTexel,1.0-uTexel);
- float foam=texture2D(uState,prevUv).b*exp(-uDt*uFoamDecay);
+ // Match works/Vortex's dye presentation: transport from upstream, then retain
+ // part of the reference field so repeated bilinear advection does not blur
+ // the fine curl structure away.
+ float transportedFoam=texture2D(uState,prevUv).b;
+ float referenceFoam=center.b;
+ float foam=mix(transportedFoam,referenceFoam,0.25)*exp(-uDt*uFoamDecay);
  vec2 vl=texture2D(uVelocity,vUv-vec2(uTexel.x,0.0)).xy;
  vec2 vr=texture2D(uVelocity,vUv+vec2(uTexel.x,0.0)).xy;
  vec2 vb=texture2D(uVelocity,vUv-vec2(0.0,uTexel.y)).xy;

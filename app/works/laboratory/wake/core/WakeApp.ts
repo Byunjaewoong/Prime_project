@@ -99,12 +99,15 @@ void main(){
  sparkle+=smoothstep(.82,.98,waterTexture)*(.018+fresnel*.045);
  float foamRaw=texture2D(uState,sampleUv).b*fieldMask;
  float foamNoise=waterNoise(world*2.55+velocity*.42+vec2(uTime*.08,-uTime*.055));
- float foam=smoothstep(.15,.68,foamRaw+(foamNoise-.5)*.10);
- foam*=.62+foamNoise*.54+grain*.10;
+ // Vortex's dye display curve preserves transported curls instead of using
+ // procedural noise to define the foam silhouette.
+ float foam=smoothstep(.08,.78,foamRaw);
+ foam=pow(clamp(foam,0.0,1.0),.75);
+ foam=floor(foam*255.0)/255.0;
   vec3 water=mix(uDeepColor,uShallowColor,clamp(fresnel*.62+diffuse*.31,0.0,1.0));
   water*=.72+waterTexture*.48;
   water+=vec3(spec*1.35+sparkle*1.8+waterTexture*.026);
- vec3 texturedFoam=mix(uFoamColor*.68,uFoamColor*1.12,smoothstep(.18,.88,foamNoise));
+ vec3 texturedFoam=mix(uFoamColor*.76,uFoamColor*1.10,smoothstep(.2,.84,foamNoise+grain*.08));
  water=mix(water,texturedFoam,clamp(foam,0.0,1.0)*.98);
  gl_FragColor=vec4(water,1.0);
 }
