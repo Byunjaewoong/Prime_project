@@ -80,6 +80,8 @@ void main(){
  vec2 world=vWorldPosition.xz;
  float fieldEdge=min(min(vUv.x,1.0-vUv.x),min(vUv.y,1.0-vUv.y));
  float fieldMask=smoothstep(0.0,.075,fieldEdge);
+ float waveVariation=length(vec2(l-r,b-t))*48.0*fieldMask*uWaveHeight;
+ float waveReflectionMask=smoothstep(.0015,.025,waveVariation);
  vec3 normal=normalize(vec3((l-r)*48.0*fieldMask*uWaveHeight,1.0,(b-t)*48.0*fieldMask*uWaveHeight));
  vec3 viewDir=normalize(cameraPosition-vWorldPosition);
  float lightAngle=radians(uLightDirection);
@@ -115,7 +117,7 @@ void main(){
   water*=.72+waterTexture*.48;
   water+=vec3(spec*1.35+sparkle*1.8+waterTexture*.026);
  vec3 backgroundDyeColor=uDeepColor;
- vec3 wakeReflection=vec3((spec*1.35+fresnel*.025)*uReflectionIntensity);
+ vec3 wakeReflection=vec3((spec*1.35+fresnel*.025)*uReflectionIntensity*waveReflectionMask);
  water=mix(water,wakeReflection,uFoamScreenSpace);
  water=mix(water,backgroundDyeColor,backgroundFoam);
  water=mix(water,max(water,visibleFoam),clamp(brightFoam,0.0,1.0));
