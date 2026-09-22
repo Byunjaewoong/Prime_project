@@ -84,7 +84,7 @@ export default function LaboratoryPage() {
           <li>
             <Link href="/works/laboratory/wake2" style={{ textDecoration: "none", color: "inherit", display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "1px dotted rgba(26,64,49,0.2)", paddingBottom: "6px" }}>
               <span>7. Wake 2</span>
-              <span style={{ fontSize: "0.75rem", opacity: 0.3, marginLeft: 12 }}>reflection-driven vortex</span>
+              <span style={{ fontSize: "0.75rem", opacity: 0.3, marginLeft: 12 }}>two-tone wake study</span>
             </Link>
           </li>
 

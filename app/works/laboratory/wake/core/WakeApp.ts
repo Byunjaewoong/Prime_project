@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { ReflectionForceField } from "./ReflectionForceField";
 import { SpraySystem } from "./SpraySystem";
 import { VortexFoam } from "./VortexFoam";
 import { WakeSimulation, type WakeInput } from "./WakeSimulation";
@@ -16,7 +15,7 @@ const BOAT_MODEL_YAW_CORRECTION=Math.PI/2;
 // reverse the bow/stern direction around the water plane's vertical axis.
 const BOAT_MODEL_ROLL_CORRECTION=Math.PI/2;
 const BOAT_MODEL_DIRECTION_CORRECTION=Math.PI;
-export type WakeFoamMode="boat"|"reflection";
+export type WakeFoamMode="boat"|"boat-mix";
 
 const surfaceVertex=/* glsl */`
 uniform sampler2D uState;
@@ -101,11 +100,15 @@ void main(){
  float sparkle=pow(reflection,180.0)*smoothstep(.58,1.0,grain)*(1.0+length(velocity)*.2);
  sparkle+=smoothstep(.82,.98,waterTexture)*(.018+fresnel*.045);
  vec3 foamDye=texture2D(uFoam,sampleUv).rgb*fieldMask;
- float foam=max(foamDye.r,max(foamDye.g,foamDye.b));
+ float brightFoam=max(foamDye.g,foamDye.b);
+ float backgroundFoam=clamp((foamDye.r-max(foamDye.g,foamDye.b))*1.5,0.0,1.0);
+ vec3 visibleFoam=foamDye;
+ visibleFoam.r=min(visibleFoam.r,max(visibleFoam.g,visibleFoam.b));
   vec3 water=mix(uDeepColor,uShallowColor,clamp(fresnel*.62+diffuse*.31,0.0,1.0));
   water*=.72+waterTexture*.48;
   water+=vec3(spec*1.35+sparkle*1.8+waterTexture*.026);
- water=mix(water,max(water,foamDye),clamp(foam,0.0,1.0));
+ water=mix(water,uDeepColor,backgroundFoam);
+ water=mix(water,max(water,visibleFoam),clamp(brightFoam,0.0,1.0));
  gl_FragColor=vec4(water,1.0);
 }
 `;
@@ -129,7 +132,6 @@ export class WakeApp {
   private destroyed=false;
   private simulation:WakeSimulation;
   private foam:VortexFoam;
-  private reflectionField:ReflectionForceField|null;
   private surface!:THREE.Mesh<THREE.PlaneGeometry,THREE.ShaderMaterial>;
   private spray:SpraySystem;
   private boat=new THREE.Group();
@@ -165,7 +167,6 @@ export class WakeApp {
     const preset=QUALITY_PRESETS[this.resolvedQuality];
     this.simulation=new WakeSimulation(this.renderer,preset.simulation);
     this.foam=new VortexFoam();
-    this.reflectionField=foamMode==="reflection"?new ReflectionForceField(this.renderer):null;
     this.spray=new SpraySystem(2400,preset.particles);
     this.scene.add(this.spray.points);
     this.createSurface(preset.surfaceSegments);
@@ -303,10 +304,7 @@ export class WakeApp {
     const uv=new THREE.Vector2(this.position.x/WORLD_SIZE+.5,.5-this.position.z/WORLD_SIZE);const direction=new THREE.Vector2(this.forward.x,-this.forward.z).normalize();
     const input:WakeInput={uv,direction,speed:this.speed/3.2,acceleration:this.acceleration/3,yawRate:this.yawRate};
     this.simulation.step(dt,input,this.settings,QUALITY_PRESETS[this.resolvedQuality].pressureIterations);
-    if(this.reflectionField){
-      const impulses=this.reflectionField.sample(this.simulation.stateTexture,1/this.simulation.resolution,this.settings.waveHeight,time,this.camera.position);
-      this.foam.updateFromReflection(impulses,this.settings);
-    }else this.foam.update(input,this.settings);
+    this.foam.update(input,this.settings,this.foamMode==="boat-mix");
     const uniforms=this.surface.material.uniforms;uniforms.uState.value=this.simulation.stateTexture;uniforms.uVelocity.value=this.simulation.velocityTexture;uniforms.uFoam.value=this.foam.texture;uniforms.uTexel.value.setScalar(1/this.simulation.resolution);uniforms.uTime.value=time;uniforms.uWaveHeight.value=this.settings.waveHeight;
     this.spray.update(dt,{position:this.position,forward:this.forward,speed:this.speed/3.2,acceleration:this.acceleration/3,yawRate:this.yawRate},this.settings);
     this.updateFallbackTrail();this.renderer.render(this.scene,this.camera);this.monitorQuality(rawDt);this.frame=requestAnimationFrame(this.animate);
@@ -319,6 +317,6 @@ export class WakeApp {
   }
 
   destroy(){
-    this.destroyed=true;cancelAnimationFrame(this.frame);this.simulation.dispose();this.foam.dispose();this.reflectionField?.dispose();this.spray.dispose();this.surface.geometry.dispose();this.surface.material.dispose();disposeObject(this.boat);this.fallbackTrail.geometry.dispose();(this.fallbackTrail.material as THREE.Material).dispose();this.renderer.dispose();
+    this.destroyed=true;cancelAnimationFrame(this.frame);this.simulation.dispose();this.foam.dispose();this.spray.dispose();this.surface.geometry.dispose();this.surface.material.dispose();disposeObject(this.boat);this.fallbackTrail.geometry.dispose();(this.fallbackTrail.material as THREE.Material).dispose();this.renderer.dispose();
   }
 }

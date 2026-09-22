@@ -2,7 +2,6 @@ import * as THREE from "three";
 import { DyeRenderer } from "../../../Vortex/core/DyeRenderer";
 import { FluidSolver } from "../../../Vortex/core/FluidSolver";
 import { Renderer } from "../../../Vortex/core/Renderer";
-import type { ReflectionImpulse } from "./ReflectionForceField";
 import type { WakePalette, WakeSettings } from "./WakeSettings";
 import type { WakeInput } from "./WakeSimulation";
 
@@ -11,6 +10,7 @@ const OUTPUT_SIZE=768;
 const REFERENCE_GRID=144;
 const STERN_OFFSET=.018;
 const HULL_FORCE_HALF_WIDTH=.011;
+const DYE_SEGMENT_LENGTH=18;
 
 export class VortexFoam {
   readonly texture:THREE.CanvasTexture;
@@ -21,6 +21,7 @@ export class VortexFoam {
   private dyeRenderer=DyeRenderer.create(this.dyeCanvas);
   private cpuRenderer=new Renderer();
   private previousUv:THREE.Vector2|null=null;
+  private dyeTravel=0;
   private palette:WakePalette="monochrome";
 
   constructor(){
@@ -36,7 +37,7 @@ export class VortexFoam {
 
   setPalette(palette:WakePalette){this.palette=palette;}
 
-  update(input:WakeInput,settings:WakeSettings){
+  update(input:WakeInput,settings:WakeSettings,alternateBackground=false){
     this.applySettings(settings);
 
     if(this.previousUv){
@@ -48,6 +49,7 @@ export class VortexFoam {
       const dyeRadius=Math.max(1,Math.round(3*scale));
       const speed=THREE.MathUtils.clamp(input.speed,0,1.5);
       const cutStrength=Math.min(travelPixels,6)*THREE.MathUtils.lerp(.65,1.35,Math.min(speed,1));
+      this.dyeTravel+=travelPixels;
 
       if(cutStrength>.001){
         const direction=input.direction.clone().normalize();
@@ -57,7 +59,10 @@ export class VortexFoam {
         const leftStrength=cutStrength*.52*(1+Math.max(0,-turn)*.7);
         const rightStrength=cutStrength*.52*(1+Math.max(0,turn)*.7);
         const aftCarry=cutStrength*.85;
-        const color=this.palette==="monochrome"?[1,1,1] as const:[.12,.62,1] as const;
+        const ratio=Math.round(THREE.MathUtils.clamp(settings.backgroundDyeRatio,0,5));
+        const backgroundSegment=alternateBackground&&ratio>0&&Math.floor(this.dyeTravel/DYE_SEGMENT_LENGTH)%(ratio+1)!==0;
+        // Pure red is an internal background-dye marker decoded by the water shader.
+        const color=backgroundSegment?[1,0,0] as const:this.palette==="monochrome"?[1,1,1] as const:[.12,.62,1] as const;
         const dyeStrength=40*THREE.MathUtils.lerp(.45,1,Math.min(speed,1))*invScale2;
 
         const inject=(position:THREE.Vector2,lateralDirection:number,strength:number)=>{
@@ -76,24 +81,6 @@ export class VortexFoam {
     }
     this.previousUv=input.uv.clone();
 
-    this.render(settings);
-  }
-
-  updateFromReflection(impulses:ReflectionImpulse[],settings:WakeSettings){
-    this.applySettings(settings);
-    const scale=GRID_SIZE/REFERENCE_GRID;
-    const invScale2=1/(scale*scale);
-    const velocityRadius=Math.max(1,Math.round(3*scale));
-    const dyeRadius=Math.max(1,Math.round(2*scale));
-    for(const impulse of impulses){
-      const gridX=Math.max(1,Math.min(this.solver.W,Math.floor(1+impulse.uv.x*this.solver.W)));
-      const gridY=Math.max(1,Math.min(this.solver.H,Math.floor(1+(1-impulse.uv.y)*this.solver.H)));
-      const strength=impulse.intensity*settings.force*2.4*invScale2;
-      this.solver.addVelocity(gridX,gridY,impulse.direction.x*strength,-impulse.direction.y*strength,velocityRadius);
-      const dye=impulse.intensity*24*invScale2;
-      const tint=this.palette==="monochrome"?impulse.color:new THREE.Color(.28,.72,1).lerp(impulse.color,.55);
-      this.solver.addDye(gridX,gridY,tint.r*dye,tint.g*dye,tint.b*dye,dyeRadius);
-    }
     this.render(settings);
   }
 
@@ -121,7 +108,7 @@ export class VortexFoam {
   }
 
   reset(){
-    this.solver.reset();this.dyeRenderer?.reset();this.previousUv=null;
+    this.solver.reset();this.dyeRenderer?.reset();this.previousUv=null;this.dyeTravel=0;
     this.context.clearRect(0,0,OUTPUT_SIZE,OUTPUT_SIZE);this.texture.needsUpdate=true;
   }
 

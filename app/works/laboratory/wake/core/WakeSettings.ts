@@ -13,6 +13,7 @@ export type WakeSettings = {
   viscosity: number;
   saturation: number;
   brightness: number;
+  backgroundDyeRatio: number;
   showVectors: boolean;
   sprayAmount: number;
   sprayHeight: number;
@@ -25,12 +26,13 @@ export const DEFAULT_WAKE_SETTINGS: WakeSettings = {
   wakeForce: 1,
   waveHeight: 0.8,
   vorticity: 6,
-  dyeDecay: 0.981,
+  dyeDecay: 0.988,
   force: 0.1,
-  drag: 0.995,
+  drag: 0.97,
   viscosity: 0.00002,
   saturation: 0.9,
   brightness: 0.6,
+  backgroundDyeRatio: 0,
   showVectors: false,
   sprayAmount: 1,
   sprayHeight: 1,

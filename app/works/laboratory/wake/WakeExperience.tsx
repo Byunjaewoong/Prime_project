@@ -14,7 +14,7 @@ const controls:{section:string;items:{key:NumericSetting;label:string;min:number
   {section:"Vortex Foam",items:[
     {key:"vorticity",label:"Vorticity",min:0,max:15,step:.5,decimals:1},
     {key:"dyeDecay",label:"Dye Decay",min:.98,max:1,step:.001,decimals:3},
-    {key:"force",label:"Force",min:.1,max:2,step:.1,decimals:2},
+    {key:"force",label:"Force",min:.001,max:1,step:.001,decimals:3},
     {key:"drag",label:"Drag",min:.9,max:1,step:.005,decimals:3},
     {key:"viscosity",label:"Viscosity",min:0,max:.0002,step:.00001,decimals:5},
     {key:"saturation",label:"Saturation",min:.5,max:3,step:.1,decimals:1},
@@ -66,10 +66,14 @@ export default function WakeExperience({mode="boat",title="Wake"}:{mode?:WakeFoa
           </section>
           {controls.map(group=><section className="wake-section" key={group.section}>
             <h4>{group.section}</h4>
-            {group.items.map(item=>{const fineForce=mode==="boat"&&item.key==="force";return <label className="wake-slider" key={item.key}>
+            {group.items.map(item=>{const fineForce=item.key==="force";return <label className="wake-slider" key={item.key}>
               <span><span>{item.label}</span><output>{settings[item.key].toFixed(item.decimals??(item.step<.1?2:1))}{item.unit}</output></span>
-              <div className="wake-slider-track"><input aria-label={item.label} type="range" min={fineForce?.01:item.min} max={item.max} step={fineForce?.01:item.step} value={settings[item.key]} onInput={event=>update(item.key,Number(event.currentTarget.value))}/></div>
+              <div className="wake-slider-track"><input aria-label={item.label} type="range" min={item.min} max={fineForce?1:item.max} step={item.step} value={settings[item.key]} onInput={event=>update(item.key,Number(event.currentTarget.value))}/></div>
             </label>;})}
+            {group.section==="Vortex Foam"&&mode==="boat-mix"&&<label className="wake-slider">
+              <span><span>White : background</span><output>1:{settings.backgroundDyeRatio.toFixed(0)}</output></span>
+              <div className="wake-slider-track"><input aria-label="White to background ratio" type="range" min="0" max="5" step="1" value={settings.backgroundDyeRatio} onInput={event=>update("backgroundDyeRatio",Number(event.currentTarget.value))}/></div>
+            </label>}
             {group.section==="Vortex Foam"&&<div className="wake-segmented">
               <button type="button" className={settings.showVectors?"is-active":""} onClick={()=>update("showVectors",!settings.showVectors)}>{settings.showVectors?"⇢ vectors ON":"⇢ vectors"}</button>
               <button type="button" onClick={()=>appRef.current?.resetFoam()}>↺ reset</button>
