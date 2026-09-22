@@ -42,7 +42,7 @@ void main(){
 
 const surfaceFragment=/* glsl */`
 uniform sampler2D uState,uVelocity,uFoam;
-uniform vec2 uTexel,uFoamFieldCenter;
+uniform vec2 uTexel,uFoamTexel,uFoamFieldCenter;
 uniform float uWaveHeight,uTime,uFoamScreenSpace;
 uniform float uFoamFieldSize;
 uniform vec3 uDeepColor,uShallowColor;
@@ -82,7 +82,7 @@ void main(){
  float fresnel=pow(1.0-max(dot(viewDir,normal),0.0),3.2);
  float diffuse=.2+.8*max(dot(normal,lightDir),0.0);
  float reflection=max(dot(reflect(-lightDir,normal),viewDir),0.0);
- float spec=pow(reflection,72.0);
+ float spec=pow(reflection,72.0)*mix(1.0,.06,uFoamScreenSpace);
  vec2 velocity=texture2D(uVelocity,sampleUv).xy*fieldMask;
  float grain=waterNoise(world*3.7+vec2(uTime*.21,-uTime*.16));
  float broadNoise=waterNoise(world*.19+vec2(uTime*.018,-uTime*.012));
@@ -90,10 +90,16 @@ void main(){
  float waterTexture=clamp(broadNoise*.68+fineNoise*.32,0.0,1.0);
  float sparkle=pow(reflection,180.0)*smoothstep(.58,1.0,grain)*(1.0+length(velocity)*.2);
  sparkle+=smoothstep(.82,.98,waterTexture)*(.018+fresnel*.045);
+ sparkle*=mix(1.0,.15,uFoamScreenSpace);
  vec2 worldFoamUv=vec2((vWorldPosition.x-uFoamFieldCenter.x)/uFoamFieldSize+.5,.5-(vWorldPosition.z-uFoamFieldCenter.y)/uFoamFieldSize);
  vec2 foamUv=mix(sampleUv,clamp(worldFoamUv,uTexel,1.0-uTexel),uFoamScreenSpace);
  float foamFieldMask=mix(fieldMask,1.0,uFoamScreenSpace);
- vec3 foamDye=texture2D(uFoam,foamUv).rgb*foamFieldMask;
+ vec3 foamDye=texture2D(uFoam,foamUv).rgb*.5;
+ foamDye+=texture2D(uFoam,clamp(foamUv+vec2(uFoamTexel.x,0.0),uFoamTexel,1.0-uFoamTexel)).rgb*.125;
+ foamDye+=texture2D(uFoam,clamp(foamUv-vec2(uFoamTexel.x,0.0),uFoamTexel,1.0-uFoamTexel)).rgb*.125;
+ foamDye+=texture2D(uFoam,clamp(foamUv+vec2(0.0,uFoamTexel.y),uFoamTexel,1.0-uFoamTexel)).rgb*.125;
+ foamDye+=texture2D(uFoam,clamp(foamUv-vec2(0.0,uFoamTexel.y),uFoamTexel,1.0-uFoamTexel)).rgb*.125;
+ foamDye*=foamFieldMask;
  float brightFoam=max(foamDye.g,foamDye.b);
  float backgroundFoam=clamp((foamDye.r-max(foamDye.g,foamDye.b))*1.5,0.0,1.0);
  vec3 visibleFoam=foamDye;
@@ -166,14 +172,15 @@ export class WakeApp {
     this.scene.background=new THREE.Color(0x060708);
     if(foamMode==="boat-mix"){
       this.camera.far=300;
-      this.camera.position.set(20,112,38);
+      this.camera.position.set(0,112,38);
     }
     else this.camera.position.set(0,92,18);
     this.camera.lookAt(0,0,0);
     this.resolvedQuality=resolveInitialQuality();
     const preset=QUALITY_PRESETS[this.resolvedQuality];
     this.simulation=new WakeSimulation(this.renderer,preset.simulation);
-    this.foam=new VortexFoam();
+    const desktopFoam=foamMode==="boat-mix"&&!window.matchMedia("(pointer: coarse)").matches&&window.innerWidth>=760;
+    this.foam=new VortexFoam(desktopFoam);
     this.spray=new SpraySystem(2400,preset.particles);
     this.scene.add(this.spray.points);
     this.createSurface(preset.surfaceSegments);
@@ -202,7 +209,7 @@ export class WakeApp {
   private createSurface(segments:number){
     const old=this.surface;
     const geometry=new THREE.PlaneGeometry(1,1,segments,segments);
-    const material=old?.material??new THREE.ShaderMaterial({vertexShader:surfaceVertex,fragmentShader:surfaceFragment,side:THREE.DoubleSide,uniforms:{uState:{value:this.simulation.stateTexture},uVelocity:{value:this.simulation.velocityTexture},uFoam:{value:this.foam.texture},uTexel:{value:new THREE.Vector2(1/this.simulation.resolution,1/this.simulation.resolution)},uFoamFieldCenter:{value:this.foamFieldCenter},uFoamFieldSize:{value:this.foamFieldSize},uWaveHeight:{value:this.settings.waveHeight},uTime:{value:0},uWorldSize:{value:WORLD_SIZE},uFoamScreenSpace:{value:this.foamMode==="boat-mix"?1:0},uDeepColor:{value:new THREE.Color()},uShallowColor:{value:new THREE.Color()}}});
+    const material=old?.material??new THREE.ShaderMaterial({vertexShader:surfaceVertex,fragmentShader:surfaceFragment,side:THREE.DoubleSide,uniforms:{uState:{value:this.simulation.stateTexture},uVelocity:{value:this.simulation.velocityTexture},uFoam:{value:this.foam.texture},uTexel:{value:new THREE.Vector2(1/this.simulation.resolution,1/this.simulation.resolution)},uFoamTexel:{value:new THREE.Vector2(this.foam.texelSize,this.foam.texelSize)},uFoamFieldCenter:{value:this.foamFieldCenter},uFoamFieldSize:{value:this.foamFieldSize},uWaveHeight:{value:this.settings.waveHeight},uTime:{value:0},uWorldSize:{value:WORLD_SIZE},uFoamScreenSpace:{value:this.foamMode==="boat-mix"?1:0},uDeepColor:{value:new THREE.Color()},uShallowColor:{value:new THREE.Color()}}});
     const surface=new THREE.Mesh(geometry,material);surface.rotation.x=-Math.PI/2;surface.position.y=-.03;surface.scale.set(120,120,1);surface.receiveShadow=true;surface.frustumCulled=false;
     if(old){this.scene.remove(old);old.geometry.dispose();}
     this.surface=surface;this.scene.add(surface);this.fitSurfaceToView();
@@ -280,11 +287,11 @@ export class WakeApp {
     const margin=4;const minX=Math.min(...hits.map(hit=>hit.x))-margin,maxX=Math.max(...hits.map(hit=>hit.x))+margin;const minZ=Math.min(...hits.map(hit=>hit.z))-margin,maxZ=Math.max(...hits.map(hit=>hit.z))+margin;
     if(this.foamMode==="boat-mix"){
       this.foamFieldCenter.set((minX+maxX)/2,(minZ+maxZ)/2);
-      this.foamFieldSize=Math.max(maxX-minX,maxZ-minZ)*1.2;
+      this.foamFieldSize=Math.max(maxX-minX,maxZ-minZ)*1.4;
       this.surface.material.uniforms.uFoamFieldCenter.value.copy(this.foamFieldCenter);
       this.surface.material.uniforms.uFoamFieldSize.value=this.foamFieldSize;
     }
-    this.pathRadius=Math.max(48,...hits.map(hit=>Math.hypot(hit.x,hit.z)))+(this.foamMode==="boat-mix"?28:10);
+    this.pathRadius=Math.max(48,...hits.map(hit=>Math.hypot(hit.x,hit.z)))+(this.foamMode==="boat-mix"?48:10);
     this.surface.position.set((minX+maxX)/2,-.03,(minZ+maxZ)/2);this.surface.scale.set(maxX-minX,maxZ-minZ,1);this.surface.updateMatrixWorld(true);
   }
 
@@ -294,7 +301,8 @@ export class WakeApp {
     let first=-1,last=-1;
     for(let i=0;i<=ROUTE_SAMPLE_COUNT;i++){
       const progress=i/ROUTE_SAMPLE_COUNT;this.routeProjection.copy(this.route.getPoint(progress)).project(this.camera);
-      const inside=this.routeProjection.z>=-1&&this.routeProjection.z<=1&&Math.abs(this.routeProjection.x)<=1+ROUTE_SCREEN_MARGIN&&Math.abs(this.routeProjection.y)<=1+ROUTE_SCREEN_MARGIN;
+      const horizontalMargin=this.foamMode==="boat-mix"?.42:ROUTE_SCREEN_MARGIN;
+      const inside=this.routeProjection.z>=-1&&this.routeProjection.z<=1&&Math.abs(this.routeProjection.x)<=1+horizontalMargin&&Math.abs(this.routeProjection.y)<=1+ROUTE_SCREEN_MARGIN;
       if(inside){if(first===-1)first=i;last=i;}
     }
     if(first===-1)return {start:0,end:1};
@@ -304,10 +312,16 @@ export class WakeApp {
   private resetPath(){
     for(let attempt=0;attempt<8;attempt++){
       const startAngle=Math.random()*Math.PI*2;
-      const start=new THREE.Vector3(Math.cos(startAngle)*this.pathRadius,0,Math.sin(startAngle)*this.pathRadius);
+      let start=new THREE.Vector3(Math.cos(startAngle)*this.pathRadius,0,Math.sin(startAngle)*this.pathRadius);
       const endAngle=startAngle+Math.PI+(Math.random()-.5);
-      const end=new THREE.Vector3(Math.cos(endAngle)*this.pathRadius,0,Math.sin(endAngle)*this.pathRadius);
-      const control=new THREE.Vector3((Math.random()-.5)*30,0,(Math.random()-.5)*30);
+      let end=new THREE.Vector3(Math.cos(endAngle)*this.pathRadius,0,Math.sin(endAngle)*this.pathRadius);
+      let control=new THREE.Vector3((Math.random()-.5)*30,0,(Math.random()-.5)*30);
+      if(this.foamMode==="boat-mix"){
+        const direction=Math.random()<.5?1:-1;
+        start=new THREE.Vector3(-direction*this.pathRadius,0,(Math.random()-.5)*this.pathRadius*.55);
+        end=new THREE.Vector3(direction*this.pathRadius,0,(Math.random()-.5)*this.pathRadius*.55);
+        control=new THREE.Vector3((Math.random()-.5)*this.pathRadius*.22,0,(Math.random()-.5)*this.pathRadius*.38);
+      }
       this.route=new THREE.QuadraticBezierCurve3(start,control,end);
       const visible=this.calculateVisibleRange();
       if(visible.end-visible.start<.1)continue;
@@ -376,7 +390,7 @@ export class WakeApp {
       foamInput={...input,uv:new THREE.Vector2((this.position.x-this.foamFieldCenter.x)/this.foamFieldSize+.5,.5-(this.position.z-this.foamFieldCenter.y)/this.foamFieldSize),fieldScale:WORLD_SIZE/this.foamFieldSize};
     }
     this.foam.update(foamInput,this.settings,this.foamMode==="boat-mix");
-    const uniforms=this.surface.material.uniforms;uniforms.uState.value=this.simulation.stateTexture;uniforms.uVelocity.value=this.simulation.velocityTexture;uniforms.uFoam.value=this.foam.texture;uniforms.uTexel.value.setScalar(1/this.simulation.resolution);uniforms.uTime.value=time;uniforms.uWaveHeight.value=this.settings.waveHeight;
+    const uniforms=this.surface.material.uniforms;uniforms.uState.value=this.simulation.stateTexture;uniforms.uVelocity.value=this.simulation.velocityTexture;uniforms.uFoam.value=this.foam.texture;uniforms.uTexel.value.setScalar(1/this.simulation.resolution);uniforms.uFoamTexel.value.setScalar(this.foam.texelSize);uniforms.uTime.value=time;uniforms.uWaveHeight.value=this.settings.waveHeight;
     this.spray.update(dt,{position:this.position,forward:this.forward,speed:input.speed,acceleration:input.acceleration,yawRate:input.yawRate},this.settings);
     this.updateFallbackTrail();this.renderer.render(this.scene,this.camera);this.monitorQuality(rawDt);this.frame=requestAnimationFrame(this.animate);
   };
@@ -384,7 +398,7 @@ export class WakeApp {
   private monitorQuality(dt:number){
     if(this.settings.quality!=="auto"||this.elapsed<4)return;this.frameSamples.push(dt);const span=this.frameSamples.reduce((a,b)=>a+b,0);if(span<2.5)return;
     const fps=this.frameSamples.length/span;this.frameSamples=[];const mobile=window.matchMedia("(pointer: coarse)").matches||window.innerWidth<760;
-    if(fps<(mobile?27:44)){if(this.resolvedQuality==="high"){this.applyQuality("medium");this.elapsed=0;}else if(this.resolvedQuality==="medium"){this.applyQuality("low");this.elapsed=0;}}
+    if(fps<(mobile?27:44)){if(this.resolvedQuality==="high"){this.applyQuality("medium");this.elapsed=0;}else if(mobile&&this.resolvedQuality==="medium"){this.applyQuality("low");this.elapsed=0;}}
   }
 
   destroy(){

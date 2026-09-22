@@ -5,8 +5,10 @@ import { Renderer } from "../../../Vortex/core/Renderer";
 import type { WakePalette, WakeSettings } from "./WakeSettings";
 import type { WakeInput } from "./WakeSimulation";
 
-const GRID_SIZE=160;
-const OUTPUT_SIZE=768;
+const MOBILE_GRID_SIZE=160;
+const DESKTOP_GRID_SIZE=256;
+const MOBILE_OUTPUT_SIZE=768;
+const DESKTOP_OUTPUT_SIZE=1024;
 const REFERENCE_GRID=144;
 const STERN_OFFSET=.018;
 const HULL_FORCE_HALF_WIDTH=.011;
@@ -14,25 +16,33 @@ const DYE_SEGMENT_LENGTH=9;
 
 export class VortexFoam {
   readonly texture:THREE.CanvasTexture;
-  private solver=new FluidSolver(GRID_SIZE,GRID_SIZE);
+  readonly texelSize:number;
+  private solver:FluidSolver;
+  private outputSize:number;
   private dyeCanvas=document.createElement("canvas");
   private canvas=document.createElement("canvas");
   private context=this.canvas.getContext("2d")!;
-  private dyeRenderer=DyeRenderer.create(this.dyeCanvas);
+  private dyeRenderer:DyeRenderer|null;
   private cpuRenderer=new Renderer();
   private previousUv:THREE.Vector2|null=null;
   private dyeTravel=0;
   private palette:WakePalette="monochrome";
 
-  constructor(){
-    this.canvas.width=OUTPUT_SIZE;this.canvas.height=OUTPUT_SIZE;
-    this.dyeRenderer?.resize(this.solver,OUTPUT_SIZE,OUTPUT_SIZE);
+  constructor(highDetail=false){
+    const gridSize=highDetail?DESKTOP_GRID_SIZE:MOBILE_GRID_SIZE;
+    this.outputSize=highDetail?DESKTOP_OUTPUT_SIZE:MOBILE_OUTPUT_SIZE;
+    this.texelSize=1/gridSize;
+    this.solver=new FluidSolver(gridSize,gridSize);
+    this.dyeRenderer=DyeRenderer.create(this.dyeCanvas);
+    this.canvas.width=this.outputSize;this.canvas.height=this.outputSize;
+    this.dyeRenderer?.resize(this.solver,this.outputSize,this.outputSize);
     this.texture=new THREE.CanvasTexture(this.canvas);
     this.texture.colorSpace=THREE.SRGBColorSpace;
     this.texture.minFilter=THREE.LinearFilter;
     this.texture.magFilter=THREE.LinearFilter;
     this.texture.wrapS=THREE.ClampToEdgeWrapping;
     this.texture.wrapT=THREE.ClampToEdgeWrapping;
+    this.texture.generateMipmaps=false;
   }
 
   setPalette(palette:WakePalette){this.palette=palette;}
@@ -42,8 +52,8 @@ export class VortexFoam {
     const insideField=input.uv.x>=0&&input.uv.x<=1&&input.uv.y>=0&&input.uv.y<=1;
 
     if(this.previousUv&&insideField){
-      const travelPixels=input.uv.distanceTo(this.previousUv)*OUTPUT_SIZE;
-      const scale=GRID_SIZE/REFERENCE_GRID;
+      const travelPixels=input.uv.distanceTo(this.previousUv)*this.outputSize;
+      const scale=this.solver.W/REFERENCE_GRID;
       const invScale2=1/(scale*scale);
       // Keep each pressure jet local enough that the opposing lateral forces do not cancel.
       const fieldScale=input.fieldScale??1;
@@ -68,13 +78,22 @@ export class VortexFoam {
         const dyeStrength=40*THREE.MathUtils.lerp(.45,1,Math.min(speed,1))*invScale2;
 
         const inject=(position:THREE.Vector2,lateralDirection:number,strength:number)=>{
-          const gridX=Math.max(1,Math.min(this.solver.W,Math.floor(1+position.x*this.solver.W)));
+          const gridPositionX=THREE.MathUtils.clamp(1+position.x*this.solver.W,1,this.solver.W);
           // CanvasTexture flips its source vertically when it is uploaded to WebGL.
           // Convert UV-space position and velocity into the canvas/grid coordinate system.
-          const gridY=Math.max(1,Math.min(this.solver.H,Math.floor(1+(1-position.y)*this.solver.H)));
+          const gridPositionY=THREE.MathUtils.clamp(1+(1-position.y)*this.solver.H,1,this.solver.H);
+          const x0=Math.floor(gridPositionX),y0=Math.floor(gridPositionY);
+          const x1=Math.min(this.solver.W,x0+1),y1=Math.min(this.solver.H,y0+1);
+          const tx=gridPositionX-x0,ty=gridPositionY-y0;
           const velocity=direction.clone().multiplyScalar(-aftCarry).addScaledVector(side,lateralDirection*strength);
-          this.solver.addVelocity(gridX,gridY,velocity.x*settings.force*invScale2,-velocity.y*settings.force*invScale2,velocityRadius);
-          this.solver.addDye(gridX,gridY,color[0]*dyeStrength,color[1]*dyeStrength,color[2]*dyeStrength,dyeRadius);
+          const samples:[[number,number,number],[number,number,number],[number,number,number],[number,number,number]]=[
+            [x0,y0,(1-tx)*(1-ty)],[x1,y0,tx*(1-ty)],[x0,y1,(1-tx)*ty],[x1,y1,tx*ty],
+          ];
+          for(const [gridX,gridY,weight] of samples){
+            if(weight<=.0001)continue;
+            this.solver.addVelocity(gridX,gridY,velocity.x*settings.force*invScale2*weight,-velocity.y*settings.force*invScale2*weight,velocityRadius);
+            this.solver.addDye(gridX,gridY,color[0]*dyeStrength*weight,color[1]*dyeStrength*weight,color[2]*dyeStrength*weight,dyeRadius);
+          }
         };
 
         inject(stern.clone().addScaledVector(side,HULL_FORCE_HALF_WIDTH*fieldScale),1,leftStrength);
@@ -100,18 +119,18 @@ export class VortexFoam {
     this.solver.step();
     const gpuRendered=this.dyeRenderer?.render(this.solver,settings.saturation,settings.brightness)??false;
     if(gpuRendered){
-      this.context.clearRect(0,0,OUTPUT_SIZE,OUTPUT_SIZE);
-      this.context.drawImage(this.dyeCanvas,0,0,OUTPUT_SIZE,OUTPUT_SIZE);
+      this.context.clearRect(0,0,this.outputSize,this.outputSize);
+      this.context.drawImage(this.dyeCanvas,0,0,this.outputSize,this.outputSize);
     }else{
-      this.cpuRenderer.render(this.context,this.solver.W,this.solver.H,this.solver.W+2,this.solver.dR,this.solver.dG,this.solver.dB,OUTPUT_SIZE,OUTPUT_SIZE);
+      this.cpuRenderer.render(this.context,this.solver.W,this.solver.H,this.solver.W+2,this.solver.dR,this.solver.dG,this.solver.dB,this.outputSize,this.outputSize);
     }
-    if(settings.showVectors)this.cpuRenderer.renderVectors(this.context,this.solver.W,this.solver.H,this.solver.W+2,this.solver.u,this.solver.v,OUTPUT_SIZE,OUTPUT_SIZE);
+    if(settings.showVectors)this.cpuRenderer.renderVectors(this.context,this.solver.W,this.solver.H,this.solver.W+2,this.solver.u,this.solver.v,this.outputSize,this.outputSize);
     this.texture.needsUpdate=true;
   }
 
   reset(){
     this.solver.reset();this.dyeRenderer?.reset();this.previousUv=null;this.dyeTravel=0;
-    this.context.clearRect(0,0,OUTPUT_SIZE,OUTPUT_SIZE);this.texture.needsUpdate=true;
+    this.context.clearRect(0,0,this.outputSize,this.outputSize);this.texture.needsUpdate=true;
   }
 
   dispose(){this.dyeRenderer?.destroy();this.texture.dispose();}
