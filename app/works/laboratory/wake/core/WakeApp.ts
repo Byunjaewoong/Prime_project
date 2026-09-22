@@ -47,32 +47,23 @@ float ambientWave(vec2 p){
  float timeline=uTime*uAmbientSpeed*.085;
  vec2 travel=vec2(cos(uAmbientDirection),sin(uAmbientDirection));
  float wave=0.0;
- for(int i=0;i<9;i++){
+ for(int i=0;i<7;i++){
   float id=float(i),offset=waveHash(id*19.73+2.17)*4.0;
   float localTime=timeline+offset,generation=floor(localTime),age=fract(localTime);
   vec2 random=waveHash2(vec2(id*7.31+generation,generation*3.17+id));
-  vec2 center=uFoamFieldCenter+(random-.5)*uFoamFieldSize*.9;
+  vec2 center=uFoamFieldCenter+(random-.5)*uFoamFieldSize*.82;
   center+=travel*(age-.5)*uFoamFieldSize*.07;
-  vec2 fromCenter=p-center;
-  float distanceToCenter=length(fromCenter);
-  float radius=mix(uFoamFieldSize*.075,uFoamFieldSize*.29,age);
-  float width=uFoamFieldSize*mix(.011,.024,age);
-  float ridge=(distanceToCenter-radius)/max(width,.001);
-  float packet=exp(-ridge*ridge)*cos(ridge*1.55);
-  vec2 centerFacing=normalize(uFoamFieldCenter-center+vec2(.0001));
-  float arcJitter=(waveHash(id*13.9+generation*4.1)-.5)*1.55;
-  float arcCos=cos(arcJitter),arcSin=sin(arcJitter);
-  vec2 arcAxis=vec2(centerFacing.x*arcCos-centerFacing.y*arcSin,centerFacing.x*arcSin+centerFacing.y*arcCos);
-  float halfSpan=mix(.72,1.45,waveHash(id*11.7+generation*2.3));
-  float arcStart=cos(halfSpan);
-  float arcMask=smoothstep(arcStart,min(1.0,arcStart+.16),dot(fromCenter/max(distanceToCenter,.001),arcAxis));
-  packet*=arcMask;
+  float distanceToCenter=length(p-center);
+  float radius=mix(uFoamFieldSize*.018,uFoamFieldSize*.13,age);
+  float width=uFoamFieldSize*mix(.012,.026,age);
+  float packet=exp(-pow((distanceToCenter-radius)/max(width,.001),2.0));
   float life=sin(age*3.14159265);life*=life;
-  float detailGate=1.0-smoothstep(uAmbientDetail*9.0,uAmbientDetail*9.0+1.0,id);
-  wave+=packet*life*detailGate*(.7+random.y*.45);
+  float detailGate=1.0-smoothstep(uAmbientDetail*7.0,uAmbientDetail*7.0+1.0,id);
+  float phase=distanceToCenter*(.42+uAmbientScale*1.05)-age*(5.0+uAmbientScale*4.0)+random.x*6.2831853;
+  wave+=sin(phase)*packet*life*detailGate*(.7+random.y*.45);
  }
  wave=wave/(1.0+abs(wave)*.35);
- return wave*.052*uAmbientHeight*uAmbientEnabled;
+ return wave*.034*uAmbientHeight*uAmbientEnabled;
 }
 void main(){
  vec4 world=modelMatrix*vec4(position,1.0);
@@ -145,11 +136,9 @@ void main(){
   vec3 water=mix(uDeepColor,uShallowColor,clamp(fresnel*.62+diffuse*.31,0.0,1.0));
   water*=.72+waterTexture*.48;
   water+=vec3(spec*1.35+sparkle*1.8+waterTexture*.026);
- float waveSignal=clamp(vAmbientWave/max(.001,uAmbientHeight*.052),-1.0,1.0);
- float crest=smoothstep(.08,.72,waveSignal)*uAmbientEnabled;
- float trough=smoothstep(.08,.72,-waveSignal)*uAmbientEnabled;
- water+=vec3(crest*(.055+uAmbientHeight*.06)+(1.0-normal.y)*.08*uAmbientEnabled);
- water*=1.0-trough*.09;
+ float crestSignal=vAmbientWave/max(.001,uAmbientHeight*.034)*.5+.5;
+ float crest=smoothstep(.58,.9,crestSignal)*uAmbientEnabled;
+ water+=vec3(crest*(.018+uAmbientHeight*.025)+(1.0-normal.y)*.035*uAmbientEnabled);
  water=mix(water,uDeepColor,backgroundFoam);
  water=mix(water,max(water,visibleFoam),clamp(brightFoam,0.0,1.0));
  gl_FragColor=vec4(water,1.0);
