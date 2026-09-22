@@ -102,7 +102,8 @@ void main(){
   vec3 water=mix(uDeepColor,uShallowColor,clamp(fresnel*.62+diffuse*.31,0.0,1.0));
   water*=.72+waterTexture*.48;
   water+=vec3(spec*1.35+sparkle*1.8+waterTexture*.026);
- water=mix(water,uDeepColor,backgroundFoam);
+ vec3 backgroundDyeColor=mix(uDeepColor,vec3(1.0),.5);
+ water=mix(water,backgroundDyeColor,backgroundFoam);
  water=mix(water,max(water,visibleFoam),clamp(brightFoam,0.0,1.0));
  gl_FragColor=vec4(water,1.0);
 }
