@@ -6,6 +6,12 @@ export type WakeSettings = {
   cruiseSpeed: number;
   wakeForce: number;
   waveHeight: number;
+  ambientWaves: boolean;
+  ambientWaveHeight: number;
+  ambientWaveScale: number;
+  ambientWaveSpeed: number;
+  ambientWaveDirection: number;
+  ambientWaveDetail: number;
   vorticity: number;
   dyeDecay: number;
   force: number;
@@ -25,6 +31,12 @@ export const DEFAULT_WAKE_SETTINGS: WakeSettings = {
   cruiseSpeed: 1,
   wakeForce: 1,
   waveHeight: 0.8,
+  ambientWaves: true,
+  ambientWaveHeight: 0.8,
+  ambientWaveScale: 1,
+  ambientWaveSpeed: 1,
+  ambientWaveDirection: 0,
+  ambientWaveDetail: 1,
   vorticity: 6,
   dyeDecay: 0.988,
   force: 0.1,
