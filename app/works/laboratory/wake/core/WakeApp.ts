@@ -7,6 +7,7 @@ import { DEFAULT_WAKE_SETTINGS, QUALITY_PRESETS, resolveInitialQuality, type Res
 
 const WORLD_SIZE=72;
 const BOAT_LENGTH=2.8;
+const WAKE2_RESPAWN_DELAY=3;
 // Three.js uses Y as the vertical axis (the water plane spans X/Z).
 const BOAT_WATERLINE_HEIGHT=.12;
 // The GLB's longitudinal axis is X; rotate it onto the study's Z-forward axis.
@@ -154,6 +155,8 @@ export class WakeApp {
   private routeEndProgress=1;
   private routeLength=1;
   private routeTarget=new THREE.Vector3();
+  private boatActive=true;
+  private respawnDelay=0;
   private pathRadius=52;
   private frustum=new THREE.Frustum();
   private projectionScreenMatrix=new THREE.Matrix4();
@@ -265,11 +268,12 @@ export class WakeApp {
   }
 
   setPointerTarget(clientX:number,clientY:number){
+    if(!this.boatActive)return;
     const rect=this.canvas.getBoundingClientRect();this.pointer.set((clientX-rect.left)/rect.width*2-1,-((clientY-rect.top)/rect.height)*2+1);
     this.raycaster.setFromCamera(this.pointer,this.camera);const hit=new THREE.Vector3();
     if(this.raycaster.ray.intersectPlane(this.waterPlane,hit)){hit.x=THREE.MathUtils.clamp(hit.x,-29,29);hit.z=THREE.MathUtils.clamp(hit.z,-29,29);this.pointerTarget=hit;}
   }
-  clearPointerTarget(){this.pointerTarget=null;this.resumeOriginalRoute();}
+  clearPointerTarget(){this.pointerTarget=null;if(this.boatActive)this.resumeOriginalRoute();}
   resetFoam(){this.foam.reset();}
 
   resize(){
@@ -317,8 +321,12 @@ export class WakeApp {
       if(visible.end-visible.start<.1)continue;
       this.routeProgress=visible.start;this.routeEndProgress=visible.end;this.routeLength=Math.max(this.route.getLength(),.001);this.routeTarget.copy(this.route.getPoint(visible.end));
       this.position.copy(this.route.getPoint(visible.start));
-      const tangent=this.route.getTangent(visible.start).normalize();this.forward.copy(tangent);this.heading=Math.atan2(tangent.x,tangent.z);this.applyBoatTransform(0);return;
+      const tangent=this.route.getTangent(visible.start).normalize();this.forward.copy(tangent);this.heading=Math.atan2(tangent.x,tangent.z);this.boatActive=true;this.boat.visible=true;this.fallbackTrail.visible=!this.simulation.supported;this.applyBoatTransform(0);return;
     }
+  }
+
+  private waitForNextPath(){
+    this.boatActive=false;this.respawnDelay=WAKE2_RESPAWN_DELAY;this.route=null;this.boat.visible=false;this.fallbackTrail.visible=false;
   }
 
   private resumeOriginalRoute(){
@@ -343,11 +351,16 @@ export class WakeApp {
   }
 
   private updateBoat(dt:number,time:number){
+    if(!this.boatActive){
+      this.respawnDelay-=dt;
+      if(this.respawnDelay<=0)this.resetPath();
+      return;
+    }
     if(this.pointerTarget)this.steerTo(this.pointerTarget,dt);
     else if(this.route){
       const oldSpeed=this.speed;this.speed=THREE.MathUtils.damp(this.speed,3.15*this.settings.cruiseSpeed,1.35,dt);this.acceleration=(this.speed-oldSpeed)/Math.max(dt,.001);
       const previousHeading=this.heading;this.routeProgress+=this.speed*dt/this.routeLength;
-      if(this.routeProgress>this.routeEndProgress){this.resetPath();return;}
+      if(this.routeProgress>this.routeEndProgress){if(this.foamMode==="boat-mix")this.waitForNextPath();else this.resetPath();return;}
       this.position.copy(this.route.getPoint(this.routeProgress));this.forward.copy(this.route.getTangent(this.routeProgress).normalize());this.heading=Math.atan2(this.forward.x,this.forward.z);this.yawRate=shortestAngle(this.heading-previousHeading)/Math.max(dt,.001);
     }
     this.applyBoatTransform(time);
@@ -363,16 +376,16 @@ export class WakeApp {
   private animate=(now:number)=>{
     if(this.destroyed)return;const rawDt=this.clock.getDelta(),dt=Math.min(rawDt,.034),time=now*.001;this.elapsed+=rawDt;
     this.updateBoat(dt,time);
-    const uv=new THREE.Vector2(this.position.x/WORLD_SIZE+.5,.5-this.position.z/WORLD_SIZE);const direction=new THREE.Vector2(this.forward.x,-this.forward.z).normalize();
-    const input:WakeInput={uv,direction,speed:this.speed/3.2,acceleration:this.acceleration/3,yawRate:this.yawRate};
+    const uv=this.boatActive?new THREE.Vector2(this.position.x/WORLD_SIZE+.5,.5-this.position.z/WORLD_SIZE):new THREE.Vector2(-10,-10);const direction=new THREE.Vector2(this.forward.x,-this.forward.z).normalize();
+    const input:WakeInput={uv,direction,speed:this.boatActive?this.speed/3.2:0,acceleration:this.boatActive?this.acceleration/3:0,yawRate:this.boatActive?this.yawRate:0};
     this.simulation.step(dt,input,this.settings,QUALITY_PRESETS[this.resolvedQuality].pressureIterations);
     let foamInput=input;
-    if(this.foamMode==="boat-mix"){
+    if(this.foamMode==="boat-mix"&&this.boatActive){
       foamInput={...input,uv:new THREE.Vector2((this.position.x-this.foamFieldCenter.x)/this.foamFieldSize+.5,.5-(this.position.z-this.foamFieldCenter.y)/this.foamFieldSize),fieldScale:WORLD_SIZE/this.foamFieldSize};
     }
     this.foam.update(foamInput,this.settings,this.foamMode==="boat-mix");
     const uniforms=this.surface.material.uniforms;uniforms.uState.value=this.simulation.stateTexture;uniforms.uVelocity.value=this.simulation.velocityTexture;uniforms.uFoam.value=this.foam.texture;uniforms.uTexel.value.setScalar(1/this.simulation.resolution);uniforms.uTime.value=time;uniforms.uWaveHeight.value=this.settings.waveHeight;
-    this.spray.update(dt,{position:this.position,forward:this.forward,speed:this.speed/3.2,acceleration:this.acceleration/3,yawRate:this.yawRate},this.settings);
+    this.spray.update(dt,{position:this.position,forward:this.forward,speed:input.speed,acceleration:input.acceleration,yawRate:input.yawRate},this.settings);
     this.updateFallbackTrail();this.renderer.render(this.scene,this.camera);this.monitorQuality(rawDt);this.frame=requestAnimationFrame(this.animate);
   };
 

@@ -46,9 +46,9 @@ export class VortexFoam {
       const scale=GRID_SIZE/REFERENCE_GRID;
       const invScale2=1/(scale*scale);
       // Keep each pressure jet local enough that the opposing lateral forces do not cancel.
-      const velocityRadius=Math.max(1,Math.round(2*scale));
-      const dyeRadius=Math.max(1,Math.round(3*scale));
       const fieldScale=input.fieldScale??1;
+      const velocityRadius=Math.max(1,Math.round(2*scale*fieldScale));
+      const dyeRadius=Math.max(1,Math.round(3*scale*fieldScale));
       const speed=THREE.MathUtils.clamp(input.speed,0,1.5);
       const cutStrength=Math.min(travelPixels,6)*THREE.MathUtils.lerp(.65,1.35,Math.min(speed,1));
       this.dyeTravel+=travelPixels;
