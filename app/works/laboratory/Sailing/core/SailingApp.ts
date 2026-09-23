@@ -189,7 +189,7 @@ export class SailingApp {
     this.resolvedQuality=this.settings.quality==="auto"?resolveInitialQuality():this.settings.quality;
     const preset=QUALITY_PRESETS[this.resolvedQuality];
     this.simulation=new SailingSimulation(this.renderer,this.waveResolution(this.resolvedQuality));
-    this.foam=new VortexFoam(this.settings.vortexGridSize,this.settings.vortexOutputSize);
+    this.foam=new VortexFoam(this.settings.vortexGridSize);
     this.spray=new SpraySystem(2400,preset.particles);
     this.scene.add(this.spray.points);
     this.createSurface(preset.surfaceSegments);
@@ -259,7 +259,7 @@ export class SailingApp {
     if(partial.waveHeight!==undefined)this.surface.material.uniforms.uWaveHeight.value=partial.waveHeight;
     if(partial.reflectionIntensity!==undefined)this.surface.material.uniforms.uReflectionIntensity.value=partial.reflectionIntensity;
     if(partial.lightDirection!==undefined)this.surface.material.uniforms.uLightDirection.value=partial.lightDirection;
-    if(partial.vortexGridSize!==undefined||partial.vortexOutputSize!==undefined)this.foam.setResolution(this.settings.vortexGridSize,this.settings.vortexOutputSize);
+    if(partial.vortexGridSize!==undefined)this.foam.setResolution(this.settings.vortexGridSize);
     if(partial.quality&&partial.quality!==previousQuality){const next=partial.quality==="auto"?resolveInitialQuality():partial.quality;this.applyQuality(next);}
   }
 
@@ -402,7 +402,7 @@ export class SailingApp {
     const fieldScale=WORLD_SIZE/this.foamFieldSize;
     const input:SailingInput={uv,direction,speed:this.boatActive?this.speed/3.2:0,acceleration:this.boatActive?this.acceleration/3:0,yawRate:this.boatActive?this.yawRate:0,fieldScale};
     this.simulation.step(dt,input,this.settings,QUALITY_PRESETS[this.resolvedQuality].pressureIterations);
-    this.foam.update(input,this.settings,true);
+    this.foam.update(input,this.settings,true,rawDt);
     const uniforms=this.surface.material.uniforms;uniforms.uState.value=this.simulation.stateTexture;uniforms.uVelocity.value=this.simulation.velocityTexture;uniforms.uFoam.value=this.foam.texture;uniforms.uTexel.value.setScalar(1/this.simulation.resolution);uniforms.uTime.value=time;uniforms.uWaveHeight.value=this.settings.waveHeight;
     this.spray.update(dt,{position:this.position,forward:this.forward,speed:input.speed,acceleration:input.acceleration,yawRate:input.yawRate},this.settings);
     this.updateFallbackTrail();this.renderer.render(this.scene,this.camera);this.monitorQuality(rawDt);this.frame=requestAnimationFrame(this.animate);

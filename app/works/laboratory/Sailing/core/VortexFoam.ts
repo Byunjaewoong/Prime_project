@@ -6,6 +6,7 @@ import type { SailingPalette, SailingSettings } from "./SailingSettings";
 import type { SailingInput } from "./SailingSimulation";
 
 const REFERENCE_GRID=144;
+const OUTPUT_SIZE=1536;
 const STERN_OFFSET=.018;
 const HULL_FORCE_HALF_WIDTH=.011;
 const TRAIL_LENGTH=.055;
@@ -27,10 +28,11 @@ export class VortexFoam {
   private cpuRenderer=new Renderer();
   private previousUv:THREE.Vector2|null=null;
   private dyeTravel=0;
+  private updateAccumulator=0;
   private palette:SailingPalette="monochrome";
 
-  constructor(gridSize=384,outputSize=1536){
-    this.outputSize=outputSize;
+  constructor(gridSize=384){
+    this.outputSize=OUTPUT_SIZE;
     this.solver=new FluidSolver(gridSize,gridSize);
     this.dyeRenderer=DyeRenderer.create(this.dyeCanvas);
     this.canvas.width=this.outputSize;this.canvas.height=this.outputSize;
@@ -46,9 +48,8 @@ export class VortexFoam {
 
   setPalette(palette:SailingPalette){this.palette=palette;}
 
-  setResolution(gridSize:number,outputSize:number){
+  setResolution(gridSize:number){
     gridSize=Math.round(THREE.MathUtils.clamp(gridSize,96,512));
-    outputSize=Math.round(THREE.MathUtils.clamp(outputSize,512,2048));
     if(gridSize!==this.solver.W){
       const previous=this.solver;
       const next=new FluidSolver(gridSize,gridSize);
@@ -61,7 +62,6 @@ export class VortexFoam {
       next.vorticityEps=previous.vorticityEps;next.dyeDecay=previous.dyeDecay;next.velocityDecay=previous.velocityDecay;
       this.solver=next;
     }
-    if(outputSize!==this.outputSize){this.outputSize=outputSize;this.canvas.width=outputSize;this.canvas.height=outputSize;}
     this.dyeRenderer?.resize(this.solver,this.outputSize,this.outputSize);
     this.texture.needsUpdate=true;
   }
@@ -81,7 +81,12 @@ export class VortexFoam {
     }
   }
 
-  update(input:SailingInput,settings:SailingSettings,alternateBackground=false){
+  update(input:SailingInput,settings:SailingSettings,alternateBackground=false,frameDt=1/60){
+    const vortexFps=THREE.MathUtils.clamp(settings.vortexFps,24,60);
+    const interval=1/vortexFps;
+    this.updateAccumulator+=Math.min(frameDt,.1);
+    if(this.updateAccumulator<interval)return;
+    this.updateAccumulator%=interval;
     this.applySettings(settings);
     const insideField=input.uv.x>=0&&input.uv.x<=1&&input.uv.y>=0&&input.uv.y<=1;
 
@@ -94,7 +99,8 @@ export class VortexFoam {
       const velocityRadius=Math.max(1,Math.round(2*scale*fieldScale));
       const dyeRadius=Math.max(1,Math.round(1.5*scale*fieldScale));
       const speed=THREE.MathUtils.clamp(input.speed,0,1.5);
-      const cutStrength=Math.min(travelPixels,6)*THREE.MathUtils.lerp(.65,1.35,Math.min(speed,1));
+      const timeScale=60/vortexFps;
+      const cutStrength=Math.min(travelPixels,6)*THREE.MathUtils.lerp(.65,1.35,Math.min(speed,1))/timeScale;
       this.dyeTravel+=input.uv.distanceTo(this.previousUv)*REFERENCE_GRID;
 
       if(cutStrength>.001){
@@ -141,9 +147,11 @@ export class VortexFoam {
   }
 
   private applySettings(settings:SailingSettings){
+    const timeScale=60/THREE.MathUtils.clamp(settings.vortexFps,24,60);
+    this.solver.dt=.1*timeScale;
     this.solver.vorticityEps=settings.vorticity;
-    this.solver.dyeDecay=settings.dyeDecay;
-    this.solver.velocityDecay=settings.drag;
+    this.solver.dyeDecay=Math.pow(settings.dyeDecay,timeScale);
+    this.solver.velocityDecay=Math.pow(settings.drag,timeScale);
     this.solver.diffusion=settings.viscosity;
     this.cpuRenderer.saturation=settings.saturation;
     this.cpuRenderer.brightness=settings.brightness;
@@ -164,7 +172,7 @@ export class VortexFoam {
   }
 
   reset(){
-    this.solver.reset();this.dyeRenderer?.reset();this.previousUv=null;this.dyeTravel=0;
+    this.solver.reset();this.dyeRenderer?.reset();this.previousUv=null;this.dyeTravel=0;this.updateAccumulator=0;
     this.context.clearRect(0,0,this.outputSize,this.outputSize);this.texture.needsUpdate=true;
   }
 

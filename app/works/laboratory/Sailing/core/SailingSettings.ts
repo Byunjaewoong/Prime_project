@@ -22,7 +22,7 @@ export type SailingSettings = {
   sprayAmount: number;
   sprayHeight: number;
   vortexGridSize: number;
-  vortexOutputSize: number;
+  vortexFps: number;
   quality: SailingQuality;
 };
 
@@ -47,7 +47,7 @@ export const SAILING_DEFAULT_SETTINGS: SailingSettings = {
   sprayAmount: 1,
   sprayHeight: 1,
   vortexGridSize: 384,
-  vortexOutputSize: 1536,
+  vortexFps: 30,
   quality: "high",
 };
 
@@ -60,7 +60,6 @@ export const SAILING_MOBILE_DEFAULT_SETTINGS: SailingSettings = {
   waveSpeed: 0.6,
   waveDamping: 0.45,
   vortexGridSize: 256,
-  vortexOutputSize: 1536,
 };
 
 export const isMobileSailingDevice = () =>
