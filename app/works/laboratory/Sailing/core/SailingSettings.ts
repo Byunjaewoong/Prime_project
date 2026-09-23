@@ -39,7 +39,7 @@ export const SAILING_DEFAULT_SETTINGS: SailingSettings = {
   dyeDecay: 0.995,
   force: 0.088,
   drag: 0.92,
-  viscosity: 0.00001,
+  viscosity: 0,
   saturation: 1.1,
   brightness: 1.3,
   backgroundDyeRatio: 0,
@@ -59,7 +59,7 @@ export const SAILING_MOBILE_DEFAULT_SETTINGS: SailingSettings = {
   waveHeight: 0.9,
   waveSpeed: 0.6,
   waveDamping: 0.45,
-  vortexGridSize: 256,
+  vortexGridSize: 384,
 };
 
 export const isMobileSailingDevice = () =>
