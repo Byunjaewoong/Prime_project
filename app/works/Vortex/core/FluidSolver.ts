@@ -1,6 +1,8 @@
 // app/works/FluidSim_cpu/core/FluidSolver.ts
 // Jos Stam "Stable Fluids" — rectangular grid Navier-Stokes with RGB dye (CPU)
 
+export type FluidRegion = { minX:number; maxX:number; minY:number; maxY:number };
+
 export class FluidSolver {
   W: number;
   H: number;
@@ -96,40 +98,41 @@ export class FluidSolver {
     }
   }
 
-  step(): void {
-    this.addSource(this.u, this.u0);
-    this.addSource(this.v, this.v0);
-    this.vorticityConfinement();
+  step(region?: FluidRegion): void {
+    const bounds = this.bounds(region);
+    this.addSource(this.u, this.u0, bounds);
+    this.addSource(this.v, this.v0, bounds);
+    this.vorticityConfinement(bounds);
 
     this.swap("u0", "u");
-    this.diffuse(1, this.u, this.u0, this.diffusion);
+    this.diffuse(1, this.u, this.u0, this.diffusion, bounds, !!region);
     this.swap("v0", "v");
-    this.diffuse(2, this.v, this.v0, this.diffusion);
-    this.project(this.u, this.v, this.u0, this.v0);
+    this.diffuse(2, this.v, this.v0, this.diffusion, bounds, !!region);
+    this.project(this.u, this.v, this.u0, this.v0, bounds);
 
     this.swap("u0", "u");
     this.swap("v0", "v");
-    this.advect(1, this.u, this.u0, this.u0, this.v0);
-    this.advect(2, this.v, this.v0, this.u0, this.v0);
-    this.project(this.u, this.v, this.u0, this.v0);
+    this.advect(1, this.u, this.u0, this.u0, this.v0, bounds, !!region);
+    this.advect(2, this.v, this.v0, this.u0, this.v0, bounds, !!region);
+    this.project(this.u, this.v, this.u0, this.v0, bounds);
 
-    this.addSource(this.dR, this.dR0);
-    this.addSource(this.dG, this.dG0);
-    this.addSource(this.dB, this.dB0);
-
-    this.swap("dR0", "dR");
-    this.diffuse(0, this.dR, this.dR0, this.dyeDiff);
-    this.swap("dG0", "dG");
-    this.diffuse(0, this.dG, this.dG0, this.dyeDiff);
-    this.swap("dB0", "dB");
-    this.diffuse(0, this.dB, this.dB0, this.dyeDiff);
+    this.addSource(this.dR, this.dR0, bounds);
+    this.addSource(this.dG, this.dG0, bounds);
+    this.addSource(this.dB, this.dB0, bounds);
 
     this.swap("dR0", "dR");
-    this.advect(0, this.dR, this.dR0, this.u, this.v);
+    this.diffuse(0, this.dR, this.dR0, this.dyeDiff, bounds, !!region);
     this.swap("dG0", "dG");
-    this.advect(0, this.dG, this.dG0, this.u, this.v);
+    this.diffuse(0, this.dG, this.dG0, this.dyeDiff, bounds, !!region);
     this.swap("dB0", "dB");
-    this.advect(0, this.dB, this.dB0, this.u, this.v);
+    this.diffuse(0, this.dB, this.dB0, this.dyeDiff, bounds, !!region);
+
+    this.swap("dR0", "dR");
+    this.advect(0, this.dR, this.dR0, this.u, this.v, bounds, !!region);
+    this.swap("dG0", "dG");
+    this.advect(0, this.dG, this.dG0, this.u, this.v, bounds, !!region);
+    this.swap("dB0", "dB");
+    this.advect(0, this.dB, this.dB0, this.u, this.v, bounds, !!region);
 
     this.applyDyeDecay();
     const vd = this.velocityDecay;
@@ -140,9 +143,22 @@ export class FluidSolver {
     this.dR0.fill(0); this.dG0.fill(0); this.dB0.fill(0);
   }
 
-  private addSource(target: Float64Array, source: Float64Array): void {
+  private bounds(region?: FluidRegion): FluidRegion {
+    return {
+      minX: Math.max(1, Math.floor(region?.minX ?? 1)),
+      maxX: Math.min(this.W, Math.ceil(region?.maxX ?? this.W)),
+      minY: Math.max(1, Math.floor(region?.minY ?? 1)),
+      maxY: Math.min(this.H, Math.ceil(region?.maxY ?? this.H)),
+    };
+  }
+
+  private addSource(target: Float64Array, source: Float64Array, bounds: FluidRegion): void {
     const dt = this.dt;
-    for (let i = 0; i < this.size; i++) target[i] += dt * source[i];
+    for (let j = bounds.minY; j <= bounds.maxY; j++)
+      for (let i = bounds.minX; i <= bounds.maxX; i++) {
+        const idx = this.IX(i, j);
+        target[idx] += dt * source[idx];
+      }
   }
 
   private swap(a: "u" | "u0" | "v" | "v0" | "dR" | "dR0" | "dG" | "dG0" | "dB" | "dB0",
@@ -153,14 +169,15 @@ export class FluidSolver {
     this[b] = tmp;
   }
 
-  private diffuse(b: number, x: Float64Array, x0: Float64Array, diff: number): void {
+  private diffuse(b: number, x: Float64Array, x0: Float64Array, diff: number, bounds: FluidRegion, preserveOutside: boolean): void {
     const W = this.W, H = this.H;
+    if (preserveOutside) x.set(x0);
     const a = this.dt * diff * Math.max(W, H) ** 2;
     if (a === 0) { x.set(x0); return; }
     const c = 1 + 4 * a;
     for (let k = 0; k < 4; k++) {
-      for (let j = 1; j <= H; j++)
-        for (let i = 1; i <= W; i++) {
+      for (let j = bounds.minY; j <= bounds.maxY; j++)
+        for (let i = bounds.minX; i <= bounds.maxX; i++) {
           const idx = this.IX(i, j);
           x[idx] = (x0[idx] + a * (x[this.IX(i-1,j)] + x[this.IX(i+1,j)] + x[this.IX(i,j-1)] + x[this.IX(i,j+1)])) / c;
         }
@@ -168,12 +185,13 @@ export class FluidSolver {
     }
   }
 
-  private advect(b: number, d: Float64Array, d0: Float64Array, u: Float64Array, v: Float64Array): void {
+  private advect(b: number, d: Float64Array, d0: Float64Array, u: Float64Array, v: Float64Array, bounds: FluidRegion, preserveOutside: boolean): void {
     const W = this.W, H = this.H;
+    if (preserveOutside) d.set(d0);
     const N = Math.max(W, H);
     const dt0 = this.dt * N;
-    for (let j = 1; j <= H; j++)
-      for (let i = 1; i <= W; i++) {
+    for (let j = bounds.minY; j <= bounds.maxY; j++)
+      for (let i = bounds.minX; i <= bounds.maxX; i++) {
         const idx = this.IX(i, j);
         let x = i - dt0 * u[idx], y = j - dt0 * v[idx];
         if (x < 0.5) x = 0.5; if (x > W + 0.5) x = W + 0.5;
@@ -185,27 +203,28 @@ export class FluidSolver {
     this.setBoundary(b, d);
   }
 
-  private project(u: Float64Array, v: Float64Array, p: Float64Array, div: Float64Array): void {
+  private project(u: Float64Array, v: Float64Array, p: Float64Array, div: Float64Array, bounds: FluidRegion): void {
     const W = this.W, H = this.H;
     const N = Math.max(W, H);
     const h = 1 / N;
-    for (let j = 1; j <= H; j++)
-      for (let i = 1; i <= W; i++) {
+    p.fill(0);
+    for (let j = bounds.minY; j <= bounds.maxY; j++)
+      for (let i = bounds.minX; i <= bounds.maxX; i++) {
         const idx = this.IX(i, j);
         div[idx] = -0.5 * (h*(u[this.IX(i+1,j)]-u[this.IX(i-1,j)]) + h*(v[this.IX(i,j+1)]-v[this.IX(i,j-1)]));
         p[idx] = 0;
       }
     this.setBoundary(0, div); this.setBoundary(0, p);
     for (let k = 0; k < 20; k++) {
-      for (let j = 1; j <= H; j++)
-        for (let i = 1; i <= W; i++) {
+      for (let j = bounds.minY; j <= bounds.maxY; j++)
+        for (let i = bounds.minX; i <= bounds.maxX; i++) {
           const idx = this.IX(i, j);
           p[idx] = (div[idx] + p[this.IX(i-1,j)] + p[this.IX(i+1,j)] + p[this.IX(i,j-1)] + p[this.IX(i,j+1)]) / 4;
         }
       this.setBoundary(0, p);
     }
-    for (let j = 1; j <= H; j++)
-      for (let i = 1; i <= W; i++) {
+    for (let j = bounds.minY; j <= bounds.maxY; j++)
+      for (let i = bounds.minX; i <= bounds.maxX; i++) {
         const idx = this.IX(i, j);
         u[idx] -= 0.5 * N * (p[this.IX(i+1,j)] - p[this.IX(i-1,j)]);
         v[idx] -= 0.5 * N * (p[this.IX(i,j+1)] - p[this.IX(i,j-1)]);
@@ -229,16 +248,16 @@ export class FluidSolver {
     x[this.IX(W+1,H+1)] = 0.5*(x[this.IX(W,H+1)]+x[this.IX(W+1,H)]);
   }
 
-  private vorticityConfinement(): void {
+  private vorticityConfinement(bounds: FluidRegion): void {
     const W = this.W, H = this.H, curl = this.curl;
     const N = Math.max(W, H);
-    for (let j = 1; j <= H; j++)
-      for (let i = 1; i <= W; i++) {
+    for (let j = Math.max(1, bounds.minY - 1); j <= Math.min(H, bounds.maxY + 1); j++)
+      for (let i = Math.max(1, bounds.minX - 1); i <= Math.min(W, bounds.maxX + 1); i++) {
         const idx = this.IX(i, j);
         curl[idx] = 0.5*N*(this.v[this.IX(i+1,j)]-this.v[this.IX(i-1,j)]-(this.u[this.IX(i,j+1)]-this.u[this.IX(i,j-1)]));
       }
-    for (let j = 2; j < H; j++)
-      for (let i = 2; i < W; i++) {
+    for (let j = Math.max(2, bounds.minY); j <= Math.min(H - 1, bounds.maxY); j++)
+      for (let i = Math.max(2, bounds.minX); i <= Math.min(W - 1, bounds.maxX); i++) {
         const idx = this.IX(i, j);
         const dxC = (Math.abs(curl[this.IX(i+1,j)])-Math.abs(curl[this.IX(i-1,j)]))*0.5*N;
         const dyC = (Math.abs(curl[this.IX(i,j+1)])-Math.abs(curl[this.IX(i,j-1)]))*0.5*N;
