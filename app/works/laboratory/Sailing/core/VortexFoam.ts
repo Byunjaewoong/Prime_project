@@ -5,10 +5,6 @@ import { Renderer } from "../../../Vortex/core/Renderer";
 import type { SailingPalette, SailingSettings } from "./SailingSettings";
 import type { SailingInput } from "./SailingSimulation";
 
-const MOBILE_GRID_SIZE=256;
-const DESKTOP_GRID_SIZE=384;
-const MOBILE_OUTPUT_SIZE=1536;
-const DESKTOP_OUTPUT_SIZE=1536;
 const REFERENCE_GRID=144;
 const STERN_OFFSET=.018;
 const HULL_FORCE_HALF_WIDTH=.011;
@@ -33,9 +29,8 @@ export class VortexFoam {
   private dyeTravel=0;
   private palette:SailingPalette="monochrome";
 
-  constructor(highDetail=false){
-    const gridSize=highDetail?DESKTOP_GRID_SIZE:MOBILE_GRID_SIZE;
-    this.outputSize=highDetail?DESKTOP_OUTPUT_SIZE:MOBILE_OUTPUT_SIZE;
+  constructor(gridSize=384,outputSize=1536){
+    this.outputSize=outputSize;
     this.solver=new FluidSolver(gridSize,gridSize);
     this.dyeRenderer=DyeRenderer.create(this.dyeCanvas);
     this.canvas.width=this.outputSize;this.canvas.height=this.outputSize;
@@ -50,6 +45,41 @@ export class VortexFoam {
   }
 
   setPalette(palette:SailingPalette){this.palette=palette;}
+
+  setResolution(gridSize:number,outputSize:number){
+    gridSize=Math.round(THREE.MathUtils.clamp(gridSize,96,512));
+    outputSize=Math.round(THREE.MathUtils.clamp(outputSize,512,2048));
+    if(gridSize!==this.solver.W){
+      const previous=this.solver;
+      const next=new FluidSolver(gridSize,gridSize);
+      this.resample(previous.u,previous.W,previous.H,next.u,next.W,next.H);
+      this.resample(previous.v,previous.W,previous.H,next.v,next.W,next.H);
+      this.resample(previous.dR,previous.W,previous.H,next.dR,next.W,next.H);
+      this.resample(previous.dG,previous.W,previous.H,next.dG,next.W,next.H);
+      this.resample(previous.dB,previous.W,previous.H,next.dB,next.W,next.H);
+      next.dt=previous.dt;next.diffusion=previous.diffusion;next.dyeDiff=previous.dyeDiff;
+      next.vorticityEps=previous.vorticityEps;next.dyeDecay=previous.dyeDecay;next.velocityDecay=previous.velocityDecay;
+      this.solver=next;
+    }
+    if(outputSize!==this.outputSize){this.outputSize=outputSize;this.canvas.width=outputSize;this.canvas.height=outputSize;}
+    this.dyeRenderer?.resize(this.solver,this.outputSize,this.outputSize);
+    this.texture.needsUpdate=true;
+  }
+
+  private resample(source:Float64Array,sourceW:number,sourceH:number,target:Float64Array,targetW:number,targetH:number){
+    const sourceStride=sourceW+2,targetStride=targetW+2;
+    for(let y=1;y<=targetH;y++){
+      const sourceY=THREE.MathUtils.clamp(.5+(y-.5)*sourceH/targetH,1,sourceH);
+      const y0=Math.floor(sourceY),y1=Math.min(sourceH,y0+1),ty=sourceY-y0;
+      for(let x=1;x<=targetW;x++){
+        const sourceX=THREE.MathUtils.clamp(.5+(x-.5)*sourceW/targetW,1,sourceW);
+        const x0=Math.floor(sourceX),x1=Math.min(sourceW,x0+1),tx=sourceX-x0;
+        const top=THREE.MathUtils.lerp(source[x0+sourceStride*y0],source[x1+sourceStride*y0],tx);
+        const bottom=THREE.MathUtils.lerp(source[x0+sourceStride*y1],source[x1+sourceStride*y1],tx);
+        target[x+targetStride*y]=THREE.MathUtils.lerp(top,bottom,ty);
+      }
+    }
+  }
 
   update(input:SailingInput,settings:SailingSettings,alternateBackground=false){
     this.applySettings(settings);

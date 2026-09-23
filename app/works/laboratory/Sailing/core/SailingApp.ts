@@ -189,8 +189,7 @@ export class SailingApp {
     this.resolvedQuality=this.settings.quality==="auto"?resolveInitialQuality():this.settings.quality;
     const preset=QUALITY_PRESETS[this.resolvedQuality];
     this.simulation=new SailingSimulation(this.renderer,this.waveResolution(this.resolvedQuality));
-    const desktopFoam=!window.matchMedia("(pointer: coarse)").matches&&window.innerWidth>=760;
-    this.foam=new VortexFoam(desktopFoam);
+    this.foam=new VortexFoam(this.settings.vortexGridSize,this.settings.vortexOutputSize);
     this.spray=new SpraySystem(2400,preset.particles);
     this.scene.add(this.spray.points);
     this.createSurface(preset.surfaceSegments);
@@ -260,6 +259,7 @@ export class SailingApp {
     if(partial.waveHeight!==undefined)this.surface.material.uniforms.uWaveHeight.value=partial.waveHeight;
     if(partial.reflectionIntensity!==undefined)this.surface.material.uniforms.uReflectionIntensity.value=partial.reflectionIntensity;
     if(partial.lightDirection!==undefined)this.surface.material.uniforms.uLightDirection.value=partial.lightDirection;
+    if(partial.vortexGridSize!==undefined||partial.vortexOutputSize!==undefined)this.foam.setResolution(this.settings.vortexGridSize,this.settings.vortexOutputSize);
     if(partial.quality&&partial.quality!==previousQuality){const next=partial.quality==="auto"?resolveInitialQuality():partial.quality;this.applyQuality(next);}
   }
 

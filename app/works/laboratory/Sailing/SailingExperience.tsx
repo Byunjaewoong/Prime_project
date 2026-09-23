@@ -105,6 +105,8 @@ export default function SailingExperience(){
           <section className="sailing-section">
             <h4>Performance</h4>
             <label className="sailing-select"><span>Quality</span><select value={settings.quality} onInput={event=>update("quality",event.currentTarget.value as SailingQuality)}><option value="auto">Auto</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
+            <label className="sailing-select"><span>Vortex grid</span><select value={settings.vortexGridSize} onInput={event=>update("vortexGridSize",Number(event.currentTarget.value))}><option value="128">128²</option><option value="160">160²</option><option value="192">192²</option><option value="256">256²</option><option value="320">320²</option><option value="384">384²</option><option value="512">512²</option></select></label>
+            <label className="sailing-select"><span>Output texture</span><select value={settings.vortexOutputSize} onInput={event=>update("vortexOutputSize",Number(event.currentTarget.value))}><option value="768">768²</option><option value="1024">1024²</option><option value="1280">1280²</option><option value="1536">1536²</option><option value="2048">2048²</option></select></label>
           </section>
         </div>}
       <button type="button" className={"orbit-fab__main"+(menuOpen?" orbit-fab__main--active":"")} aria-label={menuOpen?"Close menu":"Open menu"} aria-expanded={menuOpen} onClick={()=>setMenuOpen(open=>!open)}>M</button>
