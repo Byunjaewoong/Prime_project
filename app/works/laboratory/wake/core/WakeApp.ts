@@ -408,7 +408,8 @@ export class WakeApp {
   }
 
   private applyBoatTransform(time:number){
-    this.boat.position.set(this.position.x,BOAT_WATERLINE_HEIGHT+Math.sin(time*2.1)*.025,this.position.z);this.boat.rotation.y=this.heading;
+    const waveClearance=this.foamMode==="boat-mix"?this.settings.waveHeight:0;
+    this.boat.position.set(this.position.x,BOAT_WATERLINE_HEIGHT+waveClearance+Math.sin(time*2.1)*.025,this.position.z);this.boat.rotation.y=this.heading;
   }
 
   private updateBoat(dt:number,time:number){
