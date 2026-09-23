@@ -8,7 +8,7 @@ import type { SailingInput } from "./SailingSimulation";
 const REFERENCE_GRID=144;
 const OUTPUT_SIZE=1536;
 const STERN_OFFSET=.018;
-const HULL_FORCE_HALF_WIDTH=.011;
+const HULL_FORCE_HALF_WIDTH=.014;
 const TRAIL_LENGTH=.055;
 const TRAIL_SAMPLES=7;
 
@@ -99,8 +99,8 @@ export class VortexFoam {
       const scale=this.solver.W/REFERENCE_GRID;
       const invScale2=1/(scale*scale);
       // Keep each pressure jet local enough that the opposing lateral forces do not cancel.
-      const velocityRadius=Math.max(1,Math.round(2*scale*fieldScale));
-      const dyeRadius=Math.max(1,Math.round(1.5*scale*fieldScale));
+      const velocityRadius=Math.max(1,Math.round(1.65*scale*fieldScale));
+      const dyeRadius=Math.max(1,Math.round(1.25*scale*fieldScale));
       const speed=THREE.MathUtils.clamp(input.speed,0,1.5);
       const timeScale=60/vortexFps;
       const cutStrength=Math.min(travelPixels,6)*THREE.MathUtils.lerp(.65,1.35,Math.min(speed,1))/timeScale;
@@ -136,7 +136,7 @@ export class VortexFoam {
           const progress=sample/(TRAIL_SAMPLES-1);
           const weight=THREE.MathUtils.lerp(1,.18,progress)/weightTotal;
           const trailCenter=stern.clone().addScaledVector(direction,-TRAIL_LENGTH*fieldScale*progress);
-          const halfWidth=THREE.MathUtils.lerp(HULL_FORCE_HALF_WIDTH,HULL_FORCE_HALF_WIDTH*1.85,progress)*fieldScale;
+          const halfWidth=THREE.MathUtils.lerp(HULL_FORCE_HALF_WIDTH,HULL_FORCE_HALF_WIDTH*2,progress)*fieldScale;
           const useBackground=alternateBackground&&ratio>0&&hash1(randomStep*TRAIL_SAMPLES+sample)<backgroundShare;
           const color=useBackground?backgroundColor:whiteColor;
           inject(trailCenter.clone().addScaledVector(side,halfWidth),1,leftStrength,weight,color);
