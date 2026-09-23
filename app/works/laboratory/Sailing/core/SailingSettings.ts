@@ -1,8 +1,8 @@
-export type WakePalette = "monochrome" | "deep-blue";
-export type WakeQuality = "auto" | "high" | "medium" | "low";
+export type SailingPalette = "monochrome" | "deep-blue";
+export type SailingQuality = "auto" | "high" | "medium" | "low";
 
-export type WakeSettings = {
-  palette: WakePalette;
+export type SailingSettings = {
+  palette: SailingPalette;
   cruiseSpeed: number;
   wakeForce: number;
   waveHeight: number;
@@ -21,34 +21,11 @@ export type WakeSettings = {
   showVectors: boolean;
   sprayAmount: number;
   sprayHeight: number;
-  quality: WakeQuality;
+  quality: SailingQuality;
 };
 
-export const DEFAULT_WAKE_SETTINGS: WakeSettings = {
+export const SAILING_DEFAULT_SETTINGS: SailingSettings = {
   palette: "monochrome",
-  cruiseSpeed: 1,
-  wakeForce: 1,
-  waveHeight: 0.8,
-  waveSpeed: 1,
-  waveDamping: 1.25,
-  reflectionIntensity: 1,
-  lightDirection: 145,
-  vorticity: 6,
-  dyeDecay: 0.988,
-  force: 0.1,
-  drag: 0.97,
-  viscosity: 0.00002,
-  saturation: 0.9,
-  brightness: 0.6,
-  backgroundDyeRatio: 0,
-  showVectors: false,
-  sprayAmount: 1,
-  sprayHeight: 1,
-  quality: "auto",
-};
-
-export const WAKE2_DEFAULT_SETTINGS: WakeSettings = {
-  ...DEFAULT_WAKE_SETTINGS,
   cruiseSpeed: 1.85,
   wakeForce: 1.4,
   waveHeight: 0.45,
@@ -64,11 +41,14 @@ export const WAKE2_DEFAULT_SETTINGS: WakeSettings = {
   saturation: 1.1,
   brightness: 1.3,
   backgroundDyeRatio: 0,
+  showVectors: false,
+  sprayAmount: 1,
+  sprayHeight: 1,
   quality: "high",
 };
 
-export const WAKE2_MOBILE_DEFAULT_SETTINGS: WakeSettings = {
-  ...WAKE2_DEFAULT_SETTINGS,
+export const SAILING_MOBILE_DEFAULT_SETTINGS: SailingSettings = {
+  ...SAILING_DEFAULT_SETTINGS,
   palette: "monochrome",
   cruiseSpeed: 1.8,
   wakeForce: 1.45,
@@ -77,16 +57,16 @@ export const WAKE2_MOBILE_DEFAULT_SETTINGS: WakeSettings = {
   waveDamping: 0.45,
 };
 
-export const isMobileWakeDevice = () =>
+export const isMobileSailingDevice = () =>
   typeof window !== "undefined" && (window.matchMedia("(pointer: coarse)").matches || window.innerWidth < 760);
 
-export const resolveInitialWakeSettings = (wake2: boolean): WakeSettings => ({
-  ...(wake2 ? (isMobileWakeDevice() ? WAKE2_MOBILE_DEFAULT_SETTINGS : WAKE2_DEFAULT_SETTINGS) : DEFAULT_WAKE_SETTINGS),
+export const resolveInitialSailingSettings = (): SailingSettings => ({
+  ...(isMobileSailingDevice() ? SAILING_MOBILE_DEFAULT_SETTINGS : SAILING_DEFAULT_SETTINGS),
 });
 
-export type ResolvedWakeQuality = "high" | "medium" | "low";
+export type ResolvedSailingQuality = "high" | "medium" | "low";
 
-export const QUALITY_PRESETS: Record<ResolvedWakeQuality, {
+export const QUALITY_PRESETS: Record<ResolvedSailingQuality, {
   simulation: number;
   surfaceSegments: number;
   particles: number;
@@ -97,7 +77,7 @@ export const QUALITY_PRESETS: Record<ResolvedWakeQuality, {
   low: { simulation: 128, surfaceSegments: 96, particles: 350, pressureIterations: 6 },
 };
 
-export const resolveInitialQuality = (): ResolvedWakeQuality => {
+export const resolveInitialQuality = (): ResolvedSailingQuality => {
   if (typeof window === "undefined") return "medium";
-  return isMobileWakeDevice() ? "medium" : "high";
+  return isMobileSailingDevice() ? "medium" : "high";
 };

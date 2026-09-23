@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import type { WakeSettings } from "./WakeSettings";
+import type { SailingSettings } from "./SailingSettings";
 
-export type WakeInput = {
+export type SailingInput = {
   uv: THREE.Vector2;
   direction: THREE.Vector2;
   speed: number;
@@ -154,7 +154,7 @@ function target(size: number) {
 function pair(size: number): DoubleTarget { return { read: target(size), write: target(size) }; }
 function swap(value: DoubleTarget) { const old=value.read; value.read=value.write; value.write=old; }
 
-export class WakeSimulation {
+export class SailingSimulation {
   readonly supported: boolean;
   private size: number;
   private velocity!: DoubleTarget;
@@ -207,7 +207,7 @@ export class WakeSimulation {
   }
   private setCommon(material:THREE.ShaderMaterial){ material.uniforms.uTexel={value:new THREE.Vector2(1/this.size,1/this.size)}; }
 
-  step(dt:number,input:WakeInput,settings:WakeSettings,pressureIterations:number){
+  step(dt:number,input:SailingInput,settings:SailingSettings,pressureIterations:number){
     if(!this.supported)return;
     dt=Math.min(dt,1/30);
     const boat=input.uv, direction=input.direction,fieldScale=input.fieldScale??1;

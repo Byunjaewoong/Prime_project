@@ -426,14 +426,14 @@ a:hover {
     font-size: 11px;
   }
 
-  .orbit-fab__controls.wake-controls {
+  .orbit-fab__controls.sailing-controls {
     max-height: 68dvh;
     padding: 14px 12px;
   }
 }
 
-/* Wake laboratory */
-.wake-page {
+/* Sailing laboratory */
+.sailing-page {
   position: relative;
   width: 100%;
   height: 100dvh;
@@ -443,7 +443,7 @@ a:hover {
   font-family: var(--font-courier), monospace;
 }
 
-.wake-canvas {
+.sailing-canvas {
   display: block;
   width: 100%;
   height: 100%;
@@ -451,7 +451,7 @@ a:hover {
   cursor: crosshair;
 }
 
-.wake-controls {
+.sailing-controls {
   width: min(390px, calc(100vw - 32px));
   max-height: min(78dvh, 650px);
   padding: 16px 18px;
@@ -462,13 +462,13 @@ a:hover {
   scrollbar-width: thin;
 }
 
-.wake-controls--atoms {
+.sailing-controls--atoms {
   width: min(350px, calc(100vw - 32px));
   background: rgba(0, 0, 0, .9);
   border-color: rgba(255,255,255,.2);
 }
 
-.wake-menu-note {
+.sailing-menu-note {
   margin: 10px 0 2px;
   padding: 8px 9px;
   border-radius: 5px;
@@ -478,19 +478,19 @@ a:hover {
   line-height: 1.55;
 }
 
-.wake-controls :is(a, button, input, select) {
+.sailing-controls :is(a, button, input, select) {
   pointer-events: auto;
 }
 
-.wake-menu-head,
-.wake-slider > span,
-.wake-select {
+.sailing-menu-head,
+.sailing-slider > span,
+.sailing-select {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.wake-menu-head {
+.sailing-menu-head {
   padding-bottom: 12px;
   margin-bottom: 4px;
   border-bottom: 1px solid rgba(255,255,255,.12);
@@ -499,49 +499,49 @@ a:hover {
   text-transform: uppercase;
 }
 
-.wake-menu-links { display: flex; gap: 8px; }
-.wake-menu-links a {
+.sailing-menu-links { display: flex; gap: 8px; }
+.sailing-menu-links a {
   width: 32px; height: 32px; display: grid; place-items: center;
   color: rgba(255,255,255,.68); border: 1px solid rgba(255,255,255,.12);
   border-radius: 50%; text-decoration: none;
 }
 
-.wake-section { padding: 11px 0 4px; }
-.wake-section + .wake-section { border-top: 1px solid rgba(255,255,255,.075); }
-.wake-section h4 { margin: 0 0 9px; font-size: 10px; letter-spacing: .13em; color: rgba(255,255,255,.48); text-transform: uppercase; }
-.wake-slider { display: block; margin: 8px 0 12px; font-size: 11px; color: rgba(255,255,255,.75); }
-.wake-slider output { color: rgba(255,255,255,.45); font-variant-numeric: tabular-nums; }
-.wake-slider-track { padding: 8px 18px 3px; }
-.wake-slider input { display: block; width: 100%; margin: 0; accent-color: #d7e0e6; touch-action: pan-x; }
+.sailing-section { padding: 11px 0 4px; }
+.sailing-section + .sailing-section { border-top: 1px solid rgba(255,255,255,.075); }
+.sailing-section h4 { margin: 0 0 9px; font-size: 10px; letter-spacing: .13em; color: rgba(255,255,255,.48); text-transform: uppercase; }
+.sailing-slider { display: block; margin: 8px 0 12px; font-size: 11px; color: rgba(255,255,255,.75); }
+.sailing-slider output { color: rgba(255,255,255,.45); font-variant-numeric: tabular-nums; }
+.sailing-slider-track { padding: 8px 18px 3px; }
+.sailing-slider input { display: block; width: 100%; margin: 0; accent-color: #d7e0e6; touch-action: pan-x; }
 
-.wake-controls--atoms .wake-slider > span > span { opacity: .5; }
-.wake-controls--atoms .wake-slider output { color: #aef; font-family: monospace; opacity: 1; }
-.wake-controls--atoms .wake-slider input { accent-color: #aef; }
+.sailing-controls--atoms .sailing-slider > span > span { opacity: .5; }
+.sailing-controls--atoms .sailing-slider output { color: #aef; font-family: monospace; opacity: 1; }
+.sailing-controls--atoms .sailing-slider input { accent-color: #aef; }
 
-.wake-touch-slider { position: relative; width: 100%; height: 28px; touch-action: pan-y; cursor: ew-resize; user-select: none; }
-.wake-touch-slider__track,
-.wake-touch-slider__fill { position: absolute; top: 13px; left: 0; height: 3px; border-radius: 2px; }
-.wake-touch-slider__track { right: 0; background: rgba(255,255,255,.28); }
-.wake-touch-slider__fill { background: #aef; }
-.wake-touch-slider__thumb { position: absolute; top: 7px; width: 14px; height: 14px; border-radius: 50%; background: #aef; box-shadow: 0 0 0 2px rgba(12,19,34,.9); }
+.sailing-touch-slider { position: relative; width: 100%; height: 28px; touch-action: pan-y; cursor: ew-resize; user-select: none; }
+.sailing-touch-slider__track,
+.sailing-touch-slider__fill { position: absolute; top: 13px; left: 0; height: 3px; border-radius: 2px; }
+.sailing-touch-slider__track { right: 0; background: rgba(255,255,255,.28); }
+.sailing-touch-slider__fill { background: #aef; }
+.sailing-touch-slider__thumb { position: absolute; top: 7px; width: 14px; height: 14px; border-radius: 50%; background: #aef; box-shadow: 0 0 0 2px rgba(12,19,34,.9); }
 
-.wake-segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
-.wake-segmented button,
-.wake-select select {
+.sailing-segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.sailing-segmented button,
+.sailing-select select {
   border: 1px solid rgba(255,255,255,.13); border-radius: 8px;
   background: rgba(255,255,255,.035); color: rgba(255,255,255,.63);
   padding: 8px 10px; font: inherit; font-size: 11px;
 }
-.wake-segmented button { cursor: pointer; }
-.wake-segmented button.is-active { color: white; border-color: rgba(220,238,248,.5); background: rgba(185,210,224,.13); }
-.wake-select { gap: 16px; font-size: 11px; color: rgba(255,255,255,.75); }
-.wake-select select { min-width: 112px; }
-.wake-unavailable { position: absolute; inset: auto auto 24px 24px; font-size: 12px; }
+.sailing-segmented button { cursor: pointer; }
+.sailing-segmented button.is-active { color: white; border-color: rgba(220,238,248,.5); background: rgba(185,210,224,.13); }
+.sailing-select { gap: 16px; font-size: 11px; color: rgba(255,255,255,.75); }
+.sailing-select select { min-width: 112px; }
+.sailing-unavailable { position: absolute; inset: auto auto 24px 24px; font-size: 12px; }
 
 @media (max-width: 768px) {
-  .wake-controls { max-height: 68dvh; padding: 14px 12px; }
-  .wake-slider-track { padding-inline: 24px; }
-  .wake-fab { right: 16px; bottom: max(16px, env(safe-area-inset-bottom)); }
+  .sailing-controls { max-height: 68dvh; padding: 14px 12px; }
+  .sailing-slider-track { padding-inline: 24px; }
+  .sailing-fab { right: 16px; bottom: max(16px, env(safe-area-inset-bottom)); }
 }
 /* 🔹 모바일에서 FAB 패널 완전 안전하게 보이게 */
 @media (max-width: 768px) {
@@ -592,11 +592,11 @@ a:hover {
     font-size: 11px;
   }
 
-  .wake-fab .orbit-fab__actions--open {
+  .sailing-fab .orbit-fab__actions--open {
     transform: none;
   }
 
-  .orbit-fab__controls.wake-controls {
+  .orbit-fab__controls.sailing-controls {
     max-height: 68dvh;
     padding: 14px 12px;
   }

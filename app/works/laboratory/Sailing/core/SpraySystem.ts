@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { WakePalette, WakeSettings } from "./WakeSettings";
+import type { SailingPalette, SailingSettings } from "./SailingSettings";
 
 export type SprayEmitter = {
   position: THREE.Vector3;
@@ -68,9 +68,9 @@ export class SpraySystem {
   }
 
   setLimit(value:number){this.activeLimit=Math.min(this.capacity,value);this.cursor%=Math.max(1,this.activeLimit);}
-  setPalette(palette:WakePalette){(this.points.material as THREE.ShaderMaterial).uniforms.uColor.value.set(palette==="monochrome"?0xffffff:0xc6f0ff);}
+  setPalette(palette:SailingPalette){(this.points.material as THREE.ShaderMaterial).uniforms.uColor.value.set(palette==="monochrome"?0xffffff:0xc6f0ff);}
 
-  update(dt:number,emitter:SprayEmitter,settings:WakeSettings){
+  update(dt:number,emitter:SprayEmitter,settings:SailingSettings){
     const drag=Math.exp(-dt*2.15);
     for(let i=0;i<this.capacity;i++){
       if(this.lives[i]<=0)continue;
@@ -91,7 +91,7 @@ export class SpraySystem {
     (geometry.getAttribute("aSize") as THREE.BufferAttribute).needsUpdate=true;
   }
 
-  private emit(e:SprayEmitter,settings:WakeSettings,t:number){
+  private emit(e:SprayEmitter,settings:SailingSettings,t:number){
     if(this.activeLimit<=0)return;
     const i=this.cursor++%this.activeLimit,j=i*3;
     const bow=t<.28;

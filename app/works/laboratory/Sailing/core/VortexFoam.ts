@@ -2,8 +2,8 @@ import * as THREE from "three";
 import { DyeRenderer } from "../../../Vortex/core/DyeRenderer";
 import { FluidSolver } from "../../../Vortex/core/FluidSolver";
 import { Renderer } from "../../../Vortex/core/Renderer";
-import type { WakePalette, WakeSettings } from "./WakeSettings";
-import type { WakeInput } from "./WakeSimulation";
+import type { SailingPalette, SailingSettings } from "./SailingSettings";
+import type { SailingInput } from "./SailingSimulation";
 
 const MOBILE_GRID_SIZE=160;
 const DESKTOP_GRID_SIZE=256;
@@ -31,7 +31,7 @@ export class VortexFoam {
   private cpuRenderer=new Renderer();
   private previousUv:THREE.Vector2|null=null;
   private dyeTravel=0;
-  private palette:WakePalette="monochrome";
+  private palette:SailingPalette="monochrome";
 
   constructor(highDetail=false){
     const gridSize=highDetail?DESKTOP_GRID_SIZE:MOBILE_GRID_SIZE;
@@ -49,9 +49,9 @@ export class VortexFoam {
     this.texture.generateMipmaps=false;
   }
 
-  setPalette(palette:WakePalette){this.palette=palette;}
+  setPalette(palette:SailingPalette){this.palette=palette;}
 
-  update(input:WakeInput,settings:WakeSettings,alternateBackground=false){
+  update(input:SailingInput,settings:SailingSettings,alternateBackground=false){
     this.applySettings(settings);
     const insideField=input.uv.x>=0&&input.uv.x<=1&&input.uv.y>=0&&input.uv.y<=1;
 
@@ -110,7 +110,7 @@ export class VortexFoam {
     this.render(settings);
   }
 
-  private applySettings(settings:WakeSettings){
+  private applySettings(settings:SailingSettings){
     this.solver.vorticityEps=settings.vorticity;
     this.solver.dyeDecay=settings.dyeDecay;
     this.solver.velocityDecay=settings.drag;
@@ -119,7 +119,7 @@ export class VortexFoam {
     this.cpuRenderer.brightness=settings.brightness;
   }
 
-  private render(settings:WakeSettings){
+  private render(settings:SailingSettings){
     this.dyeRenderer?.captureSources(this.solver);
     this.solver.step();
     const gpuRendered=this.dyeRenderer?.render(this.solver,settings.saturation,settings.brightness)??false;

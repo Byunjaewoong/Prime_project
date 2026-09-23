@@ -2,15 +2,13 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { SpraySystem } from "./SpraySystem";
 import { VortexFoam } from "./VortexFoam";
-import { WakeSimulation, type WakeInput } from "./WakeSimulation";
-import { QUALITY_PRESETS, resolveInitialQuality, resolveInitialWakeSettings, type ResolvedWakeQuality, type WakeSettings } from "./WakeSettings";
+import { SailingSimulation, type SailingInput } from "./SailingSimulation";
+import { QUALITY_PRESETS, resolveInitialQuality, resolveInitialSailingSettings, type ResolvedSailingQuality, type SailingSettings } from "./SailingSettings";
 
 const WORLD_SIZE=72;
 const BOAT_LENGTH=2.8;
-const WAKE2_RESPAWN_DELAY=3;
-const ROUTE_SCREEN_MARGIN=.12;
-const ROUTE_SAMPLE_COUNT=240;
-const WAKE2_SIMULATION_RESOLUTION:Record<ResolvedWakeQuality,number>={high:512,medium:256,low:192};
+const SAILING_RESPAWN_DELAY=3;
+const SAILING_SIMULATION_RESOLUTION:Record<ResolvedSailingQuality,number>={high:512,medium:256,low:192};
 // Three.js uses Y as the vertical axis (the water plane spans X/Z).
 const BOAT_WATERLINE_HEIGHT=.12;
 // The GLB's longitudinal axis is X; rotate it onto the study's Z-forward axis.
@@ -19,8 +17,6 @@ const BOAT_MODEL_YAW_CORRECTION=Math.PI/2;
 // reverse the bow/stern direction around the water plane's vertical axis.
 const BOAT_MODEL_ROLL_CORRECTION=Math.PI/2;
 const BOAT_MODEL_DIRECTION_CORRECTION=Math.PI;
-export type WakeFoamMode="boat"|"boat-mix";
-
 const surfaceVertex=/* glsl */`
 uniform sampler2D uState;
 uniform vec2 uFoamFieldCenter;
@@ -141,22 +137,22 @@ function disposeObject(root:THREE.Object3D){
 
 function shortestAngle(value:number){return Math.atan2(Math.sin(value),Math.cos(value));}
 
-export class WakeApp {
+export class SailingApp {
   private renderer:THREE.WebGLRenderer;
   private scene=new THREE.Scene();
   private camera=new THREE.PerspectiveCamera(45,1,.1,120);
   private clock=new THREE.Clock();
   private frame=0;
   private destroyed=false;
-  private simulation:WakeSimulation;
+  private simulation:SailingSimulation;
   private foam:VortexFoam;
   private surface!:THREE.Mesh<THREE.PlaneGeometry,THREE.ShaderMaterial>;
   private spray:SpraySystem;
   private boat=new THREE.Group();
   private boatVisual=new THREE.Group();
   private fallbackBoat:THREE.Group;
-  private settings:WakeSettings;
-  private resolvedQuality:ResolvedWakeQuality;
+  private settings:SailingSettings;
+  private resolvedQuality:ResolvedSailingQuality;
   private position=new THREE.Vector3(0,0,1);
   private forward=new THREE.Vector3(0,0,1);
   private heading=0;
@@ -170,8 +166,6 @@ export class WakeApp {
   private routeTarget=new THREE.Vector3();
   private boatActive=true;
   private respawnDelay=0;
-  private pathRadius=52;
-  private routeProjection=new THREE.Vector3();
   private pointerTarget:THREE.Vector3|null=null;
   private raycaster=new THREE.Raycaster();
   private pointer=new THREE.Vector2();
@@ -182,23 +176,20 @@ export class WakeApp {
   private elapsed=0;
   private fallbackTrail:THREE.Line;
 
-  constructor(private canvas:HTMLCanvasElement,modelUrl="/boat.glb",private foamMode:WakeFoamMode="boat"){
-    this.settings=resolveInitialWakeSettings(foamMode==="boat-mix");
+  constructor(private canvas:HTMLCanvasElement,modelUrl="/boat.glb"){
+    this.settings=resolveInitialSailingSettings();
     this.renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:"high-performance"});
     this.renderer.outputColorSpace=THREE.SRGBColorSpace;
     this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure=1.08;
     this.scene.background=new THREE.Color(0x060708);
-    if(foamMode==="boat-mix"){
-      this.camera.far=300;
-      this.camera.position.set(0,112,38);
-    }
-    else this.camera.position.set(0,92,18);
+    this.camera.far=300;
+    this.camera.position.set(0,112,38);
     this.camera.lookAt(0,0,0);
     this.resolvedQuality=this.settings.quality==="auto"?resolveInitialQuality():this.settings.quality;
     const preset=QUALITY_PRESETS[this.resolvedQuality];
-    this.simulation=new WakeSimulation(this.renderer,this.waveResolution(this.resolvedQuality));
-    const desktopFoam=foamMode==="boat-mix"&&!window.matchMedia("(pointer: coarse)").matches&&window.innerWidth>=760;
+    this.simulation=new SailingSimulation(this.renderer,this.waveResolution(this.resolvedQuality));
+    const desktopFoam=!window.matchMedia("(pointer: coarse)").matches&&window.innerWidth>=760;
     this.foam=new VortexFoam(desktopFoam);
     this.spray=new SpraySystem(2400,preset.particles);
     this.scene.add(this.spray.points);
@@ -228,7 +219,7 @@ export class WakeApp {
   private createSurface(segments:number){
     const old=this.surface;
     const geometry=new THREE.PlaneGeometry(1,1,segments,segments);
-    const material=old?.material??new THREE.ShaderMaterial({vertexShader:surfaceVertex,fragmentShader:surfaceFragment,side:THREE.DoubleSide,uniforms:{uState:{value:this.simulation.stateTexture},uVelocity:{value:this.simulation.velocityTexture},uFoam:{value:this.foam.texture},uTexel:{value:new THREE.Vector2(1/this.simulation.resolution,1/this.simulation.resolution)},uFoamFieldCenter:{value:this.foamFieldCenter},uFoamFieldSize:{value:this.foamFieldSize},uWaveHeight:{value:this.settings.waveHeight},uTime:{value:0},uWorldSize:{value:WORLD_SIZE},uFoamScreenSpace:{value:this.foamMode==="boat-mix"?1:0},uReflectionIntensity:{value:this.settings.reflectionIntensity},uLightDirection:{value:this.settings.lightDirection},uDeepColor:{value:new THREE.Color()},uShallowColor:{value:new THREE.Color()}}});
+    const material=old?.material??new THREE.ShaderMaterial({vertexShader:surfaceVertex,fragmentShader:surfaceFragment,side:THREE.DoubleSide,uniforms:{uState:{value:this.simulation.stateTexture},uVelocity:{value:this.simulation.velocityTexture},uFoam:{value:this.foam.texture},uTexel:{value:new THREE.Vector2(1/this.simulation.resolution,1/this.simulation.resolution)},uFoamFieldCenter:{value:this.foamFieldCenter},uFoamFieldSize:{value:this.foamFieldSize},uWaveHeight:{value:this.settings.waveHeight},uTime:{value:0},uWorldSize:{value:WORLD_SIZE},uFoamScreenSpace:{value:1},uReflectionIntensity:{value:this.settings.reflectionIntensity},uLightDirection:{value:this.settings.lightDirection},uDeepColor:{value:new THREE.Color()},uShallowColor:{value:new THREE.Color()}}});
     const surface=new THREE.Mesh(geometry,material);surface.rotation.x=-Math.PI/2;surface.position.y=-.03;surface.scale.set(120,120,1);surface.receiveShadow=true;surface.frustumCulled=false;
     if(old){this.scene.remove(old);old.geometry.dispose();}
     this.surface=surface;this.scene.add(surface);this.fitSurfaceToView();
@@ -263,7 +254,7 @@ export class WakeApp {
     },undefined,()=>{/* The procedural boat remains visible if the asset cannot load. */});
   }
 
-  setSettings(partial:Partial<WakeSettings>){
+  setSettings(partial:Partial<SailingSettings>){
     const previousQuality=this.settings.quality;Object.assign(this.settings,partial);
     if(partial.palette)this.applyPalette();
     if(partial.waveHeight!==undefined)this.surface.material.uniforms.uWaveHeight.value=partial.waveHeight;
@@ -273,21 +264,20 @@ export class WakeApp {
   }
 
   private applyPalette(){
-    const mono=this.settings.palette==="monochrome";const uniforms=this.surface.material.uniforms;
-    const wake2=this.foamMode==="boat-mix";
-    uniforms.uDeepColor.value.set(wake2?0x000000:(mono?0x05080a:0x031423));
-    uniforms.uShallowColor.value.set(wake2?0x000000:(mono?0x7a858b:0x2e789d));
-    (this.scene.background as THREE.Color).set(wake2?0x000000:(mono?0x060708:0x020e18));
+    const uniforms=this.surface.material.uniforms;
+    uniforms.uDeepColor.value.set(0x000000);
+    uniforms.uShallowColor.value.set(0x000000);
+    (this.scene.background as THREE.Color).set(0x000000);
     this.spray.setPalette(this.settings.palette);this.foam.setPalette(this.settings.palette);
   }
 
-  private applyQuality(next:ResolvedWakeQuality){
+  private applyQuality(next:ResolvedSailingQuality){
     if(next===this.resolvedQuality)return;this.resolvedQuality=next;const preset=QUALITY_PRESETS[next];
     this.simulation.setResolution(this.waveResolution(next));this.createSurface(preset.surfaceSegments);this.spray.setLimit(preset.particles);this.applyPalette();
   }
 
-  private waveResolution(quality:ResolvedWakeQuality){
-    return this.foamMode==="boat-mix"?WAKE2_SIMULATION_RESOLUTION[quality]:QUALITY_PRESETS[quality].simulation;
+  private waveResolution(quality:ResolvedSailingQuality){
+    return SAILING_SIMULATION_RESOLUTION[quality];
   }
 
   setPointerTarget(clientX:number,clientY:number){
@@ -313,28 +303,11 @@ export class WakeApp {
     }
     if(hits.length!==4){this.surface.position.set(0,-.03,0);this.surface.scale.set(140,140,1);return;}
     const margin=4;const minX=Math.min(...hits.map(hit=>hit.x))-margin,maxX=Math.max(...hits.map(hit=>hit.x))+margin;const minZ=Math.min(...hits.map(hit=>hit.z))-margin,maxZ=Math.max(...hits.map(hit=>hit.z))+margin;
-    if(this.foamMode==="boat-mix"){
-      this.foamFieldCenter.set((minX+maxX)/2,(minZ+maxZ)/2);
-      this.foamFieldSize=Math.max(maxX-minX,maxZ-minZ)*1.4;
-      this.surface.material.uniforms.uFoamFieldCenter.value.copy(this.foamFieldCenter);
-      this.surface.material.uniforms.uFoamFieldSize.value=this.foamFieldSize;
-    }
-    this.pathRadius=Math.max(48,...hits.map(hit=>Math.hypot(hit.x,hit.z)))+(this.foamMode==="boat-mix"?48:10);
+    this.foamFieldCenter.set((minX+maxX)/2,(minZ+maxZ)/2);
+    this.foamFieldSize=Math.max(maxX-minX,maxZ-minZ)*1.4;
+    this.surface.material.uniforms.uFoamFieldCenter.value.copy(this.foamFieldCenter);
+    this.surface.material.uniforms.uFoamFieldSize.value=this.foamFieldSize;
     this.surface.position.set((minX+maxX)/2,-.03,(minZ+maxZ)/2);this.surface.scale.set(maxX-minX,maxZ-minZ,1);this.surface.updateMatrixWorld(true);
-  }
-
-  private calculateVisibleRange(){
-    if(!this.route)return {start:0,end:1};
-    this.camera.updateMatrixWorld();
-    let first=-1,last=-1;
-    for(let i=0;i<=ROUTE_SAMPLE_COUNT;i++){
-      const progress=i/ROUTE_SAMPLE_COUNT;this.routeProjection.copy(this.route.getPoint(progress)).project(this.camera);
-      const horizontalMargin=this.foamMode==="boat-mix"?.42:ROUTE_SCREEN_MARGIN;
-      const inside=this.routeProjection.z>=-1&&this.routeProjection.z<=1&&Math.abs(this.routeProjection.x)<=1+horizontalMargin&&Math.abs(this.routeProjection.y)<=1+ROUTE_SCREEN_MARGIN;
-      if(inside){if(first===-1)first=i;last=i;}
-    }
-    if(first===-1)return {start:0,end:1};
-    return {start:Math.max(0,(first-1)/ROUTE_SAMPLE_COUNT),end:Math.min(1,(last+1)/ROUTE_SAMPLE_COUNT)};
   }
 
   private screenPointToWater(x:number,y:number){
@@ -355,37 +328,24 @@ export class WakeApp {
 
   private resetPath(){
     for(let attempt=0;attempt<8;attempt++){
-      if(this.foamMode==="boat-mix"){
-        const startScreen=this.randomOffscreenPoint();
-        const endScreen=this.randomOffscreenPoint();
-        if(startScreen.distanceTo(endScreen)<1.4)continue;
-        const start=this.screenPointToWater(startScreen.x,startScreen.y);
-        const end=this.screenPointToWater(endScreen.x,endScreen.y);
-        const center=this.screenPointToWater((Math.random()-.5)*.32,(Math.random()-.5)*.28);
-        if(!start||!end||!center)continue;
-        // For a quadratic curve B(0.5)=(start+2*control+end)/4.
-        // Solve for the control point so every route crosses the chosen center point.
-        const control=center.clone().multiplyScalar(2).addScaledVector(start,-.5).addScaledVector(end,-.5);
-        this.route=new THREE.QuadraticBezierCurve3(start,control,end);
-        this.routeProgress=0;this.routeEndProgress=1;this.routeLength=Math.max(this.route.getLength(),.001);this.routeTarget.copy(end);
-        this.position.copy(start);const tangent=this.route.getTangent(0).normalize();this.forward.copy(tangent);this.heading=Math.atan2(tangent.x,tangent.z);this.boatActive=true;this.boat.visible=true;this.fallbackTrail.visible=!this.simulation.supported;this.applyBoatTransform(0);return;
-      }
-      const startAngle=Math.random()*Math.PI*2;
-      const start=new THREE.Vector3(Math.cos(startAngle)*this.pathRadius,0,Math.sin(startAngle)*this.pathRadius);
-      const endAngle=startAngle+Math.PI+(Math.random()-.5);
-      const end=new THREE.Vector3(Math.cos(endAngle)*this.pathRadius,0,Math.sin(endAngle)*this.pathRadius);
-      const control=new THREE.Vector3((Math.random()-.5)*30,0,(Math.random()-.5)*30);
+      const startScreen=this.randomOffscreenPoint();
+      const endScreen=this.randomOffscreenPoint();
+      if(startScreen.distanceTo(endScreen)<1.4)continue;
+      const start=this.screenPointToWater(startScreen.x,startScreen.y);
+      const end=this.screenPointToWater(endScreen.x,endScreen.y);
+      const center=this.screenPointToWater((Math.random()-.5)*.32,(Math.random()-.5)*.28);
+      if(!start||!end||!center)continue;
+      // For a quadratic curve B(0.5)=(start+2*control+end)/4.
+      // Solve for the control point so every route crosses the chosen center point.
+      const control=center.clone().multiplyScalar(2).addScaledVector(start,-.5).addScaledVector(end,-.5);
       this.route=new THREE.QuadraticBezierCurve3(start,control,end);
-      const visible=this.calculateVisibleRange();
-      if(visible.end-visible.start<.1)continue;
-      this.routeProgress=visible.start;this.routeEndProgress=visible.end;this.routeLength=Math.max(this.route.getLength(),.001);this.routeTarget.copy(this.route.getPoint(visible.end));
-      this.position.copy(this.route.getPoint(visible.start));
-      const tangent=this.route.getTangent(visible.start).normalize();this.forward.copy(tangent);this.heading=Math.atan2(tangent.x,tangent.z);this.boatActive=true;this.boat.visible=true;this.fallbackTrail.visible=!this.simulation.supported;this.applyBoatTransform(0);return;
+      this.routeProgress=0;this.routeEndProgress=1;this.routeLength=Math.max(this.route.getLength(),.001);this.routeTarget.copy(end);
+      this.position.copy(start);const tangent=this.route.getTangent(0).normalize();this.forward.copy(tangent);this.heading=Math.atan2(tangent.x,tangent.z);this.boatActive=true;this.boat.visible=true;this.fallbackTrail.visible=!this.simulation.supported;this.applyBoatTransform(0);return;
     }
   }
 
   private waitForNextPath(){
-    this.boatActive=false;this.respawnDelay=WAKE2_RESPAWN_DELAY;this.route=null;this.boat.visible=false;this.fallbackTrail.visible=false;
+    this.boatActive=false;this.respawnDelay=SAILING_RESPAWN_DELAY;this.route=null;this.boat.visible=false;this.fallbackTrail.visible=false;
   }
 
   private resumeOriginalRoute(){
@@ -408,8 +368,7 @@ export class WakeApp {
   }
 
   private applyBoatTransform(time:number){
-    const waveClearance=this.foamMode==="boat-mix"?this.settings.waveHeight:0;
-    this.boat.position.set(this.position.x,BOAT_WATERLINE_HEIGHT+waveClearance+Math.sin(time*2.1)*.025,this.position.z);this.boat.rotation.y=this.heading;
+    this.boat.position.set(this.position.x,BOAT_WATERLINE_HEIGHT+this.settings.waveHeight+Math.sin(time*2.1)*.025,this.position.z);this.boat.rotation.y=this.heading;
   }
 
   private updateBoat(dt:number,time:number){
@@ -422,7 +381,7 @@ export class WakeApp {
     else if(this.route){
       const oldSpeed=this.speed;this.speed=THREE.MathUtils.damp(this.speed,3.15*this.settings.cruiseSpeed,1.35,dt);this.acceleration=(this.speed-oldSpeed)/Math.max(dt,.001);
       const previousHeading=this.heading;this.routeProgress+=this.speed*dt/this.routeLength;
-      if(this.routeProgress>this.routeEndProgress){if(this.foamMode==="boat-mix")this.waitForNextPath();else this.resetPath();return;}
+      if(this.routeProgress>this.routeEndProgress){this.waitForNextPath();return;}
       this.position.copy(this.route.getPoint(this.routeProgress));this.forward.copy(this.route.getTangent(this.routeProgress).normalize());this.heading=Math.atan2(this.forward.x,this.forward.z);this.yawRate=shortestAngle(this.heading-previousHeading)/Math.max(dt,.001);
     }
     this.applyBoatTransform(time);
@@ -438,17 +397,12 @@ export class WakeApp {
   private animate=(now:number)=>{
     if(this.destroyed)return;const rawDt=this.clock.getDelta(),dt=Math.min(rawDt,.034),time=now*.001;this.elapsed+=rawDt;
     this.updateBoat(dt,time);
-    const worldUv=new THREE.Vector2(this.position.x/WORLD_SIZE+.5,.5-this.position.z/WORLD_SIZE);
     const fittedUv=new THREE.Vector2((this.position.x-this.foamFieldCenter.x)/this.foamFieldSize+.5,.5-(this.position.z-this.foamFieldCenter.y)/this.foamFieldSize);
-    const uv=this.boatActive?(this.foamMode==="boat-mix"?fittedUv:worldUv):new THREE.Vector2(-10,-10);const direction=new THREE.Vector2(this.forward.x,-this.forward.z).normalize();
-    const fieldScale=this.foamMode==="boat-mix"?WORLD_SIZE/this.foamFieldSize:1;
-    const input:WakeInput={uv,direction,speed:this.boatActive?this.speed/3.2:0,acceleration:this.boatActive?this.acceleration/3:0,yawRate:this.boatActive?this.yawRate:0,fieldScale};
+    const uv=this.boatActive?fittedUv:new THREE.Vector2(-10,-10);const direction=new THREE.Vector2(this.forward.x,-this.forward.z).normalize();
+    const fieldScale=WORLD_SIZE/this.foamFieldSize;
+    const input:SailingInput={uv,direction,speed:this.boatActive?this.speed/3.2:0,acceleration:this.boatActive?this.acceleration/3:0,yawRate:this.boatActive?this.yawRate:0,fieldScale};
     this.simulation.step(dt,input,this.settings,QUALITY_PRESETS[this.resolvedQuality].pressureIterations);
-    let foamInput=input;
-    if(this.foamMode==="boat-mix"&&this.boatActive){
-      foamInput=input;
-    }
-    this.foam.update(foamInput,this.settings,this.foamMode==="boat-mix");
+    this.foam.update(input,this.settings,true);
     const uniforms=this.surface.material.uniforms;uniforms.uState.value=this.simulation.stateTexture;uniforms.uVelocity.value=this.simulation.velocityTexture;uniforms.uFoam.value=this.foam.texture;uniforms.uTexel.value.setScalar(1/this.simulation.resolution);uniforms.uTime.value=time;uniforms.uWaveHeight.value=this.settings.waveHeight;
     this.spray.update(dt,{position:this.position,forward:this.forward,speed:input.speed,acceleration:input.acceleration,yawRate:input.yawRate},this.settings);
     this.updateFallbackTrail();this.renderer.render(this.scene,this.camera);this.monitorQuality(rawDt);this.frame=requestAnimationFrame(this.animate);
