@@ -8,7 +8,7 @@ import type { SailingInput } from "./SailingSimulation";
 const MOBILE_GRID_SIZE=256;
 const DESKTOP_GRID_SIZE=384;
 const MOBILE_OUTPUT_SIZE=1536;
-const DESKTOP_OUTPUT_SIZE=2048;
+const DESKTOP_OUTPUT_SIZE=1536;
 const REFERENCE_GRID=144;
 const STERN_OFFSET=.018;
 const HULL_FORCE_HALF_WIDTH=.011;
