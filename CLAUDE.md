@@ -41,3 +41,13 @@ Avoid committing .env, dependency folders, generated build output or browser scr
 backup-260914-before-snow-fields preserves f19b283; snow-fields-260914 is integrated into main, and backup-260914-snow-fields-complete preserves the completed version. scripts/verify-snow-fields.mjs runs state-identity, repeated-switching, tree, cleanup and desktop/mobile React-page checks with a temporary Playwright installation and VERIFY_BASE_URL (default localhost:3000).
 Snow-walker uses FogExp2 with density 0.035 for snow and 0.0175 for green/gold grass. Green/gold fog matches a pale field-colored background. Ground smog and its checkbox were removed.
 Snow-walker core/CameraFilter.ts applies Vortex_GPU's display treatment to a captured camera image. Haze, film grain, vignette and tone curve/lifted blacks have independent uniforms and M-menu checkboxes; only tone is enabled by default. Only green/gold fields use them; if all four are off, skip the capture/filter pass. Toggling must not recreate App or affect walking state. Preallocate the drawing-buffer-sized render target and compile the display shader during idle time in the initial Snow view so the first Green transition does not pay that cost. Resize the prepared target with the renderer, and cancel pending warmup work on cleanup. Convert the linear image to display color before applying enabled effects, and dispose both the separate filter scene and render target on cleanup.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->
