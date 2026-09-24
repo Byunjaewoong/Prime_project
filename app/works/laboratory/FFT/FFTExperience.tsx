@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Mic, Square } from "lucide-react";
+import { ArrowLeft, FlaskConical, Home, Mic, Square } from "lucide-react";
 import styles from "./fft.module.css";
 
 type InputKind = "idle" | "system" | "microphone";
@@ -10,6 +10,61 @@ type InputKind = "idle" | "system" | "microphone";
 const FFT_SIZE = 4096;
 const MIN_FREQUENCY = 20;
 const MAX_FREQUENCY = 20000;
+
+type OnsetState = {
+  previousEnergy: number;
+  averageFlux: number;
+  cooldownUntil: number;
+  pulse: number;
+};
+
+function createOnsetState(): OnsetState {
+  return { previousEnergy: 0, averageFlux: 0, cooldownUntil: 0, pulse: 0 };
+}
+
+function bandEnergy(
+  spectrum: Uint8Array,
+  binWidth: number,
+  minimumFrequency: number,
+  maximumFrequency: number,
+) {
+  const firstBin = Math.max(1, Math.floor(minimumFrequency / binWidth));
+  const lastBin = Math.min(spectrum.length - 1, Math.ceil(maximumFrequency / binWidth));
+  let energy = 0;
+  let samples = 0;
+
+  for (let bin = firstBin; bin <= lastBin; bin += 1) {
+    const amplitude = spectrum[bin] / 255;
+    energy += amplitude * amplitude;
+    samples += 1;
+  }
+
+  return samples > 0 ? Math.sqrt(energy / samples) : 0;
+}
+
+function updateOnset(
+  state: OnsetState,
+  energy: number,
+  now: number,
+  threshold: number,
+  cooldown: number,
+  enabled: boolean,
+) {
+  const flux = Math.max(0, energy - state.previousEnergy);
+  state.averageFlux = state.averageFlux * 0.94 + flux * 0.06;
+  const adaptiveThreshold = Math.max(threshold, state.averageFlux * 2.35);
+
+  if (enabled && energy > 0.08 && flux > adaptiveThreshold && now >= state.cooldownUntil) {
+    state.pulse = 1;
+    state.cooldownUntil = now + cooldown;
+  } else {
+    state.pulse *= 0.84;
+  }
+
+  if (!enabled) state.pulse = 0;
+  state.previousEnergy = energy;
+  return state.pulse;
+}
 
 function isMobileDevice() {
   return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
@@ -25,8 +80,19 @@ export default function FFTExperience() {
   const streamRef = useRef<MediaStream | null>(null);
   const contextRef = useRef<AudioContext | null>(null);
   const animationRef = useRef<number | null>(null);
+  const detectionRef = useRef({ kick: true, hiHat: true });
+  const onsetRef = useRef({ kick: createOnsetState(), hiHat: createOnsetState() });
   const [inputKind, setInputKind] = useState<InputKind>("idle");
   const [isStarting, setIsStarting] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [kickEnabled, setKickEnabled] = useState(true);
+  const [hiHatEnabled, setHiHatEnabled] = useState(true);
+
+  const setDetection = useCallback((kind: "kick" | "hiHat", enabled: boolean) => {
+    detectionRef.current[kind] = enabled;
+    if (kind === "kick") setKickEnabled(enabled);
+    else setHiHatEnabled(enabled);
+  }, []);
 
   const stop = useCallback(() => {
     if (animationRef.current !== null) {
@@ -37,6 +103,7 @@ export default function FFTExperience() {
     streamRef.current = null;
     void contextRef.current?.close();
     contextRef.current = null;
+    onsetRef.current = { kick: createOnsetState(), hiHat: createOnsetState() };
     setInputKind("idle");
   }, []);
 
@@ -78,6 +145,23 @@ export default function FFTExperience() {
       const sampleRate = analyser.context.sampleRate;
       const binWidth = sampleRate / analyser.fftSize;
       const columns = Math.max(240, Math.floor(graphWidth));
+      const now = performance.now();
+      const kickPulse = updateOnset(
+        onsetRef.current.kick,
+        bandEnergy(spectrum, binWidth, 40, 160),
+        now,
+        0.035,
+        120,
+        detectionRef.current.kick,
+      );
+      const hiHatPulse = updateOnset(
+        onsetRef.current.hiHat,
+        bandEnergy(spectrum, binWidth, 5000, 15000),
+        now,
+        0.018,
+        68,
+        detectionRef.current.hiHat,
+      );
 
       context.beginPath();
       for (let column = 0; column <= columns; column += 1) {
@@ -91,9 +175,28 @@ export default function FFTExperience() {
         else context.lineTo(x, y);
       }
       context.strokeStyle = "#050505";
-      context.lineWidth = 1.35;
+      context.lineWidth = 1.35 + kickPulse * 3.4;
       context.lineJoin = "round";
       context.stroke();
+
+      if (hiHatPulse > 0.025) {
+        const burstStart = left + graphWidth * 0.8;
+        const burstWidth = graphWidth * 0.16;
+        const burstHeight = graphHeight * 0.23 * hiHatPulse;
+        context.beginPath();
+        context.moveTo(burstStart, baseline);
+        for (let index = 1; index <= 12; index += 1) {
+          const direction = index % 2 === 0 ? 1 : -1;
+          const taper = 1 - index / 14;
+          context.lineTo(
+            burstStart + burstWidth * (index / 12),
+            baseline + direction * burstHeight * taper,
+          );
+        }
+        context.strokeStyle = `rgba(5, 5, 5, ${Math.min(1, hiHatPulse * 1.2)})`;
+        context.lineWidth = 1;
+        context.stroke();
+      }
 
       animationRef.current = requestAnimationFrame(draw);
     };
@@ -196,6 +299,50 @@ export default function FFTExperience() {
             : <Square aria-hidden="true" size={17} strokeWidth={1.5} />}
         </button>
       </section>
+
+      <div className={styles.menuRoot}>
+        {menuOpen && (
+          <div className={styles.menu} onClick={(event) => event.stopPropagation()}>
+            <div className={styles.menuHeader}>
+              <span>FFT</span>
+              <div className={styles.menuLinks}>
+                <Link href="/" aria-label="Home"><Home aria-hidden="true" size={16} /></Link>
+                <Link href="/works/laboratory" aria-label="Laboratory"><FlaskConical aria-hidden="true" size={16} /></Link>
+              </div>
+            </div>
+            <section className={styles.menuSection}>
+              <h2>Beat detection</h2>
+              <button
+                type="button"
+                className={styles.toggle}
+                onClick={() => setDetection("kick", !kickEnabled)}
+                aria-pressed={kickEnabled}
+              >
+                <span>Kick / Bass</span>
+                <span className={`${styles.switch} ${kickEnabled ? styles.switchOn : ""}`} aria-hidden="true"><i /></span>
+              </button>
+              <button
+                type="button"
+                className={styles.toggle}
+                onClick={() => setDetection("hiHat", !hiHatEnabled)}
+                aria-pressed={hiHatEnabled}
+              >
+                <span>Hi-hat</span>
+                <span className={`${styles.switch} ${hiHatEnabled ? styles.switchOn : ""}`} aria-hidden="true"><i /></span>
+              </button>
+            </section>
+          </div>
+        )}
+        <button
+          type="button"
+          className={`${styles.menuButton} ${menuOpen ? styles.menuButtonActive : ""}`}
+          onClick={() => setMenuOpen((open) => !open)}
+          aria-label={menuOpen ? "Close menu" : "Open menu"}
+          aria-expanded={menuOpen}
+        >
+          M
+        </button>
+      </div>
     </main>
   );
 }
