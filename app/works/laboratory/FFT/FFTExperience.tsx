@@ -18,6 +18,12 @@ type OnsetState = {
   pulse: number;
 };
 
+type MutedColor = {
+  hue: number;
+  saturation: number;
+  lightness: number;
+};
+
 function createOnsetState(): OnsetState {
   return { previousEnergy: 0, averageFlux: 0, cooldownUntil: 0, pulse: 0 };
 }
@@ -49,6 +55,7 @@ function updateOnset(
   threshold: number,
   cooldown: number,
   enabled: boolean,
+  decay = 0.84,
 ) {
   const flux = Math.max(0, energy - state.previousEnergy);
   state.averageFlux = state.averageFlux * 0.94 + flux * 0.06;
@@ -58,7 +65,7 @@ function updateOnset(
     state.pulse = 1;
     state.cooldownUntil = now + cooldown;
   } else {
-    state.pulse *= 0.84;
+    state.pulse *= decay;
   }
 
   if (!enabled) state.pulse = 0;
@@ -82,6 +89,7 @@ export default function FFTExperience() {
   const animationRef = useRef<number | null>(null);
   const detectionRef = useRef({ kick: true, hiHat: true });
   const onsetRef = useRef({ kick: createOnsetState(), hiHat: createOnsetState() });
+  const hiHatColorRef = useRef<MutedColor>({ hue: 205, saturation: 20, lightness: 42 });
   const [inputKind, setInputKind] = useState<InputKind>("idle");
   const [isStarting, setIsStarting] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -161,7 +169,16 @@ export default function FFTExperience() {
         0.018,
         68,
         detectionRef.current.hiHat,
+        0.92,
       );
+
+      if (hiHatPulse === 1) {
+        hiHatColorRef.current = {
+          hue: Math.floor(Math.random() * 360),
+          saturation: 16 + Math.random() * 14,
+          lightness: 34 + Math.random() * 12,
+        };
+      }
 
       context.beginPath();
       for (let column = 0; column <= columns; column += 1) {
@@ -174,29 +191,13 @@ export default function FFTExperience() {
         if (column === 0) context.moveTo(x, y);
         else context.lineTo(x, y);
       }
-      context.strokeStyle = "#050505";
+      const hiHatColor = hiHatColorRef.current;
+      context.strokeStyle = hiHatPulse > 0.01
+        ? `hsl(${hiHatColor.hue} ${hiHatColor.saturation * hiHatPulse}% ${2 + (hiHatColor.lightness - 2) * hiHatPulse}%)`
+        : "#050505";
       context.lineWidth = 1.35 + kickPulse * 3.4;
       context.lineJoin = "round";
       context.stroke();
-
-      if (hiHatPulse > 0.025) {
-        const burstStart = left + graphWidth * 0.8;
-        const burstWidth = graphWidth * 0.16;
-        const burstHeight = graphHeight * 0.23 * hiHatPulse;
-        context.beginPath();
-        context.moveTo(burstStart, baseline);
-        for (let index = 1; index <= 12; index += 1) {
-          const direction = index % 2 === 0 ? 1 : -1;
-          const taper = 1 - index / 14;
-          context.lineTo(
-            burstStart + burstWidth * (index / 12),
-            baseline + direction * burstHeight * taper,
-          );
-        }
-        context.strokeStyle = `rgba(5, 5, 5, ${Math.min(1, hiHatPulse * 1.2)})`;
-        context.lineWidth = 1;
-        context.stroke();
-      }
 
       animationRef.current = requestAnimationFrame(draw);
     };
