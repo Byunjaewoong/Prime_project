@@ -27,40 +27,46 @@
 
 .stage {
   min-height: 100svh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: clamp(48px, 8vh, 86px);
-  padding: 80px clamp(24px, 7vw, 108px) 52px;
+  display: grid;
+  place-items: center;
+  padding: 26px clamp(20px, 5vw, 72px);
 }
 
 .visualization {
   position: relative;
-  width: min(1240px, 100%);
-  height: clamp(210px, 34vh, 340px);
+  width: min(760px, 78vw, 68svh);
+  aspect-ratio: 1000 / 1230;
 }
 
-.visualization::after {
-  position: absolute;
-  right: 2px;
-  bottom: 18%;
-  left: 2px;
-  height: 1px;
-  background: rgba(0, 0, 0, 0.16);
-  content: "";
-  pointer-events: none;
-}
-
-.canvas {
-  position: relative;
-  z-index: 1;
+.portrait {
   display: block;
   width: 100%;
   height: 100%;
+  overflow: visible;
+}
+
+.sketch path,
+.spectrumFace {
+  fill: none;
+  stroke: #050505;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sketch path {
+  transition: stroke 240ms ease, stroke-width 240ms ease, opacity 240ms ease;
+}
+
+.spectrumFace {
+  stroke-width: 1.8;
+  transition: stroke 80ms linear;
 }
 
 .button {
+  position: fixed;
+  z-index: 2;
+  left: 50%;
+  bottom: clamp(20px, 3.5vh, 38px);
   display: grid;
   width: 66px;
   height: 66px;
@@ -71,11 +77,12 @@
   background: #fff;
   color: #050505;
   cursor: pointer;
+  transform: translateX(-50%);
   transition: color 180ms ease, background-color 180ms ease, transform 180ms ease;
 }
 
 .button:hover:not(:disabled) {
-  transform: scale(1.04);
+  transform: translateX(-50%) scale(1.04);
   background: #050505;
   color: #fff;
 }
@@ -233,12 +240,11 @@
 
 @media (max-width: 640px) {
   .stage {
-    gap: 56px;
-    padding: 88px 20px 42px;
+    padding: 54px 12px 68px;
   }
 
   .visualization {
-    height: min(38svh, 290px);
+    width: min(calc(100vw - 24px), 70svh);
   }
 
   .button {
