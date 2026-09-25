@@ -6,6 +6,7 @@ import { ArrowLeft, FlaskConical, Home, Mic, Square } from "lucide-react";
 import styles from "./fft.module.css";
 
 type InputKind = "idle" | "system" | "microphone";
+type FrequencyScale = "log" | "linear";
 
 const FFT_SIZE = 4096;
 const MIN_FREQUENCY = 20;
@@ -48,6 +49,14 @@ function bandEnergy(
   return samples > 0 ? Math.sqrt(energy / samples) : 0;
 }
 
+function peakAmplitude(spectrum: Uint8Array, binWidth: number, minimumFrequency: number, maximumFrequency: number) {
+  const firstBin = Math.max(0, Math.floor(minimumFrequency / binWidth));
+  const lastBin = Math.min(spectrum.length - 1, Math.max(firstBin, Math.ceil(maximumFrequency / binWidth)));
+  let peak = 0;
+  for (let bin = firstBin; bin <= lastBin; bin += 1) peak = Math.max(peak, spectrum[bin]);
+  return peak / 255;
+}
+
 function updateOnset(
   state: OnsetState,
   energy: number,
@@ -88,6 +97,7 @@ export default function FFTExperience() {
   const contextRef = useRef<AudioContext | null>(null);
   const animationRef = useRef<number | null>(null);
   const detectionRef = useRef({ kick: true, hiHat: true });
+  const frequencyScaleRef = useRef<FrequencyScale>("log");
   const onsetRef = useRef({ kick: createOnsetState(), hiHat: createOnsetState() });
   const hiHatColorRef = useRef<MutedColor>({ hue: 205, saturation: 20, lightness: 42 });
   const [inputKind, setInputKind] = useState<InputKind>("idle");
@@ -95,11 +105,17 @@ export default function FFTExperience() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [kickEnabled, setKickEnabled] = useState(true);
   const [hiHatEnabled, setHiHatEnabled] = useState(true);
+  const [frequencyScale, setFrequencyScale] = useState<FrequencyScale>("log");
 
   const setDetection = useCallback((kind: "kick" | "hiHat", enabled: boolean) => {
     detectionRef.current[kind] = enabled;
     if (kind === "kick") setKickEnabled(enabled);
     else setHiHatEnabled(enabled);
+  }, []);
+
+  const selectFrequencyScale = useCallback((scale: FrequencyScale) => {
+    frequencyScaleRef.current = scale;
+    setFrequencyScale(scale);
   }, []);
 
   const stop = useCallback(() => {
@@ -152,7 +168,8 @@ export default function FFTExperience() {
       const logRange = Math.log10(MAX_FREQUENCY) - logMin;
       const sampleRate = analyser.context.sampleRate;
       const binWidth = sampleRate / analyser.fftSize;
-      const columns = Math.max(240, Math.floor(graphWidth));
+      const maximumUsefulColumns = Math.max(1, Math.floor((MAX_FREQUENCY - MIN_FREQUENCY) / binWidth));
+      const columns = Math.max(1, Math.min(Math.max(160, Math.floor(graphWidth)), maximumUsefulColumns));
       const now = performance.now();
       const kickPulse = updateOnset(
         onsetRef.current.kick,
@@ -183,9 +200,18 @@ export default function FFTExperience() {
       context.beginPath();
       for (let column = 0; column <= columns; column += 1) {
         const progress = column / columns;
-        const frequency = 10 ** (logMin + progress * logRange);
-        const bin = Math.min(spectrum.length - 1, Math.max(0, Math.round(frequency / binWidth)));
-        const amplitude = spectrum[bin] / 255;
+        const linearScale = frequencyScaleRef.current === "linear";
+        const frequency = linearScale
+          ? MIN_FREQUENCY + progress * (MAX_FREQUENCY - MIN_FREQUENCY)
+          : 10 ** (logMin + progress * logRange);
+        const amplitude = linearScale
+          ? peakAmplitude(
+            spectrum,
+            binWidth,
+            MIN_FREQUENCY + Math.max(0, column - 0.5) / columns * (MAX_FREQUENCY - MIN_FREQUENCY),
+            MIN_FREQUENCY + Math.min(columns, column + 0.5) / columns * (MAX_FREQUENCY - MIN_FREQUENCY),
+          )
+          : spectrum[Math.min(spectrum.length - 1, Math.max(0, Math.round(frequency / binWidth)))] / 255;
         const x = left + progress * graphWidth;
         const y = baseline - amplitude * graphHeight * 0.76;
         if (column === 0) context.moveTo(x, y);
@@ -311,6 +337,22 @@ export default function FFTExperience() {
                 <Link href="/works/laboratory" aria-label="Laboratory"><FlaskConical aria-hidden="true" size={16} /></Link>
               </div>
             </div>
+            <section className={styles.menuSection}>
+              <h2>Frequency scale</h2>
+              <div className={styles.scaleOptions} role="group" aria-label="Frequency axis scale">
+                {(["log", "linear"] as const).map((scale) => (
+                  <button
+                    key={scale}
+                    type="button"
+                    className={`${styles.scaleOption} ${frequencyScale === scale ? styles.scaleOptionActive : ""}`}
+                    onClick={() => selectFrequencyScale(scale)}
+                    aria-pressed={frequencyScale === scale}
+                  >
+                    {scale === "log" ? "Log" : "Linear"}
+                  </button>
+                ))}
+              </div>
+            </section>
             <section className={styles.menuSection}>
               <h2>Beat detection</h2>
               <button
