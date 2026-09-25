@@ -32,86 +32,83 @@ type SketchStroke = {
   opacity?: number;
 };
 
-const FACE_TOP = 150;
-const FACE_BOTTOM = 790;
-const FACE_PROFILE: Array<[number, number]> = [
-  [150, 285], [205, 250], [270, 218], [335, 202], [395, 185],
-  [450, 157], [495, 135], [530, 92], [555, 82], [575, 126],
-  [598, 148], [620, 137], [648, 158], [690, 170], [740, 176], [790, 190],
-];
+const SPECTRUM_CUT_X = 300;
+const SPECTRUM_TOP = 54;
+const SPECTRUM_BOTTOM = 884;
 
 const SKETCH_STROKES: SketchStroke[] = [
-  { id: "crown-main", group: "head", width: 1.8, d: "M285 150 C390 112 548 94 665 112 C736 137 806 203 846 282" },
-  { id: "crown-overdraw-a", group: "hair", opacity: 0.72, d: "M314 141 C426 103 566 99 660 108 C727 126 789 190 833 257" },
-  { id: "crown-overdraw-b", group: "hair", opacity: 0.62, d: "M355 126 C478 100 594 99 682 121 C731 149 780 197 817 239" },
-  { id: "crown-short", group: "hair", opacity: 0.58, d: "M405 119 C501 91 613 96 690 125" },
-  { id: "temple-slash-a", group: "hair", d: "M282 150 L236 224 L222 258" },
-  { id: "temple-slash-b", group: "hair", opacity: 0.68, d: "M298 145 L248 207 L224 247" },
+  { id: "crown-main", group: "head", width: 1.8, d: "M300 150 C402 113 550 94 665 112 C736 137 806 203 846 282" },
+  { id: "crown-overdraw-a", group: "hair", opacity: 0.78, d: "M301 158 C418 111 557 101 660 108 C727 126 789 190 833 257" },
+  { id: "crown-overdraw-b", group: "hair", opacity: 0.7, d: "M318 145 C455 105 589 100 682 121 C731 149 780 197 817 239" },
+  { id: "crown-short", group: "hair", opacity: 0.64, d: "M405 119 C501 91 613 96 690 125" },
+  { id: "crown-scratch-a", group: "hair", opacity: 0.62, d: "M300 164 L346 145 C448 119 535 108 627 110" },
+  { id: "crown-scratch-b", group: "hair", opacity: 0.5, d: "M372 132 C472 109 570 105 647 113" },
+  { id: "crown-scratch-c", group: "hair", opacity: 0.46, d: "M596 105 L681 118 L714 144" },
   { id: "skull-main", group: "head", width: 1.8, d: "M665 112 C754 145 825 225 861 322 C898 423 874 540 818 632 C786 685 747 724 700 752" },
   { id: "skull-overdraw-a", group: "hair", opacity: 0.72, d: "M682 104 C766 164 830 232 865 327 C891 398 889 469 868 528" },
   { id: "skull-overdraw-b", group: "hair", opacity: 0.56, d: "M706 125 C783 194 835 260 856 338" },
   { id: "back-long", group: "hair", opacity: 0.76, d: "M843 265 C868 335 887 421 891 505 C891 532 884 555 874 572" },
   { id: "back-short-a", group: "hair", d: "M857 339 C878 393 883 447 881 489" },
   { id: "back-short-b", group: "hair", opacity: 0.58, d: "M864 372 C876 415 879 452 875 480" },
+  { id: "back-scratch-a", group: "hair", opacity: 0.62, d: "M851 292 L867 340 L881 399" },
+  { id: "back-scratch-b", group: "hair", opacity: 0.48, d: "M874 458 L889 516 L883 548" },
   { id: "nape-main", group: "hair", width: 1.8, d: "M818 632 C783 684 744 727 700 752" },
   { id: "nape-accent-a", group: "hair", opacity: 0.72, d: "M824 607 C794 662 755 708 714 739" },
   { id: "nape-accent-b", group: "hair", opacity: 0.58, d: "M835 616 C805 680 766 716 731 743" },
   { id: "nape-accent-c", group: "hair", opacity: 0.52, d: "M802 656 C780 698 747 727 718 748" },
+  { id: "nape-accent-d", group: "hair", opacity: 0.62, d: "M816 637 C794 679 762 716 724 745" },
+  { id: "nape-accent-e", group: "hair", opacity: 0.48, d: "M786 687 L754 724 L708 757" },
   { id: "ear-rim", group: "ear", width: 1.55, d: "M455 522 C505 496 548 518 561 570 C573 622 546 681 501 704 C466 720 431 697 424 663 C418 640 431 620 445 610" },
   { id: "ear-inner-a", group: "ear", d: "M458 558 C483 548 508 570 514 597 C520 624 503 657 480 664 C462 670 447 653 454 636 C459 624 469 619 476 607" },
   { id: "ear-inner-b", group: "ear", opacity: 0.72, d: "M478 575 C496 589 500 610 492 628 C486 643 474 653 465 660" },
   { id: "ear-inner-c", group: "detail", opacity: 0.62, d: "M459 633 C447 645 444 659 451 671" },
   { id: "ear-back", group: "ear", opacity: 0.68, d: "M528 535 C553 566 558 612 542 649 C530 678 511 699 486 709" },
-  { id: "jaw-main", group: "jaw", width: 1.8, d: "M190 790 C255 800 333 809 406 816 C433 790 448 750 454 699" },
-  { id: "jaw-overdraw-a", group: "jaw", opacity: 0.68, d: "M192 781 C260 798 334 803 397 810 C424 784 440 747 447 706" },
-  { id: "jaw-overdraw-b", group: "jaw", opacity: 0.5, d: "M229 799 C291 808 345 816 402 821" },
+  { id: "ear-detail-a", group: "detail", opacity: 0.56, d: "M437 676 C455 693 474 704 495 700" },
+  { id: "ear-detail-b", group: "detail", opacity: 0.5, d: "M448 611 L438 642 L446 668" },
+  { id: "ear-detail-c", group: "detail", opacity: 0.45, d: "M500 547 C520 575 526 607 516 636" },
+  { id: "jaw-main", group: "jaw", width: 1.8, d: "M300 790 C338 799 373 807 406 816 C433 790 448 750 454 699" },
+  { id: "jaw-overdraw-a", group: "jaw", opacity: 0.72, d: "M300 781 C342 796 371 803 397 810 C424 784 440 747 447 706" },
+  { id: "jaw-overdraw-b", group: "jaw", opacity: 0.56, d: "M319 798 C350 807 376 815 402 821" },
+  { id: "jaw-scratch-a", group: "jaw", opacity: 0.46, d: "M362 805 L409 812 L431 782" },
   { id: "neck-front", group: "neck", width: 1.6, d: "M406 816 C401 868 420 906 451 939 C469 965 470 1007 454 1048" },
   { id: "neck-front-a", group: "neck", opacity: 0.66, d: "M392 822 C399 859 409 885 434 914" },
   { id: "neck-front-b", group: "neck", opacity: 0.5, d: "M446 702 C442 748 440 781 444 813" },
+  { id: "neck-front-c", group: "neck", opacity: 0.48, d: "M414 836 C414 872 431 899 449 921" },
   { id: "neck-back", group: "neck", width: 1.7, d: "M700 752 C704 804 712 858 741 906 C780 969 820 1007 849 1037" },
   { id: "neck-back-a", group: "neck", opacity: 0.68, d: "M716 743 C711 801 729 865 760 915 C789 961 823 994 862 1022" },
   { id: "neck-back-b", group: "neck", opacity: 0.54, d: "M729 775 C734 829 752 871 778 910" },
+  { id: "neck-back-c", group: "neck", opacity: 0.5, d: "M706 758 L713 835 C724 874 743 907 769 938" },
+  { id: "neck-back-d", group: "neck", opacity: 0.42, d: "M720 802 C728 856 750 900 784 943" },
   { id: "shoulder-front", group: "shoulder", width: 1.65, d: "M454 1048 C441 1091 418 1128 389 1158" },
   { id: "shoulder-front-a", group: "shoulder", opacity: 0.68, d: "M469 1050 C455 1097 431 1136 405 1163" },
   { id: "shoulder-top", group: "shoulder", width: 1.8, d: "M389 1158 C429 1182 464 1201 500 1216 C615 1185 720 1168 844 1120" },
   { id: "shoulder-overdraw-a", group: "shoulder", opacity: 0.68, d: "M405 1149 C443 1177 471 1191 505 1205" },
   { id: "shoulder-overdraw-b", group: "shoulder", opacity: 0.6, d: "M585 1193 C673 1172 753 1157 827 1130" },
   { id: "shoulder-overdraw-c", group: "shoulder", opacity: 0.5, d: "M611 1185 C684 1168 750 1156 805 1138" },
+  { id: "shoulder-scratch-a", group: "shoulder", opacity: 0.46, d: "M397 1167 L469 1208 L501 1222" },
+  { id: "shoulder-scratch-b", group: "shoulder", opacity: 0.46, d: "M758 1154 L836 1125" },
   { id: "collar-a", group: "detail", opacity: 0.68, d: "M420 1014 L466 1028" },
   { id: "collar-b", group: "detail", opacity: 0.54, d: "M434 1022 L480 1040" },
   { id: "back-mark-a", group: "detail", opacity: 0.58, d: "M784 938 L792 935" },
   { id: "back-mark-b", group: "detail", opacity: 0.52, d: "M793 968 L798 965" },
 ];
 
-function profileXAt(y: number) {
-  for (let index = 1; index < FACE_PROFILE.length; index += 1) {
-    const previous = FACE_PROFILE[index - 1];
-    const next = FACE_PROFILE[index];
-    if (y <= next[0]) {
-      const progress = (y - previous[0]) / (next[0] - previous[0]);
-      return previous[1] + (next[1] - previous[1]) * progress;
-    }
-  }
-  return FACE_PROFILE[FACE_PROFILE.length - 1][1];
-}
-
 function createFacePath(spectrum?: Uint8Array, binWidth?: number) {
-  const points = 112;
+  if (!spectrum || !binWidth) return "";
+
+  const points = 148;
   const logMinimum = Math.log10(MIN_FREQUENCY);
   const logMaximum = Math.log10(MAX_FREQUENCY);
   let path = "";
 
   for (let index = 0; index < points; index += 1) {
     const progress = index / (points - 1);
-    const y = FACE_TOP + (FACE_BOTTOM - FACE_TOP) * progress;
+    const y = SPECTRUM_TOP + (SPECTRUM_BOTTOM - SPECTRUM_TOP) * progress;
     const frequency = 10 ** (logMaximum - progress * (logMaximum - logMinimum));
-    const bin = spectrum && binWidth
-      ? Math.min(spectrum.length - 1, Math.max(0, Math.round(frequency / binWidth)))
-      : 0;
-    const amplitude = spectrum ? spectrum[bin] / 255 : 0;
-    const endpointEnvelope = Math.sin(Math.PI * progress) ** 0.32;
-    const displacement = amplitude * 155 * endpointEnvelope;
-    const x = Math.max(24, profileXAt(y) - displacement);
+    const bin = Math.min(spectrum.length - 1, Math.max(0, Math.round(frequency / binWidth)));
+    const amplitude = Math.max(0, (spectrum[bin] - 12) / 243);
+    const displacement = amplitude * 270;
+    const x = Math.max(18, SPECTRUM_CUT_X - displacement);
     path += `${index === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)} `;
   }
 
