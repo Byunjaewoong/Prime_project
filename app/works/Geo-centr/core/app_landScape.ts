@@ -27,12 +27,14 @@ export class LandScape {
   getStar() {
     this.stargroup = []; // 여러 번 호출돼도 중복 안 쌓이게 초기화
 
-    for (let i = 0; i < this.canvas.width; i++) {
-      for (let j = 0; j < this.canvas.height; j++) {
+    const width = this.canvas.clientWidth;
+    const height = this.canvas.clientHeight;
+    for (let i = 0; i < width; i++) {
+      for (let j = 0; j < height; j++) {
         if (Math.random() < this.density) {
           this.stargroup.push([
-            i / this.canvas.width,     // x (정규화)
-            j / this.canvas.height,    // y (정규화)
+            i / width,     // x (정규화)
+            j / height,    // y (정규화)
             this.size * Math.random(), // 반지름
             this.starLux * Math.random(), // 밝기
           ]);
@@ -48,8 +50,8 @@ export class LandScape {
       this.ctx.fillStyle = `rgb(${lux},${lux},${lux})`;
       this.ctx.beginPath();
       this.ctx.arc(
-        nx * this.canvas.width,
-        ny * this.canvas.height,
+        nx * this.canvas.clientWidth,
+        ny * this.canvas.clientHeight,
         r,
         0,
         2 * Math.PI

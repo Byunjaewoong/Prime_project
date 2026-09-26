@@ -22,12 +22,14 @@ export class LandScape {
 
   getStar() {
     this.stargroup = [];
-    for (let i = 0; i < this.canvas.width; i++) {
-      for (let j = 0; j < this.canvas.height; j++) {
+    const width = this.canvas.clientWidth;
+    const height = this.canvas.clientHeight;
+    for (let i = 0; i < width; i++) {
+      for (let j = 0; j < height; j++) {
         if (Math.random() < this.density) {
           this.stargroup.push([
-            i / this.canvas.width,
-            j / this.canvas.height,
+            i / width,
+            j / height,
             this.size * Math.random(),
             this.starLux * Math.random(),
           ]);
@@ -42,8 +44,8 @@ export class LandScape {
       this.ctx.fillStyle = `rgb(${lux},${lux},${lux})`;
       this.ctx.beginPath();
       this.ctx.arc(
-        this.stargroup[i][0] * this.canvas.width,
-        this.stargroup[i][1] * this.canvas.height,
+        this.stargroup[i][0] * this.canvas.clientWidth,
+        this.stargroup[i][1] * this.canvas.clientHeight,
         this.stargroup[i][2],
         0,
         2 * Math.PI

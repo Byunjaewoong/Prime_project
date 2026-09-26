@@ -264,6 +264,7 @@ export class Planet {
   OrbitStep!: number;
   counter: number;
   renderingPixel: number = 1;
+  pixelRatio: number;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -282,8 +283,9 @@ export class Planet {
     this.event = event;
     this.canvas = canvas;
 
-    this.portionX = this.event.clientX / this.canvas.width;
-    this.portionY = this.event.clientY / this.canvas.height;
+    this.pixelRatio = Math.max(1, this.canvas.width / Math.max(1, _stageWidth));
+    this.portionX = this.event.clientX / _stageWidth;
+    this.portionY = this.event.clientY / _stageHeight;
 
     this.ctx = this.canvas.getContext("2d")!;
     this.spaceX = 0;
@@ -408,7 +410,7 @@ export class Planet {
       this.suny
     );
 
-    this.renderingPixel = 1;
+    this.renderingPixel = 1 / this.pixelRatio;
 
     for (
       let i = this.windowX - this.windowRadius;
@@ -545,26 +547,21 @@ export class Planet {
           }
 
           this.ctx.fillStyle = `rgba(${r_c},${g_c},${b_c},1)`;
-          this.ctx.beginPath();
-          this.ctx.arc(
-            i,
-            j,
-            this.renderingPixel,
-            0,
-            2 * Math.PI
-          );
-          this.ctx.fill();
+          this.ctx.fillRect(i, j, this.renderingPixel, this.renderingPixel);
         }
       }
     }
   }
 
-  resize(sunx: number, suny: number) {
+  resize(sunx: number, suny: number, stageWidth: number, stageHeight: number) {
     this.sunx = sunx;
     this.suny = suny;
+    this.stageWidth = stageWidth;
+    this.stageHeight = stageHeight;
+    this.pixelRatio = Math.max(1, this.canvas.width / Math.max(1, stageWidth));
 
-    this.spaceX = this.canvas.width * this.portionX;
-    this.spaceY = this.canvas.height * this.portionY;
+    this.spaceX = stageWidth * this.portionX;
+    this.spaceY = stageHeight * this.portionY;
     this.windowX = this.spaceX;
     this.windowY = this.spaceY;
 

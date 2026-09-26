@@ -67,11 +67,11 @@ export class App {
     }
     this.ctx = ctx;
 
-    this.pixelRatio = window.devicePixelRatio || 1;
+    this.pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
 
     this.sunx = 0;
     this.suny = 0;
-    this.spaceRadius = this.canvas.width * 2;
+    this.spaceRadius = this.stageWidth * 2;
     this.planetGroup = new PlanetGroup();
 
     // 리사이즈 핸들러
@@ -81,7 +81,7 @@ export class App {
     this.resize();
 
     // resize 후 다시 spaceRadius 계산
-    this.spaceRadius = this.canvas.width * 2;
+    this.spaceRadius = this.stageWidth * 2;
 
     this.landScape = new LandScape(this.canvas);
 
@@ -158,11 +158,11 @@ export class App {
     for (let i = 0; i < this.planetGroup.array.length; i++) {
       const planet = this.planetGroup.array[i];
       if (planet instanceof Planet && typeof planet.resize === "function") {
-        planet.resize();
+        planet.resize(this.stageWidth, this.stageHeight);
       }
     }
 
-    this.spaceRadius = this.canvas.width * 2;
+    this.spaceRadius = this.stageWidth * 2;
   }
 
   animate() {
@@ -204,8 +204,8 @@ export class App {
         p.renderingPlanet(
           this.sunx,
           this.suny,
-          this.canvas.width,
-          this.canvas.height
+          this.stageWidth,
+          this.stageHeight
         );
 
         // 위성도 렌더링

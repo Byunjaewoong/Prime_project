@@ -110,6 +110,7 @@ export class Planet {
   portionY: number;
 
   orbitDirectionVector: { x: number; y: number; z: number };
+  renderingPixel: number;
 
     // ⭐ 이 행성의 위성들
   satellites: Satellite[] = [];
@@ -137,8 +138,9 @@ export class Planet {
     this.sunx = sunx;
     this.suny = suny;
 
-    this.portionX = event.clientX / this.canvas.width;
-    this.portionY = event.clientY / this.canvas.height;
+    this.renderingPixel = 1 / Math.max(1, this.canvas.width / Math.max(1, _stageWidth));
+    this.portionX = event.clientX / _stageWidth;
+    this.portionY = event.clientY / _stageHeight;
 
     this.spaceX = 0;
     this.spaceY = 0;
@@ -192,9 +194,10 @@ export class Planet {
     );
   }
 
-  resize() {
-    this.spaceX = this.canvas.width * this.portionX;
-    this.spaceY = this.canvas.height * this.portionY;
+  resize(stageWidth: number, stageHeight: number) {
+    this.renderingPixel = 1 / Math.max(1, this.canvas.width / Math.max(1, stageWidth));
+    this.spaceX = stageWidth * this.portionX;
+    this.spaceY = stageHeight * this.portionY;
     this.windowX = this.spaceX;
     this.windowY = this.spaceY;
   }
@@ -283,12 +286,12 @@ export class Planet {
     for (
       let i = this.windowX - this.windowRadius;
       i <= this.windowX + this.windowRadius;
-      i++
+      i += this.renderingPixel
     ) {
       for (
         let j = this.windowY - this.windowRadius;
         j <= this.windowY + this.windowRadius;
-        j++
+        j += this.renderingPixel
       ) {
         const pos = Math.pow(i - this.windowX, 2) + Math.pow(j - this.windowY, 2);
         const circle = Math.pow(this.windowRadius, 2);
@@ -368,7 +371,7 @@ export class Planet {
           }
 
           this.ctx.fillStyle = `rgb(${r_c},${g_c},${b_c})`;
-          this.ctx.fillRect(i, j, 2, 2);
+          this.ctx.fillRect(i, j, this.renderingPixel, this.renderingPixel);
         }
       }
     }
@@ -684,12 +687,12 @@ export class Satellite {
     for (
       let i = this.windowX - this.windowRadius;
       i <= this.windowX + this.windowRadius;
-      i++
+      i += this.parent.renderingPixel
     ) {
       for (
         let j = this.windowY - this.windowRadius;
         j <= this.windowY + this.windowRadius;
-        j++
+        j += this.parent.renderingPixel
       ) {
         const pos =
           Math.pow(i - this.windowX, 2) + Math.pow(j - this.windowY, 2);
@@ -778,7 +781,7 @@ export class Satellite {
           }
 
           this.ctx.fillStyle = `rgb(${r_c},${g_c},${b_c})`;
-          this.ctx.fillRect(i, j, 2, 2);
+          this.ctx.fillRect(i, j, this.parent.renderingPixel, this.parent.renderingPixel);
         }
       }
     }
