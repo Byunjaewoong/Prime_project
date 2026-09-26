@@ -645,14 +645,17 @@ export class Planet {
     }
   }
 
-  fallPlanet() {
-    if (this.counter === this.OrbitStep) {
-      this.counter = 0;
-    }
+  fallPlanet(speedMultiplier: number = 1) {
+    const orbitLength = Math.max(1, this.OrbitStep);
+    const currentIndex = Math.floor(this.counter) % orbitLength;
+    const nextIndex = (currentIndex + 1) % orbitLength;
+    const progress = this.counter - Math.floor(this.counter);
+    const current = this.OrbitStack[currentIndex];
+    const next = this.OrbitStack[nextIndex];
 
-    this.spaceX = this.OrbitStack[this.counter].x;
-    this.spaceY = this.OrbitStack[this.counter].y;
-    this.spaceZ = this.OrbitStack[this.counter].z;
+    this.spaceX = current.x + (next.x - current.x) * progress;
+    this.spaceY = current.y + (next.y - current.y) * progress;
+    this.spaceZ = current.z + (next.z - current.z) * progress;
     this.windowX = this.spaceX;
     this.windowY = this.spaceY;
     this.windowRadius = Calculate.perspectiveLength(
@@ -665,7 +668,7 @@ export class Planet {
       this.spaceRadius + 500
     );
 
-    this.counter = this.counter + 1;
+    this.counter = (this.counter + speedMultiplier) % orbitLength;
     // console.log(this.spaceX);
   }
 }

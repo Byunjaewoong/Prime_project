@@ -14,6 +14,7 @@ export class App {
   landScape: LandScape;
   stageWidth: number = 0;
   stageHeight: number = 0;
+  orbitSpeed: number = 1;
 
   private animationId: number | null = null;
   private resizeHandler: () => void;
@@ -127,7 +128,7 @@ export class App {
       if (!(obj instanceof Planet)) {
         this.landScape.genSun(this.sunx, this.suny, 100);
       } else {
-        obj.fallPlanet();
+        obj.fallPlanet(this.orbitSpeed);
         obj.renderingPlanet(
           this.sunx,
           this.suny,
@@ -138,6 +139,10 @@ export class App {
     }
 
     this.planetGroup.sorting(this.planetGroup.array);
+  }
+
+  setOrbitSpeed(speed: number) {
+    this.orbitSpeed = Math.max(0.1, Math.min(3, speed));
   }
 
   destroy() {

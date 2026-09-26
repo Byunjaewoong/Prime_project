@@ -4,7 +4,11 @@
 import { useEffect, useRef } from "react";
 import { App } from "./core/App";
 
-export default function CanvasApp() {
+type CanvasAppProps = {
+  orbitSpeed: number;
+};
+
+export default function CanvasApp({ orbitSpeed }: CanvasAppProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const appRef = useRef<App | null>(null);
 
@@ -22,6 +26,10 @@ export default function CanvasApp() {
       appRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    appRef.current?.setOrbitSpeed(orbitSpeed);
+  }, [orbitSpeed]);
 
   return <canvas ref={canvasRef} className="orbit-canvas" />;
 }
