@@ -88,6 +88,13 @@ export default function LaboratoryPage() {
             </Link>
           </li>
 
+          <li>
+            <Link href="/works/laboratory/Planet" style={{ textDecoration: "none", color: "inherit", display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "1px dotted rgba(26,64,49,0.2)", paddingBottom: "6px" }}>
+              <span>8. Planet</span>
+              <span style={{ fontSize: "0.75rem", opacity: 0.3, marginLeft: 12 }}>procedural sphere study</span>
+            </Link>
+          </li>
+
         </ul>
 
         {/* 하단 푸터 */}
