@@ -19,30 +19,6 @@
   cursor: grabbing;
 }
 
-.back {
-  position: fixed;
-  z-index: 2;
-  top: clamp(22px, 4vw, 48px);
-  left: clamp(22px, 4vw, 48px);
-  display: grid;
-  width: 40px;
-  height: 40px;
-  place-items: center;
-  border-radius: 50%;
-  color: #050505;
-  text-decoration: none;
-  transition: background-color 180ms ease;
-}
-
-.back:hover {
-  background: #f2f2f2;
-}
-
-.back:focus-visible {
-  outline: 2px solid #050505;
-  outline-offset: 4px;
-}
-
 .menuRoot {
   position: fixed;
   z-index: 3;
@@ -210,10 +186,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .back {
-    transition: none;
-  }
-
   .menuButton {
     transition: none;
   }

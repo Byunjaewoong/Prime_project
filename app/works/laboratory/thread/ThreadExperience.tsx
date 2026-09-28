@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, FlaskConical, Home } from "lucide-react";
+import { FlaskConical, Home } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import styles from "./thread.module.css";
 
@@ -628,9 +628,6 @@ export default function ThreadExperience() {
 
   return (
     <main className={styles.page}>
-      <Link className={styles.back} href="/works/laboratory" aria-label="Back to laboratory">
-        <ArrowLeft aria-hidden="true" size={19} strokeWidth={1.4} />
-      </Link>
       <canvas
         ref={canvasRef}
         className={`${styles.canvas} ${dragging ? styles.canvasDragging : ""}`}
