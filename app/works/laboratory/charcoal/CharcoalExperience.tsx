@@ -423,7 +423,7 @@ export default function CharcoalExperience() {
               <h2>Surface</h2>
               <label className={styles.slider}>
                 <span><span>Floor friction</span><output>{friction.toFixed(2)}</output></span>
-                <input aria-label="Floor friction" type="range" min="0" max="1" step="0.01" value={friction} onChange={(event) => updateFriction(Number(event.currentTarget.value))} />
+                <input aria-label="Floor friction" type="range" min="0" max="5" step="0.01" value={friction} onChange={(event) => updateFriction(Number(event.currentTarget.value))} />
               </label>
             </section>
           </div>
