@@ -61,7 +61,7 @@ type PermissionAwareDeviceMotionEvent = typeof DeviceMotionEvent & {
 
 const FIBER_COUNT = 9;
 const CONSTRAINT_ITERATIONS = 32;
-const DEFAULT_FRICTION = 0.32;
+const DEFAULT_FRICTION = 3;
 
 function createRandom(seed: number) {
   let state = seed >>> 0;
@@ -156,7 +156,7 @@ function simulateStrand(
   const elapsed = Math.min(33.334, Math.max(8, now - simulation.lastTime));
   const timeScale = elapsed / 16.667;
   simulation.lastTime = now;
-  const effectiveFriction = friction * (1 - motion.lift);
+  const effectiveFriction = friction + (1 - friction) * motion.lift;
   const retention = Math.pow(0.999, timeScale) * Math.exp(-effectiveFriction * 0.045 * timeScale);
   motion.phase += timeScale * (0.11 + motion.shake * 1.25);
   motion.lift *= Math.pow(0.955, timeScale);
