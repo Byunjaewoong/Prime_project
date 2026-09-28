@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ArrowLeft, FlaskConical, Home } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import styles from "./charcoal.module.css";
+import styles from "./thread.module.css";
 
 type StrandPoint = {
   x: number;
@@ -355,7 +355,7 @@ function motionStatusLabel(status: MotionStatus) {
   }
 }
 
-export default function CharcoalExperience() {
+export default function ThreadExperience() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const simulationRef = useRef<StrandSimulation | null>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -657,7 +657,7 @@ export default function CharcoalExperience() {
         {menuOpen && (
           <div className={styles.menu} onClick={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
             <div className={styles.menuHeader}>
-              <span>Charcoal</span>
+              <span>Thread</span>
               <div className={styles.menuLinks}>
                 <Link href="/" aria-label="Home"><Home aria-hidden="true" size={16} /></Link>
                 <Link href="/works/laboratory" aria-label="Laboratory"><FlaskConical aria-hidden="true" size={16} /></Link>
