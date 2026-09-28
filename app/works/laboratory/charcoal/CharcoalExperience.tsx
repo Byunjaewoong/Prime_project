@@ -5,7 +5,16 @@ import { ArrowLeft, FlaskConical, Home } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import styles from "./charcoal.module.css";
 
-type StrandPoint = { x: number; y: number; oldX: number; oldY: number; pressure: number };
+type StrandPoint = {
+  x: number;
+  y: number;
+  oldX: number;
+  oldY: number;
+  pressure: number;
+  motionPhaseA: number;
+  motionPhaseB: number;
+  motionResponse: number;
+};
 type GraphiteGrain = { point: number; spread: number; along: number; length: number };
 type StrandSimulation = {
   points: StrandPoint[];
@@ -27,7 +36,25 @@ type DragState = {
   velocityX: number;
   velocityY: number;
 };
-type MotionForce = { x: number; y: number; rotation: number; lastReading: number };
+type MotionForce = {
+  x: number;
+  y: number;
+  rotation: number;
+  shakeX: number;
+  shakeY: number;
+  shake: number;
+  phase: number;
+  lastReading: number;
+};
+type SensorHistory = {
+  initialized: boolean;
+  gravityX: number;
+  gravityY: number;
+  gravityZ: number;
+  shakeX: number;
+  shakeY: number;
+  shakeZ: number;
+};
 type MotionStatus = "checking" | "permission-required" | "waiting" | "active" | "off" | "denied" | "unsupported";
 type PermissionAwareDeviceMotionEvent = typeof DeviceMotionEvent & {
   requestPermission?: () => Promise<"granted" | "denied">;
@@ -46,6 +73,14 @@ function createRandom(seed: number) {
     value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
     return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+function createIdleMotion(): MotionForce {
+  return { x: 0, y: 0, rotation: 0, shakeX: 0, shakeY: 0, shake: 0, phase: 0, lastReading: 0 };
+}
+
+function createSensorHistory(): SensorHistory {
+  return { initialized: false, gravityX: 0, gravityY: 0, gravityZ: 0, shakeX: 0, shakeY: 0, shakeZ: 0 };
 }
 
 function createSimulation(width: number, height: number, seed: number): StrandSimulation {
@@ -79,6 +114,9 @@ function createSimulation(width: number, height: number, seed: number): StrandSi
       oldX: x,
       oldY: y,
       pressure: Math.max(0.12, broadPressure * (0.3 + pressure * 0.7) * (0.16 + endTaper * 0.84)),
+      motionPhaseA: random() * Math.PI * 2,
+      motionPhaseB: random() * Math.PI * 2,
+      motionResponse: 0.7 + random() * 0.65,
     });
   }
 
@@ -120,6 +158,7 @@ function simulateStrand(
   const timeScale = elapsed / 16.667;
   simulation.lastTime = now;
   const retention = Math.pow(0.999, timeScale) * Math.exp(-friction * 0.045 * timeScale);
+  motion.phase += timeScale * (0.16 + motion.shake * 1.9);
 
   for (let index = 0; index < simulation.points.length; index += 1) {
     if (drag?.point === index) continue;
@@ -134,8 +173,26 @@ function simulateStrand(
     const endpointInertia = 0.9 + Math.abs(centerDistance) * 0.42;
     const relativeX = (point.x - simulation.width * 0.5) / Math.max(1, simulation.width);
     const relativeY = (point.y - simulation.height * 0.5) / Math.max(1, simulation.height);
-    point.x += (motion.x * endpointInertia - motion.rotation * relativeY) * timeScale * timeScale;
-    point.y += (motion.y * endpointInertia + motion.rotation * relativeX) * timeScale * timeScale;
+    const localWaveA = Math.sin(motion.phase * 2.35 + point.motionPhaseA + index * 0.019);
+    const localWaveB = Math.sin(-motion.phase * 1.7 + point.motionPhaseB + index * 0.047);
+    const localShakeX = (
+      motion.shakeX * (0.58 + localWaveA * 0.68)
+      + motion.shake * localWaveB * 0.18
+    ) * point.motionResponse;
+    const localShakeY = (
+      motion.shakeY * (0.58 + localWaveB * 0.68)
+      + motion.shake * localWaveA * 0.18
+    ) * point.motionResponse;
+    point.x += (
+      motion.x * endpointInertia
+      - motion.rotation * relativeY
+      + localShakeX
+    ) * timeScale * timeScale;
+    point.y += (
+      motion.y * endpointInertia
+      + motion.rotation * relativeX
+      + localShakeY
+    ) * timeScale * timeScale;
   }
 
   if (drag) {
@@ -301,7 +358,8 @@ export default function CharcoalExperience() {
   const dragRef = useRef<DragState | null>(null);
   const releaseRef = useRef<{ point: number; velocityX: number; velocityY: number } | null>(null);
   const frictionRef = useRef(DEFAULT_FRICTION);
-  const motionRef = useRef<MotionForce>({ x: 0, y: 0, rotation: 0, lastReading: 0 });
+  const motionRef = useRef<MotionForce>(createIdleMotion());
+  const sensorHistoryRef = useRef<SensorHistory>(createSensorHistory());
   const motionEnabledRef = useRef(true);
   const motionStatusRef = useRef<MotionStatus>("checking");
   const seedRef = useRef(0);
@@ -341,6 +399,9 @@ export default function CharcoalExperience() {
           motion.x *= 0.86;
           motion.y *= 0.86;
           motion.rotation *= 0.86;
+          motion.shakeX *= 0.78;
+          motion.shakeY *= 0.78;
+          motion.shake *= 0.78;
         }
         const release = releaseRef.current;
         if (release) {
@@ -388,30 +449,64 @@ export default function CharcoalExperience() {
       const hasReading = [
         acceleration?.x,
         acceleration?.y,
+        acceleration?.z,
         gravity?.x,
         gravity?.y,
+        gravity?.z,
         rotationRate?.alpha,
       ].some((value) => typeof value === "number" && Number.isFinite(value));
       if (!hasReading) return;
 
-      const linearX = acceleration?.x ?? 0;
-      const linearY = acceleration?.y ?? 0;
       const gravityX = gravity?.x ?? 0;
       const gravityY = gravity?.y ?? 0;
-      const deviceX = gravityX / 9.81 * 0.055 + linearX * 0.018;
-      const deviceY = -(gravityY / 9.81 * 0.055 + linearY * 0.018);
+      const gravityZ = gravity?.z ?? 0;
+      const history = sensorHistoryRef.current;
+      if (!history.initialized) {
+        history.initialized = true;
+        history.gravityX = gravityX;
+        history.gravityY = gravityY;
+        history.gravityZ = gravityZ;
+      }
+      history.gravityX = history.gravityX * 0.9 + gravityX * 0.1;
+      history.gravityY = history.gravityY * 0.9 + gravityY * 0.1;
+      history.gravityZ = history.gravityZ * 0.9 + gravityZ * 0.1;
+
+      const linearX = acceleration?.x ?? gravityX - history.gravityX;
+      const linearY = acceleration?.y ?? gravityY - history.gravityY;
+      const linearZ = acceleration?.z ?? gravityZ - history.gravityZ;
+      const jerkX = linearX - history.shakeX;
+      const jerkY = linearY - history.shakeY;
+      const jerkZ = linearZ - history.shakeZ;
+      history.shakeX = linearX;
+      history.shakeY = linearY;
+      history.shakeZ = linearZ;
+
+      // The apparent strand motion opposes the direction in which the device tilts.
+      const deviceTiltX = -history.gravityX / 9.81 * 0.055;
+      const deviceTiltY = history.gravityY / 9.81 * 0.055;
+      const deviceShakeX = -(linearX * 0.026 + jerkX * 0.034);
+      const deviceShakeY = linearY * 0.026 + jerkY * 0.034;
       const legacyOrientation = (window as Window & { orientation?: number }).orientation ?? 0;
       const screenAngle = window.screen.orientation?.angle ?? legacyOrientation;
       const angle = -screenAngle * Math.PI / 180;
       const cosine = Math.cos(angle);
       const sine = Math.sin(angle);
-      const targetX = Math.max(-0.3, Math.min(0.3, deviceX * cosine - deviceY * sine));
-      const targetY = Math.max(-0.3, Math.min(0.3, deviceX * sine + deviceY * cosine));
+      const targetX = Math.max(-0.3, Math.min(0.3, deviceTiltX * cosine - deviceTiltY * sine));
+      const targetY = Math.max(-0.3, Math.min(0.3, deviceTiltX * sine + deviceTiltY * cosine));
+      const targetShakeX = Math.max(-0.55, Math.min(0.55, deviceShakeX * cosine - deviceShakeY * sine));
+      const targetShakeY = Math.max(-0.55, Math.min(0.55, deviceShakeX * sine + deviceShakeY * cosine));
+      const targetShake = Math.min(
+        0.8,
+        Math.hypot(targetShakeX, targetShakeY) + Math.abs(linearZ * 0.018 + jerkZ * 0.025),
+      );
       const targetRotation = Math.max(-0.08, Math.min(0.08, (rotationRate?.alpha ?? 0) * 0.0008));
       const motion = motionRef.current;
       motion.x = motion.x * 0.7 + targetX * 0.3;
       motion.y = motion.y * 0.7 + targetY * 0.3;
       motion.rotation = motion.rotation * 0.74 + targetRotation * 0.26;
+      motion.shakeX = motion.shakeX * 0.48 + targetShakeX * 0.52;
+      motion.shakeY = motion.shakeY * 0.48 + targetShakeY * 0.52;
+      motion.shake = motion.shake * 0.55 + targetShake * 0.45;
       motion.lastReading = performance.now();
 
       if (motionStatusRef.current !== "active") {
@@ -434,7 +529,8 @@ export default function CharcoalExperience() {
   const requestMotionPermission = async () => {
     if (motionStatusRef.current === "active") {
       motionEnabledRef.current = false;
-      motionRef.current = { x: 0, y: 0, rotation: 0, lastReading: 0 };
+      motionRef.current = createIdleMotion();
+      sensorHistoryRef.current = createSensorHistory();
       setMotionStatusValue("off", motionStatusRef, setMotionStatus);
       return;
     }
