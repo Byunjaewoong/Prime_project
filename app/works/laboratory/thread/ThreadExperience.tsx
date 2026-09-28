@@ -37,8 +37,6 @@ type DragState = {
   velocityY: number;
 };
 type MotionForce = {
-  x: number;
-  y: number;
   rotation: number;
   shakeX: number;
   shakeY: number;
@@ -77,7 +75,7 @@ function createRandom(seed: number) {
 }
 
 function createIdleMotion(): MotionForce {
-  return { x: 0, y: 0, rotation: 0, shakeX: 0, shakeY: 0, shake: 0, lift: 0, phase: 0, lastReading: 0 };
+  return { rotation: 0, shakeX: 0, shakeY: 0, shake: 0, lift: 0, phase: 0, lastReading: 0 };
 }
 
 function createSensorHistory(): SensorHistory {
@@ -187,14 +185,12 @@ function simulateStrand(
       + motion.shake * localWaveA * 0.3
     ) * point.motionResponse;
     point.x += (
-      motion.x * endpointInertia
-      - motion.rotation * relativeY
-      + localShakeX
+      -motion.rotation * relativeY
+      + localShakeX * endpointInertia
     ) * timeScale * timeScale;
     point.y += (
-      motion.y * endpointInertia
-      + motion.rotation * relativeX
-      + localShakeY
+      motion.rotation * relativeX
+      + localShakeY * endpointInertia
     ) * timeScale * timeScale;
   }
 
@@ -399,8 +395,6 @@ export default function ThreadExperience() {
       if (simulation) {
         const motion = motionRef.current;
         if (now - motion.lastReading > 180) {
-          motion.x *= 0.86;
-          motion.y *= 0.86;
           motion.rotation *= 0.86;
           motion.shakeX *= 0.78;
           motion.shakeY *= 0.78;
@@ -484,9 +478,6 @@ export default function ThreadExperience() {
       history.shakeY = linearY;
       history.shakeZ = linearZ;
 
-      // The apparent strand motion opposes the direction in which the device tilts.
-      const deviceTiltX = -history.gravityX / 9.81 * 0.055;
-      const deviceTiltY = history.gravityY / 9.81 * 0.055;
       const deviceShakeX = -(linearX * 0.038 + jerkX * 0.052);
       const deviceShakeY = linearY * 0.038 + jerkY * 0.052;
       const legacyOrientation = (window as Window & { orientation?: number }).orientation ?? 0;
@@ -494,8 +485,6 @@ export default function ThreadExperience() {
       const angle = -screenAngle * Math.PI / 180;
       const cosine = Math.cos(angle);
       const sine = Math.sin(angle);
-      const targetX = Math.max(-0.3, Math.min(0.3, deviceTiltX * cosine - deviceTiltY * sine));
-      const targetY = Math.max(-0.3, Math.min(0.3, deviceTiltX * sine + deviceTiltY * cosine));
       const targetShakeX = Math.max(-0.8, Math.min(0.8, deviceShakeX * cosine - deviceShakeY * sine));
       const targetShakeY = Math.max(-0.8, Math.min(0.8, deviceShakeX * sine + deviceShakeY * cosine));
       const zImpulse = Math.abs(linearZ * 0.45 + jerkZ * 0.75);
@@ -505,8 +494,6 @@ export default function ThreadExperience() {
       );
       const targetRotation = Math.max(-0.08, Math.min(0.08, (rotationRate?.alpha ?? 0) * 0.0008));
       const motion = motionRef.current;
-      motion.x = motion.x * 0.7 + targetX * 0.3;
-      motion.y = motion.y * 0.7 + targetY * 0.3;
       motion.rotation = motion.rotation * 0.74 + targetRotation * 0.26;
       motion.shakeX = motion.shakeX * 0.4 + targetShakeX * 0.6;
       motion.shakeY = motion.shakeY * 0.4 + targetShakeY * 0.6;
