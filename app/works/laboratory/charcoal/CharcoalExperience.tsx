@@ -43,6 +43,7 @@ type MotionForce = {
   shakeX: number;
   shakeY: number;
   shake: number;
+  lift: number;
   phase: number;
   lastReading: number;
 };
@@ -76,7 +77,7 @@ function createRandom(seed: number) {
 }
 
 function createIdleMotion(): MotionForce {
-  return { x: 0, y: 0, rotation: 0, shakeX: 0, shakeY: 0, shake: 0, phase: 0, lastReading: 0 };
+  return { x: 0, y: 0, rotation: 0, shakeX: 0, shakeY: 0, shake: 0, lift: 0, phase: 0, lastReading: 0 };
 }
 
 function createSensorHistory(): SensorHistory {
@@ -114,9 +115,9 @@ function createSimulation(width: number, height: number, seed: number): StrandSi
       oldX: x,
       oldY: y,
       pressure: Math.max(0.12, broadPressure * (0.3 + pressure * 0.7) * (0.16 + endTaper * 0.84)),
-      motionPhaseA: random() * Math.PI * 2,
-      motionPhaseB: random() * Math.PI * 2,
-      motionResponse: 0.7 + random() * 0.65,
+      motionPhaseA: progress * Math.PI * 3.2 + phaseA,
+      motionPhaseB: progress * Math.PI * 1.85 + phaseB,
+      motionResponse: 0.82 + Math.sin(progress * Math.PI * 2.6 + phaseA) * 0.18,
     });
   }
 
@@ -157,8 +158,10 @@ function simulateStrand(
   const elapsed = Math.min(33.334, Math.max(8, now - simulation.lastTime));
   const timeScale = elapsed / 16.667;
   simulation.lastTime = now;
-  const retention = Math.pow(0.999, timeScale) * Math.exp(-friction * 0.045 * timeScale);
-  motion.phase += timeScale * (0.16 + motion.shake * 1.9);
+  const effectiveFriction = friction * (1 - motion.lift);
+  const retention = Math.pow(0.999, timeScale) * Math.exp(-effectiveFriction * 0.045 * timeScale);
+  motion.phase += timeScale * (0.11 + motion.shake * 1.25);
+  motion.lift *= Math.pow(0.955, timeScale);
 
   for (let index = 0; index < simulation.points.length; index += 1) {
     if (drag?.point === index) continue;
@@ -173,15 +176,15 @@ function simulateStrand(
     const endpointInertia = 0.9 + Math.abs(centerDistance) * 0.42;
     const relativeX = (point.x - simulation.width * 0.5) / Math.max(1, simulation.width);
     const relativeY = (point.y - simulation.height * 0.5) / Math.max(1, simulation.height);
-    const localWaveA = Math.sin(motion.phase * 2.35 + point.motionPhaseA + index * 0.019);
-    const localWaveB = Math.sin(-motion.phase * 1.7 + point.motionPhaseB + index * 0.047);
+    const localWaveA = Math.sin(motion.phase * 1.45 + point.motionPhaseA);
+    const localWaveB = Math.sin(-motion.phase * 0.95 + point.motionPhaseB);
     const localShakeX = (
-      motion.shakeX * (0.58 + localWaveA * 0.68)
-      + motion.shake * localWaveB * 0.18
+      motion.shakeX * (0.72 + localWaveA * 0.78)
+      + motion.shake * localWaveB * 0.3
     ) * point.motionResponse;
     const localShakeY = (
-      motion.shakeY * (0.58 + localWaveB * 0.68)
-      + motion.shake * localWaveA * 0.18
+      motion.shakeY * (0.72 + localWaveB * 0.78)
+      + motion.shake * localWaveA * 0.3
     ) * point.motionResponse;
     point.x += (
       motion.x * endpointInertia
@@ -484,8 +487,8 @@ export default function CharcoalExperience() {
       // The apparent strand motion opposes the direction in which the device tilts.
       const deviceTiltX = -history.gravityX / 9.81 * 0.055;
       const deviceTiltY = history.gravityY / 9.81 * 0.055;
-      const deviceShakeX = -(linearX * 0.026 + jerkX * 0.034);
-      const deviceShakeY = linearY * 0.026 + jerkY * 0.034;
+      const deviceShakeX = -(linearX * 0.038 + jerkX * 0.052);
+      const deviceShakeY = linearY * 0.038 + jerkY * 0.052;
       const legacyOrientation = (window as Window & { orientation?: number }).orientation ?? 0;
       const screenAngle = window.screen.orientation?.angle ?? legacyOrientation;
       const angle = -screenAngle * Math.PI / 180;
@@ -493,20 +496,22 @@ export default function CharcoalExperience() {
       const sine = Math.sin(angle);
       const targetX = Math.max(-0.3, Math.min(0.3, deviceTiltX * cosine - deviceTiltY * sine));
       const targetY = Math.max(-0.3, Math.min(0.3, deviceTiltX * sine + deviceTiltY * cosine));
-      const targetShakeX = Math.max(-0.55, Math.min(0.55, deviceShakeX * cosine - deviceShakeY * sine));
-      const targetShakeY = Math.max(-0.55, Math.min(0.55, deviceShakeX * sine + deviceShakeY * cosine));
+      const targetShakeX = Math.max(-0.8, Math.min(0.8, deviceShakeX * cosine - deviceShakeY * sine));
+      const targetShakeY = Math.max(-0.8, Math.min(0.8, deviceShakeX * sine + deviceShakeY * cosine));
+      const zImpulse = Math.abs(linearZ * 0.45 + jerkZ * 0.75);
       const targetShake = Math.min(
-        0.8,
-        Math.hypot(targetShakeX, targetShakeY) + Math.abs(linearZ * 0.018 + jerkZ * 0.025),
+        1.2,
+        Math.hypot(targetShakeX, targetShakeY) + Math.abs(linearZ * 0.03 + jerkZ * 0.045),
       );
       const targetRotation = Math.max(-0.08, Math.min(0.08, (rotationRate?.alpha ?? 0) * 0.0008));
       const motion = motionRef.current;
       motion.x = motion.x * 0.7 + targetX * 0.3;
       motion.y = motion.y * 0.7 + targetY * 0.3;
       motion.rotation = motion.rotation * 0.74 + targetRotation * 0.26;
-      motion.shakeX = motion.shakeX * 0.48 + targetShakeX * 0.52;
-      motion.shakeY = motion.shakeY * 0.48 + targetShakeY * 0.52;
-      motion.shake = motion.shake * 0.55 + targetShake * 0.45;
+      motion.shakeX = motion.shakeX * 0.4 + targetShakeX * 0.6;
+      motion.shakeY = motion.shakeY * 0.4 + targetShakeY * 0.6;
+      motion.shake = motion.shake * 0.45 + targetShake * 0.55;
+      if (zImpulse > 1.8) motion.lift = 1;
       motion.lastReading = performance.now();
 
       if (motionStatusRef.current !== "active") {
