@@ -123,6 +123,11 @@
   padding-top: 15px;
 }
 
+.menuSection + .menuSection {
+  margin-top: 14px;
+  border-top: 1px solid rgba(0, 0, 0, 0.07);
+}
+
 .menuSection h2 {
   margin: 0 0 10px;
   color: rgba(0, 0, 0, 0.42);
@@ -150,8 +155,44 @@
   accent-color: #050505;
 }
 
+.motionButton {
+  display: flex;
+  width: 100%;
+  min-height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 11px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.58);
+  cursor: pointer;
+  font: 400 11px var(--font-courier), monospace;
+}
+
+.motionButton span:last-child {
+  color: rgba(0, 0, 0, 0.4);
+  font-variant-numeric: tabular-nums;
+}
+
+.motionButtonActive {
+  border-color: #050505;
+  background: #050505;
+  color: #fff;
+}
+
+.motionButtonActive span:last-child {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.motionButton:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
 .menuButton:focus-visible,
 .menuLinks a:focus-visible,
+.motionButton:focus-visible,
 .slider input:focus-visible {
   outline: 2px solid #050505;
   outline-offset: 4px;

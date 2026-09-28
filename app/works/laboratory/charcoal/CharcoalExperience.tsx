@@ -27,6 +27,11 @@ type DragState = {
   velocityX: number;
   velocityY: number;
 };
+type MotionForce = { x: number; y: number; rotation: number; lastReading: number };
+type MotionStatus = "checking" | "permission-required" | "waiting" | "active" | "off" | "denied" | "unsupported";
+type PermissionAwareDeviceMotionEvent = typeof DeviceMotionEvent & {
+  requestPermission?: () => Promise<"granted" | "denied">;
+};
 
 const FIBER_COUNT = 9;
 const CONSTRAINT_ITERATIONS = 32;
@@ -104,7 +109,13 @@ function constrainToViewport(point: StrandPoint, width: number, height: number) 
   point.y = Math.max(margin, Math.min(height - margin, point.y));
 }
 
-function simulateStrand(simulation: StrandSimulation, drag: DragState | null, friction: number, now: number) {
+function simulateStrand(
+  simulation: StrandSimulation,
+  drag: DragState | null,
+  friction: number,
+  motion: MotionForce,
+  now: number,
+) {
   const elapsed = Math.min(33.334, Math.max(8, now - simulation.lastTime));
   const timeScale = elapsed / 16.667;
   simulation.lastTime = now;
@@ -119,6 +130,12 @@ function simulateStrand(simulation: StrandSimulation, drag: DragState | null, fr
     point.oldY = point.y;
     point.x += velocityX;
     point.y += velocityY;
+    const centerDistance = index / Math.max(1, simulation.points.length - 1) - 0.5;
+    const endpointInertia = 0.9 + Math.abs(centerDistance) * 0.42;
+    const relativeX = (point.x - simulation.width * 0.5) / Math.max(1, simulation.width);
+    const relativeY = (point.y - simulation.height * 0.5) / Math.max(1, simulation.height);
+    point.x += (motion.x * endpointInertia - motion.rotation * relativeY) * timeScale * timeScale;
+    point.y += (motion.y * endpointInertia + motion.rotation * relativeX) * timeScale * timeScale;
   }
 
   if (drag) {
@@ -257,16 +274,41 @@ function pointerPosition(canvas: HTMLCanvasElement, clientX: number, clientY: nu
   return { x: clientX - bounds.left, y: clientY - bounds.top };
 }
 
+function setMotionStatusValue(
+  status: MotionStatus,
+  statusRef: React.MutableRefObject<MotionStatus>,
+  setter: React.Dispatch<React.SetStateAction<MotionStatus>>,
+) {
+  statusRef.current = status;
+  setter(status);
+}
+
+function motionStatusLabel(status: MotionStatus) {
+  switch (status) {
+    case "active": return "On";
+    case "permission-required": return "Allow";
+    case "waiting": return "Waiting";
+    case "off": return "Off";
+    case "denied": return "Denied";
+    case "unsupported": return "Unavailable";
+    default: return "Checking";
+  }
+}
+
 export default function CharcoalExperience() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const simulationRef = useRef<StrandSimulation | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const releaseRef = useRef<{ point: number; velocityX: number; velocityY: number } | null>(null);
   const frictionRef = useRef(DEFAULT_FRICTION);
+  const motionRef = useRef<MotionForce>({ x: 0, y: 0, rotation: 0, lastReading: 0 });
+  const motionEnabledRef = useRef(true);
+  const motionStatusRef = useRef<MotionStatus>("checking");
   const seedRef = useRef(0);
   const [friction, setFriction] = useState(DEFAULT_FRICTION);
   const [dragging, setDragging] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [motionStatus, setMotionStatus] = useState<MotionStatus>("checking");
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -294,6 +336,12 @@ export default function CharcoalExperience() {
       resize();
       const simulation = simulationRef.current;
       if (simulation) {
+        const motion = motionRef.current;
+        if (now - motion.lastReading > 180) {
+          motion.x *= 0.86;
+          motion.y *= 0.86;
+          motion.rotation *= 0.86;
+        }
         const release = releaseRef.current;
         if (release) {
           const point = simulation.points[release.point];
@@ -301,7 +349,7 @@ export default function CharcoalExperience() {
           point.oldY = point.y - release.velocityY * 0.92;
           releaseRef.current = null;
         }
-        simulateStrand(simulation, dragRef.current, frictionRef.current, now);
+        simulateStrand(simulation, dragRef.current, frictionRef.current, motion, now);
         drawStrand(context, simulation);
       }
       animationFrame = requestAnimationFrame(animate);
@@ -316,9 +364,104 @@ export default function CharcoalExperience() {
     };
   }, []);
 
+  useEffect(() => {
+    let initialStatusTimer = 0;
+    if (!window.isSecureContext || typeof window.DeviceMotionEvent === "undefined") {
+      motionEnabledRef.current = false;
+      motionStatusRef.current = "unsupported";
+      initialStatusTimer = window.setTimeout(() => setMotionStatus("unsupported"), 0);
+      return () => window.clearTimeout(initialStatusTimer);
+    }
+
+    const deviceMotion = window.DeviceMotionEvent as PermissionAwareDeviceMotionEvent;
+    const initialStatus: MotionStatus = typeof deviceMotion.requestPermission === "function"
+      ? "permission-required"
+      : "waiting";
+    motionStatusRef.current = initialStatus;
+    initialStatusTimer = window.setTimeout(() => setMotionStatus(initialStatus), 0);
+
+    const handleDeviceMotion = (event: DeviceMotionEvent) => {
+      if (!motionEnabledRef.current) return;
+      const acceleration = event.acceleration;
+      const gravity = event.accelerationIncludingGravity;
+      const rotationRate = event.rotationRate;
+      const hasReading = [
+        acceleration?.x,
+        acceleration?.y,
+        gravity?.x,
+        gravity?.y,
+        rotationRate?.alpha,
+      ].some((value) => typeof value === "number" && Number.isFinite(value));
+      if (!hasReading) return;
+
+      const linearX = acceleration?.x ?? 0;
+      const linearY = acceleration?.y ?? 0;
+      const gravityX = gravity?.x ?? 0;
+      const gravityY = gravity?.y ?? 0;
+      const deviceX = gravityX / 9.81 * 0.055 + linearX * 0.018;
+      const deviceY = -(gravityY / 9.81 * 0.055 + linearY * 0.018);
+      const legacyOrientation = (window as Window & { orientation?: number }).orientation ?? 0;
+      const screenAngle = window.screen.orientation?.angle ?? legacyOrientation;
+      const angle = -screenAngle * Math.PI / 180;
+      const cosine = Math.cos(angle);
+      const sine = Math.sin(angle);
+      const targetX = Math.max(-0.3, Math.min(0.3, deviceX * cosine - deviceY * sine));
+      const targetY = Math.max(-0.3, Math.min(0.3, deviceX * sine + deviceY * cosine));
+      const targetRotation = Math.max(-0.08, Math.min(0.08, (rotationRate?.alpha ?? 0) * 0.0008));
+      const motion = motionRef.current;
+      motion.x = motion.x * 0.7 + targetX * 0.3;
+      motion.y = motion.y * 0.7 + targetY * 0.3;
+      motion.rotation = motion.rotation * 0.74 + targetRotation * 0.26;
+      motion.lastReading = performance.now();
+
+      if (motionStatusRef.current !== "active") {
+        setMotionStatusValue("active", motionStatusRef, setMotionStatus);
+      }
+    };
+
+    window.addEventListener("devicemotion", handleDeviceMotion, { passive: true });
+    return () => {
+      window.clearTimeout(initialStatusTimer);
+      window.removeEventListener("devicemotion", handleDeviceMotion);
+    };
+  }, []);
+
   const updateFriction = (value: number) => {
     frictionRef.current = value;
     setFriction(value);
+  };
+
+  const requestMotionPermission = async () => {
+    if (motionStatusRef.current === "active") {
+      motionEnabledRef.current = false;
+      motionRef.current = { x: 0, y: 0, rotation: 0, lastReading: 0 };
+      setMotionStatusValue("off", motionStatusRef, setMotionStatus);
+      return;
+    }
+    if (!window.isSecureContext || typeof window.DeviceMotionEvent === "undefined") {
+      setMotionStatusValue("unsupported", motionStatusRef, setMotionStatus);
+      return;
+    }
+
+    motionEnabledRef.current = true;
+    const deviceMotion = window.DeviceMotionEvent as PermissionAwareDeviceMotionEvent;
+    if (typeof deviceMotion.requestPermission !== "function") {
+      setMotionStatusValue("waiting", motionStatusRef, setMotionStatus);
+      return;
+    }
+
+    try {
+      const permission = await deviceMotion.requestPermission();
+      if (permission === "granted") {
+        setMotionStatusValue("waiting", motionStatusRef, setMotionStatus);
+      } else {
+        motionEnabledRef.current = false;
+        setMotionStatusValue("denied", motionStatusRef, setMotionStatus);
+      }
+    } catch {
+      motionEnabledRef.current = false;
+      setMotionStatusValue("denied", motionStatusRef, setMotionStatus);
+    }
   };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -419,6 +562,19 @@ export default function CharcoalExperience() {
                 <Link href="/works/laboratory" aria-label="Laboratory"><FlaskConical aria-hidden="true" size={16} /></Link>
               </div>
             </div>
+            <section className={styles.menuSection}>
+              <h2>Motion</h2>
+              <button
+                type="button"
+                className={`${styles.motionButton} ${motionStatus === "active" ? styles.motionButtonActive : ""}`}
+                onClick={requestMotionPermission}
+                disabled={motionStatus === "checking" || motionStatus === "unsupported"}
+                aria-pressed={motionStatus === "active"}
+              >
+                <span>Device motion</span>
+                <span>{motionStatusLabel(motionStatus)}</span>
+              </button>
+            </section>
             <section className={styles.menuSection}>
               <h2>Surface</h2>
               <label className={styles.slider}>
