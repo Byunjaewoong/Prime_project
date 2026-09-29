@@ -146,6 +146,42 @@ function constrainToViewport(point: StrandPoint, width: number, height: number) 
   point.y = Math.max(margin, Math.min(height - margin, point.y));
 }
 
+function enforceStrandLength(simulation: StrandSimulation, heldPoint: number | null) {
+  const { points, restLengths } = simulation;
+  const anchorIndex = heldPoint ?? Math.floor(points.length / 2);
+
+  const project = (anchor: StrandPoint, point: StrandPoint, restLength: number) => {
+    let dx = point.x - anchor.x;
+    let dy = point.y - anchor.y;
+    let distance = Math.hypot(dx, dy);
+    if (distance < 0.000001) {
+      dx = point.oldX - anchor.oldX;
+      dy = point.oldY - anchor.oldY;
+      distance = Math.hypot(dx, dy);
+      if (distance < 0.000001) {
+        dx = 0;
+        dy = 1;
+        distance = 1;
+      }
+    }
+
+    const nextX = anchor.x + dx / distance * restLength;
+    const nextY = anchor.y + dy / distance * restLength;
+    // Preserve velocity: removing length error must not create a spring impulse.
+    point.oldX += nextX - point.x;
+    point.oldY += nextY - point.y;
+    point.x = nextX;
+    point.y = nextY;
+  };
+
+  for (let index = anchorIndex + 1; index < points.length; index += 1) {
+    project(points[index - 1], points[index], restLengths[index - 1]);
+  }
+  for (let index = anchorIndex - 1; index >= 0; index -= 1) {
+    project(points[index + 1], points[index], restLengths[index]);
+  }
+}
+
 function simulateStrand(
   simulation: StrandSimulation,
   drag: DragState | null,
@@ -232,6 +268,10 @@ function simulateStrand(
       point.y = Math.max(4, Math.min(simulation.height - 4, drag.y));
     }
   }
+
+  // A final outward pass satisfies every link exactly before rendering.
+  // Do not clamp points after this pass: doing so would change link lengths again.
+  enforceStrandLength(simulation, drag?.point ?? null);
 }
 
 function drawStrand(context: CanvasRenderingContext2D, simulation: StrandSimulation) {
