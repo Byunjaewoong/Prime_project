@@ -274,7 +274,7 @@ function simulateStrand(
   enforceStrandLength(simulation, drag?.point ?? null);
 }
 
-function drawStrand(context: CanvasRenderingContext2D, simulation: StrandSimulation) {
+function drawStrand(context: CanvasRenderingContext2D, simulation: StrandSimulation, darkMode: boolean) {
   const { points } = simulation;
   context.clearRect(0, 0, simulation.width, simulation.height);
   context.lineCap = "round";
@@ -299,7 +299,7 @@ function drawStrand(context: CanvasRenderingContext2D, simulation: StrandSimulat
       }
       const bandPressure = (pressureBand + 0.5) / 5;
       context.lineWidth = (3.2 + pass * 0.7) * bandPressure;
-      context.strokeStyle = `rgba(27, 25, 23, ${0.042 + bandPressure * 0.03})`;
+      context.strokeStyle = `rgba(${darkMode ? "228, 230, 234" : "27, 25, 23"}, ${0.042 + bandPressure * 0.03})`;
       context.stroke();
     }
   }
@@ -321,7 +321,7 @@ function drawStrand(context: CanvasRenderingContext2D, simulation: StrandSimulat
       context.lineTo(point.x + normalX * offset, point.y + normalY * offset);
     }
     context.lineWidth = 0.62 + (pass % 3) * 0.08;
-    context.strokeStyle = `rgba(15, 14, 13, ${0.17 + (pass % 4) * 0.014})`;
+    context.strokeStyle = `rgba(${darkMode ? "242, 243, 245" : "15, 14, 13"}, ${0.17 + (pass % 4) * 0.014})`;
     context.stroke();
   }
 
@@ -344,7 +344,7 @@ function drawStrand(context: CanvasRenderingContext2D, simulation: StrandSimulat
       context.lineTo(x + tangentX * grain.length, y + tangentY * grain.length);
     }
     context.lineWidth = 0.24 + grainGroup * 0.1;
-    context.strokeStyle = `rgba(22, 20, 18, ${0.07 + grainGroup * 0.028})`;
+    context.strokeStyle = `rgba(${darkMode ? "234, 236, 240" : "22, 20, 18"}, ${0.07 + grainGroup * 0.028})`;
     context.stroke();
   }
 
@@ -360,7 +360,7 @@ function drawStrand(context: CanvasRenderingContext2D, simulation: StrandSimulat
     }
     const bandPressure = (pressureBand + 0.5) / 6;
     context.lineWidth = 0.34 + bandPressure * 0.74;
-    context.strokeStyle = `rgba(10, 9, 8, ${0.36 + bandPressure * 0.35})`;
+    context.strokeStyle = `rgba(${darkMode ? "250, 250, 252" : "10, 9, 8"}, ${0.36 + bandPressure * 0.35})`;
     context.stroke();
   }
 }
@@ -413,6 +413,10 @@ export default function ThreadExperience() {
     seedRef.current = Math.floor(Math.random() * 0xffffffff) || 1;
     const context = canvas.getContext("2d");
     if (!context) return;
+    const colorScheme = window.matchMedia("(prefers-color-scheme: dark)");
+    let darkMode = colorScheme.matches;
+    const updateColorScheme = (event: MediaQueryListEvent) => { darkMode = event.matches; };
+    colorScheme.addEventListener("change", updateColorScheme);
     let animationFrame = 0;
     const resize = () => {
       const bounds = canvas.getBoundingClientRect();
@@ -448,7 +452,7 @@ export default function ThreadExperience() {
           releaseRef.current = null;
         }
         simulateStrand(simulation, dragRef.current, frictionRef.current, motion, now);
-        drawStrand(context, simulation);
+        drawStrand(context, simulation, darkMode);
       }
       animationFrame = requestAnimationFrame(animate);
     };
@@ -459,6 +463,7 @@ export default function ThreadExperience() {
     return () => {
       cancelAnimationFrame(animationFrame);
       observer.disconnect();
+      colorScheme.removeEventListener("change", updateColorScheme);
     };
   }, []);
 
