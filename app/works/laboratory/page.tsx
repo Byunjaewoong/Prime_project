@@ -75,9 +75,9 @@ export default function LaboratoryPage() {
           </li>
 
           <li>
-            <Link href="/works/laboratory/Sailing" style={{ textDecoration: "none", color: "inherit", display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "1px dotted rgba(26,64,49,0.2)", paddingBottom: "6px" }}>
-              <span>6. Sailing</span>
-              <span style={{ fontSize: "0.75rem", opacity: 0.3, marginLeft: 12 }}>boat, wave and vortex study</span>
+            <Link href="/works/laboratory/lenia" style={{ textDecoration: "none", color: "inherit", display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "1px dotted rgba(26,64,49,0.2)", paddingBottom: "6px" }}>
+              <span>6. Lenia</span>
+              <span style={{ fontSize: "0.75rem", opacity: 0.3, marginLeft: 12 }}>continuous life</span>
             </Link>
           </li>
 
@@ -103,9 +103,16 @@ export default function LaboratoryPage() {
           </li>
 
           <li>
-            <Link href="/works/laboratory/thread" style={{ textDecoration: "none", color: "inherit", display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "1px dotted rgba(26,64,49,0.2)", paddingBottom: "6px" }}>
-              <span>10. Thread</span>
-              <span style={{ fontSize: "0.75rem", opacity: 0.3, marginLeft: 12 }}>interactive thread study</span>
+            <Link href="/works/laboratory/boids" style={{ textDecoration: "none", color: "inherit", display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "1px dotted rgba(26,64,49,0.2)", paddingBottom: "6px" }}>
+              <span>10. Boids</span>
+              <span style={{ fontSize: "0.75rem", opacity: 0.3, marginLeft: 12 }}>flocking</span>
+            </Link>
+          </li>
+
+          <li>
+            <Link href="/works/laboratory/physarum" style={{ textDecoration: "none", color: "inherit", display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "1px dotted rgba(26,64,49,0.2)", paddingBottom: "6px" }}>
+              <span>11. Physarum</span>
+              <span style={{ fontSize: "0.75rem", opacity: 0.3, marginLeft: 12 }}>slime mold</span>
             </Link>
           </li>
 

@@ -1,5 +1,5 @@
 .emergenceItem {
-  width: min(440px, calc(100vw - 48px));
+  width: min(290px, calc(100vw - 80px));
   margin: 18px 0 24px 42%;
 }
 
@@ -62,29 +62,14 @@
   outline: none;
 }
 
-.emergenceLenia {
-  top: 15%;
-  left: 22%;
-}
-
-.emergenceBoids {
-  top: 34%;
-  right: 15%;
-}
-
 .emergenceGrayScott {
-  top: 49%;
-  left: 17%;
-}
-
-.emergencePhysarum {
-  bottom: 14%;
-  left: 35%;
+  top: 29%;
+  left: 16%;
 }
 
 .emergenceAtoms {
-  right: 23%;
-  bottom: 30%;
+  right: 16%;
+  bottom: 25%;
 }
 
 @media (max-width: 700px) {

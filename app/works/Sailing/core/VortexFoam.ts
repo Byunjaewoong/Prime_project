@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { DyeRenderer } from "../../../Vortex/core/DyeRenderer";
-import { FluidSolver, type FluidRegion } from "../../../Vortex/core/FluidSolver";
-import { Renderer } from "../../../Vortex/core/Renderer";
+import { DyeRenderer } from "../../Vortex/core/DyeRenderer";
+import { FluidSolver, type FluidRegion } from "../../Vortex/core/FluidSolver";
+import { Renderer } from "../../Vortex/core/Renderer";
 import type { SailingPalette, SailingSettings } from "./SailingSettings";
 import type { SailingInput } from "./SailingSimulation";
 

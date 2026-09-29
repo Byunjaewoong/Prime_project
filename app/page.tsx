@@ -3,10 +3,7 @@ import Link from "next/link";
 import styles from "./page.module.css";
 
 const emergenceWorks = [
-  { label: "Lenia", href: "/works/Emergence/lenia", position: styles.emergenceLenia },
-  { label: "Boids", href: "/works/Emergence/boids", position: styles.emergenceBoids },
   { label: "Gray-Scott", href: "/works/Emergence/gray-scott", position: styles.emergenceGrayScott },
-  { label: "Physarum", href: "/works/Emergence/physarum", position: styles.emergencePhysarum },
   { label: "Atoms", href: "/works/Emergence/atoms", position: styles.emergenceAtoms },
 ];
 
@@ -110,6 +107,18 @@ export default function HomePage() {
                 ))}
               </nav>
             </section>
+          </li>
+
+          <li style={{ marginLeft: "12%", width: "fit-content" }}>
+            <Link href="/works/Sailing" style={{ textDecoration: "none", color: "inherit" }}>
+              <span>Sailing</span>
+            </Link>
+          </li>
+
+          <li style={{ marginLeft: "62%", width: "fit-content" }}>
+            <Link href="/works/thread" style={{ textDecoration: "none", color: "inherit" }}>
+              <span>Thread</span>
+            </Link>
           </li>
 
           <li style={{ marginLeft: "25%", width: "fit-content" }}>
