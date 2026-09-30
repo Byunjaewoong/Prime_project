@@ -14,6 +14,21 @@ const NOISE_CONTROLS: { key: keyof NoiseParams; label: string; min: number; max:
   { key: "seed", label: "Pattern seed", min: 0, max: 100, step: 1 },
 ];
 
+const PALETTE = [
+  { name: "Slate", hex: "#4d7b95" },
+  { name: "Sage", hex: "#7d917d" },
+  { name: "Clay", hex: "#987e72" },
+  { name: "Lavender", hex: "#817b96" },
+  { name: "Steel", hex: "#718998" },
+  { name: "Sand", hex: "#9a8b78" },
+  { name: "Teal", hex: "#708a83" },
+  { name: "Mauve", hex: "#987881" },
+  { name: "Indigo", hex: "#788097" },
+  { name: "Olive", hex: "#929173" },
+  { name: "Stone", hex: "#888b86" },
+  { name: "Charcoal", hex: "#626b70" },
+] as const;
+
 export default function PaintedExperience() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<PaintedRenderer | null>(null);
@@ -66,10 +81,17 @@ export default function PaintedExperience() {
         </div>
         <div className={styles.controls}>
           <span className={styles.sectionTitle}>Appearance</span>
-          <label className={styles.control}>
+          <div className={styles.control}>
             <span className={styles.controlLabel}><span>Base color</span><output>{color.toUpperCase()}</output></span>
-            <input className={styles.colorInput} type="color" value={color} onChange={event => updateColor(event.target.value)} />
-          </label>
+            <div className={styles.palette} role="group" aria-label="Base color">
+              {PALETTE.map(choice => <button key={choice.hex} className={styles.paletteOption} type="button"
+                aria-label={`${choice.name} ${choice.hex}`} aria-pressed={color === choice.hex}
+                onClick={() => updateColor(choice.hex)}>
+                <span className={styles.paletteSwatch} style={{ backgroundColor: choice.hex }} aria-hidden="true" />
+                <span>{choice.name}</span>
+              </button>)}
+            </div>
+          </div>
           <label className={styles.control}>
             <span className={styles.controlLabel}><span>Shadow depth</span><output>{shadowDepth.toFixed(2)}</output></span>
             <input type="range" min={0} max={2} step={0.05} value={shadowDepth}

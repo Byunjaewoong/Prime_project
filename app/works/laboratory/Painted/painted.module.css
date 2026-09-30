@@ -12,5 +12,8 @@
 .controlLabel { display: flex; justify-content: space-between; gap: 12px; color: rgba(255,255,255,.83); }
 .controlLabel output { color: #fff; font-variant-numeric: tabular-nums; }
 .control input { width: 100%; margin: 0; accent-color: #d2e2ea; cursor: pointer; }
-.control .colorInput { height: 34px; padding: 2px; border: 1px solid rgba(255,255,255,.35); border-radius: 5px; background: transparent; }
-.menuButton:focus-visible, .menuLinks a:focus-visible, .control input:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.palette { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.paletteOption { display: flex; min-width: 0; min-height: 39px; align-items: center; justify-content: center; gap: 5px; padding: 4px; border: 1px solid rgba(255,255,255,.2); border-radius: 6px; background: rgba(255,255,255,.05); color: rgba(255,255,255,.8); cursor: pointer; font: 10px var(--font-courier), monospace; }
+.paletteOption[aria-pressed="true"] { border-color: rgba(255,255,255,.9); background: rgba(255,255,255,.16); color: #fff; }
+.paletteSwatch { flex: none; width: 16px; height: 16px; border: 1px solid rgba(255,255,255,.28); border-radius: 50%; }
+.menuButton:focus-visible, .menuLinks a:focus-visible, .control input:focus-visible, .paletteOption:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
