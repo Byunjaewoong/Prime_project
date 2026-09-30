@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { FlaskConical, Home, Pause, Play, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { BODY_COLORS, MAX_BODY_COUNT, MAX_MASS, MIN_BODY_COUNT, MIN_MASS, TrioSimulation } from "./core/TrioSimulation";
+import { MAX_BODY_COUNT, MAX_MASS, MIN_BODY_COUNT, MIN_MASS, TrioSimulation } from "./core/TrioSimulation";
 import { TrioPlanetRenderer } from "./core/TrioPlanetRenderer";
+import { TrioStarfield } from "./core/TrioStarfield";
 import styles from "./trio.module.css";
 
 const INITIAL_CAMERA_EXTENT = 2.4;
@@ -21,6 +22,7 @@ export default function TrioExperience() {
   const [paused, setPaused] = useState(false);
   const [bodyCount, setBodyCount] = useState(3);
   const [masses, setMasses] = useState([1, 1, 1]);
+  const [colors, setColors] = useState(["#fff", "#fff", "#fff"]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -28,7 +30,9 @@ export default function TrioExperience() {
     if (!canvas || !context) return;
     const simulation = new TrioSimulation();
     const planetRenderer = new TrioPlanetRenderer();
+    const starfield = new TrioStarfield();
     simulationRef.current = simulation;
+    setColors(simulation.bodies.map(body => body.color));
     let frame = 0;
     let previousTime = 0;
     let accumulator = 0;
@@ -58,8 +62,7 @@ export default function TrioExperience() {
         canvas.height = height;
       }
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
-      context.fillStyle = "#000";
-      context.fillRect(0, 0, bounds.width, bounds.height);
+      starfield.draw(context, bounds.width, bounds.height, ratio);
 
       let desiredExtent = 1.7;
       for (const body of simulation.bodies) {
@@ -161,6 +164,17 @@ export default function TrioExperience() {
     simulation?.setBodyCount(count);
     setBodyCount(count);
     setMasses(simulation?.bodies.map(body => body.mass) ?? Array.from({ length: count }, () => 1));
+    setColors(simulation?.bodies.map(body => body.color) ?? Array.from({ length: count }, () => "#fff"));
+    resetViewRef.current = true;
+  };
+
+  const randomize = () => {
+    const simulation = simulationRef.current;
+    simulation?.reset();
+    if (simulation) {
+      setMasses(simulation.bodies.map(body => body.mass));
+      setColors(simulation.bodies.map(body => body.color));
+    }
     resetViewRef.current = true;
   };
 
@@ -182,20 +196,22 @@ export default function TrioExperience() {
               aria-label="Number of bodies" onChange={event => updateBodyCount(Number(event.target.value))} />
           </label>
           <span className={styles.sectionTitle}>Mass</span>
-          {masses.map((mass, index) => <label className={styles.massControl} key={index}>
+          {masses.map((mass, index) => {
+            const color = colors[index] ?? "#fff";
+            return <label className={styles.massControl} key={index}>
             <span className={styles.massLabel}>
-              <span className={styles.massName}><span className={styles.colorDot} style={{ backgroundColor: BODY_COLORS[index] }} />Body {index + 1}</span>
+              <span className={styles.massName}><span className={styles.colorDot} style={{ backgroundColor: color }} />Body {index + 1}</span>
               <output>{mass.toFixed(2)}</output>
             </span>
             <input type="range" min={MIN_MASS} max={MAX_MASS} step="0.05" value={mass}
-              aria-label={`Body ${index + 1} mass`} style={{ accentColor: BODY_COLORS[index] }}
+              aria-label={`Body ${index + 1} mass`} style={{ accentColor: color }}
               onChange={event => updateMass(index, Number(event.target.value))} />
-          </label>)}
+          </label>;})}
         </div>
         <button className={styles.action} type="button" onClick={togglePaused}>
           <span>{paused ? "Resume" : "Pause"}</span>{paused ? <Play size={15} /> : <Pause size={15} />}
         </button>
-        <button className={styles.action} type="button" onClick={() => { simulationRef.current?.reset(); resetViewRef.current = true; }}>
+        <button className={styles.action} type="button" onClick={randomize}>
           <span>Randomize</span><RotateCcw size={15} />
         </button>
       </div>}

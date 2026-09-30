@@ -1,3 +1,5 @@
+import { appearanceAccentColor } from "./TrioSurfaceColor";
+
 export type Point = { x: number; y: number };
 export type Vec3 = { x: number; y: number; z: number };
 export type PlanetAppearance = {
@@ -19,12 +21,11 @@ export type Body = Point & {
 
 const GRAVITY = 0.65;
 const SOFTENING = 0.075;
-export const BODY_COLORS = ["#81ef00", "#ff008b", "#009fff", "#ffc400", "#a766ff", "#00e0b8", "#ff733e", "#c4ef43", "#ff5fc8", "#80b6ff"];
 const TRAIL_LENGTH = 420;
 export const MIN_MASS = 0.1;
 export const MAX_MASS = 100;
 export const MIN_BODY_COUNT = 1;
-export const MAX_BODY_COUNT = BODY_COLORS.length;
+export const MAX_BODY_COUNT = 10;
 
 function randomAppearance(): PlanetAppearance {
   const z = Math.random() * 2 - 1;
@@ -78,7 +79,7 @@ export class TrioSimulation {
     const positions = randomPositions(this.bodyCount);
     const masses = this.bodies.map(body => body.mass);
     this.bodies = Array.from({ length: this.bodyCount }, (_, index) => {
-      const color = BODY_COLORS[index];
+      const appearance = randomAppearance();
       const position = positions[index];
       const orbitalAngle = Math.atan2(position.y, position.x);
       const speed = 0.22 + Math.random() * 0.28;
@@ -89,9 +90,9 @@ export class TrioSimulation {
         vx: -Math.sin(orbitalAngle) * speed + (Math.random() - 0.5) * 0.34,
         vy: Math.cos(orbitalAngle) * speed + (Math.random() - 0.5) * 0.34,
         mass: masses[index] ?? 1,
-        color,
+        color: appearanceAccentColor(appearance),
         trail: [],
-        appearance: randomAppearance(),
+        appearance,
         spinAngle: Math.random() * Math.PI * 2,
         spinSpeed: baseSpinSpeed,
         baseSpinSpeed,

@@ -1,17 +1,11 @@
 import type { Body, Vec3 } from "./TrioSimulation";
 import { rotatingSurfaceDistance, surfaceRotation } from "@/app/lib/rotatingPlanetSurface";
+import { channelFromDistance } from "./TrioSurfaceColor";
 
 const light: Vec3 = (() => {
   const length = Math.hypot(-0.46, -0.38, 0.8);
   return { x: -0.46 / length, y: -0.38 / length, z: 0.8 / length };
 })();
-
-function channelFromDistance(distance: number, coefficient: number) {
-  const value = coefficient > 0
-    ? (distance / coefficient) * 255
-    : 255 + (distance / coefficient) * 255;
-  return Math.max(0, Math.min(255, value));
-}
 
 export class TrioPlanetRenderer {
   private sprites: { canvas: HTMLCanvasElement; context: CanvasRenderingContext2D }[] = [];
