@@ -1,16 +1,15 @@
-export type GrainParams = {
-  size: number;
-  density: number;
-  contrast: number;
-  flow: number;
+export type NoiseParams = {
+  scale: number;
+  octaves: number;
+  roughness: number;
+  relief: number;
+  seed: number;
 };
 
-export const DEFAULT_GRAIN: GrainParams = { size: 1, density: 1, contrast: 1.4, flow: 1.05 };
+export const DEFAULT_NOISE: NoiseParams = { scale: 11, octaves: 4, roughness: 0.5, relief: 6, seed: 17 };
 
-const COLORS = [
-  "#4d7b95", "#7d917d", "#987e72", "#817b96", "#718998", "#9a8b78",
-  "#708a83", "#987881", "#788097", "#929173", "#888b86",
-];
+const BASE_COLOR: [number, number, number] = [77 / 255, 123 / 255, 149 / 255];
+const LIGHT: [number, number, number] = [-0.42, 0.46, 0.78];
 
 const VERTEX_SHADER = `#version 300 es
 in vec2 aPosition;
@@ -20,12 +19,13 @@ void main() { gl_Position = vec4(aPosition, 0.0, 1.0); }
 const FRAGMENT_SHADER = `#version 300 es
 precision highp float;
 uniform vec3 uColor;
+uniform vec3 uLight;
 uniform float uPixelRatio;
+uniform float uScale;
+uniform int uOctaves;
+uniform float uRoughness;
+uniform float uRelief;
 uniform float uSeed;
-uniform float uSize;
-uniform float uDensity;
-uniform float uContrast;
-uniform float uFlow;
 out vec4 outColor;
 
 float hash21(vec2 p) {
@@ -34,54 +34,61 @@ float hash21(vec2 p) {
   return fract((p.x + p.y) * p.x);
 }
 
-float noise2(vec2 p) {
-  vec2 i = floor(p);
-  vec2 f = fract(p);
-  f = f * f * (3.0 - 2.0 * f);
-  return mix(mix(hash21(i), hash21(i + vec2(1.0, 0.0)), f.x),
-             mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0)), f.x), f.y);
+vec2 gradient(vec2 lattice) {
+  vec2 offset = vec2(uSeed * 13.17, uSeed * 7.31);
+  vec2 direction = vec2(
+    hash21(lattice + offset),
+    hash21(lattice + offset + vec2(37.19, 91.73))
+  ) * 2.0 - 1.0;
+  return normalize(direction + vec2(0.0001));
+}
+
+float perlin(vec2 p) {
+  vec2 cell = floor(p);
+  vec2 local = fract(p);
+  vec2 fade = local * local * local * (local * (local * 6.0 - 15.0) + 10.0);
+  float lower = mix(
+    dot(gradient(cell), local),
+    dot(gradient(cell + vec2(1.0, 0.0)), local - vec2(1.0, 0.0)),
+    fade.x
+  );
+  float upper = mix(
+    dot(gradient(cell + vec2(0.0, 1.0)), local - vec2(0.0, 1.0)),
+    dot(gradient(cell + vec2(1.0, 1.0)), local - vec2(1.0, 1.0)),
+    fade.x
+  );
+  return mix(lower, upper, fade.y);
+}
+
+float heightAt(vec2 pixel) {
+  float frequency = 1.0;
+  float amplitude = 1.0;
+  float height = 0.0;
+  float totalAmplitude = 0.0;
+  for (int octave = 0; octave < 6; octave++) {
+    if (octave >= uOctaves || uScale / frequency < 1.5 / uPixelRatio) break;
+    height += amplitude * perlin(pixel * frequency / uScale + vec2(float(octave) * 29.7));
+    totalAmplitude += amplitude;
+    frequency *= 2.0;
+    amplitude *= uRoughness;
+  }
+  return height / max(totalAmplitude, 0.001);
 }
 
 void main() {
-  vec2 p = gl_FragCoord.xy / uPixelRatio;
-  vec2 seed = vec2(uSeed, uSeed * 1.71);
-  float broad = (noise2(p * 0.0048 + seed) - 0.5) * 0.078;
-  float middle = (noise2(p * 0.027 + seed * 1.93) - 0.5) * 0.044;
-  float clustered = (noise2(p * 0.19 + seed * 3.7) - 0.5) * 0.052;
-  vec2 warp = vec2(noise2(p * 0.011 + seed * 2.3),
-                   noise2(p * 0.011 + seed * 2.3 + vec2(19.7, 43.1))) - 0.5;
-  vec2 grainP = p + warp * (3.4 * uSize);
-  float flow = (noise2(p * 0.009 + seed * 0.7) - 0.5) * uFlow * 1.8;
-  float spacing = 6.8 * uSize / sqrt(uDensity);
-  vec2 grid = floor(grainP / spacing);
-  float fibers = 0.0;
-
-  // Sparse, oriented Gaussian-windowed ridge pairs: a Gabor-style grain.
-  for (int y = -1; y <= 1; y++) {
-    for (int x = -1; x <= 1; x++) {
-      vec2 cell = grid + vec2(float(x), float(y));
-      float a = hash21(cell + seed * 3.1);
-      float b = hash21(cell + seed * 3.1 + vec2(17.3, 4.7));
-      float c = hash21(cell + seed * 3.1 + vec2(3.9, 29.2));
-      vec2 center = (cell + vec2(a, b) * 0.74 + 0.13) * spacing;
-      vec2 direction = normalize(vec2(flow + (c - 0.5) * 0.95, 1.0));
-      vec2 delta = grainP - center;
-      float along = dot(delta, direction) / (uSize * (2.8 + a * 2.4));
-      float across = dot(delta, vec2(direction.y, -direction.x)) / (uSize * (0.55 + b * 0.27));
-      float envelope = exp(-2.1 * along * along - 0.85 * across * across);
-      fibers += envelope * sin(across * 1.85) * (0.55 + c * 0.45);
-    }
-  }
-
-  float fine = (hash21(floor(gl_FragCoord.xy) + seed * 71.0) - 0.5) * 0.023;
-  float value = broad + middle + clustered + fibers * uContrast * 0.115 + fine;
-  outColor = vec4(clamp(uColor + vec3(value), 0.0, 1.0), 1.0);
+  vec2 pixel = gl_FragCoord.xy / uPixelRatio;
+  float height = heightAt(pixel);
+  // z = height(x, y); the screen-space slopes define its 3D surface normal.
+  vec3 normal = normalize(vec3(
+    -dFdx(height) * uPixelRatio * uRelief,
+    -dFdy(height) * uPixelRatio * uRelief,
+    1.0
+  ));
+  float illumination = max(dot(normal, normalize(uLight)), 0.0);
+  float shade = 0.24 + 0.96 * illumination;
+  outColor = vec4(clamp(uColor * shade, 0.0, 1.0), 1.0);
 }
 `;
-
-function rgbFromHex(hex: string): [number, number, number] {
-  return [1, 3, 5].map(index => Number.parseInt(hex.slice(index, index + 2), 16) / 255) as [number, number, number];
-}
 
 function compileShader(gl: WebGL2RenderingContext, type: number, source: string) {
   const shader = gl.createShader(type);
@@ -96,6 +103,29 @@ function compileShader(gl: WebGL2RenderingContext, type: number, source: string)
   return shader;
 }
 
+const CPU_GRADIENTS: [number, number][] = [
+  [1, 0], [-1, 0], [0, 1], [0, -1],
+  [Math.SQRT1_2, Math.SQRT1_2], [-Math.SQRT1_2, Math.SQRT1_2],
+  [Math.SQRT1_2, -Math.SQRT1_2], [-Math.SQRT1_2, -Math.SQRT1_2],
+];
+
+function cpuPerlin(x: number, y: number, seed: number): number {
+  const cellX = Math.floor(x);
+  const cellY = Math.floor(y);
+  const fx = x - cellX;
+  const fy = y - cellY;
+  const fade = (value: number) => value ** 3 * (value * (value * 6 - 15) + 10);
+  const dot = (dx: number, dy: number) => {
+    let hash = Math.imul(cellX + dx, 374761393) + Math.imul(cellY + dy, 668265263) + Math.imul(seed, 1442695041);
+    hash = Math.imul(hash ^ (hash >>> 13), 1274126177);
+    const [gx, gy] = CPU_GRADIENTS[hash & 7];
+    return gx * (fx - dx) + gy * (fy - dy);
+  };
+  const lower = dot(0, 0) + fade(fx) * (dot(1, 0) - dot(0, 0));
+  const upper = dot(0, 1) + fade(fx) * (dot(1, 1) - dot(0, 1));
+  return lower + fade(fy) * (upper - lower);
+}
+
 export class PaintedRenderer {
   private readonly canvas: HTMLCanvasElement;
   private readonly gl: WebGL2RenderingContext | null;
@@ -104,9 +134,7 @@ export class PaintedRenderer {
   private readonly vertexShader: WebGLShader | null = null;
   private readonly fragmentShader: WebGLShader | null = null;
   private readonly buffer: WebGLBuffer | null = null;
-  private readonly seed = Math.random() * 1000;
-  private params: GrainParams = { ...DEFAULT_GRAIN };
-  private colorIndex = 0;
+  private params: NoiseParams = { ...DEFAULT_NOISE };
   private frame: number | null = null;
   private destroyed = false;
 
@@ -145,15 +173,7 @@ export class PaintedRenderer {
     this.scheduleRender();
   }
 
-  changeColor() {
-    const previous = this.colorIndex;
-    do {
-      this.colorIndex = Math.floor(Math.random() * COLORS.length);
-    } while (this.colorIndex === previous);
-    this.scheduleRender();
-  }
-
-  setGrain(next: Partial<GrainParams>) {
+  setNoise(next: Partial<NoiseParams>) {
     this.params = { ...this.params, ...next };
     this.scheduleRender();
   }
@@ -175,53 +195,75 @@ export class PaintedRenderer {
       this.canvas.width = width;
       this.canvas.height = height;
     }
-    const color = rgbFromHex(COLORS[this.colorIndex]);
     const gl = this.gl;
     if (!gl || !this.program) {
-      this.renderFallback(color, ratio);
+      this.renderFallback();
       return;
     }
     gl.viewport(0, 0, width, height);
     gl.useProgram(this.program);
-    gl.uniform3f(gl.getUniformLocation(this.program, "uColor"), ...color);
+    gl.uniform3f(gl.getUniformLocation(this.program, "uColor"), ...BASE_COLOR);
+    gl.uniform3f(gl.getUniformLocation(this.program, "uLight"), ...LIGHT);
     gl.uniform1f(gl.getUniformLocation(this.program, "uPixelRatio"), ratio);
-    gl.uniform1f(gl.getUniformLocation(this.program, "uSeed"), this.seed);
-    gl.uniform1f(gl.getUniformLocation(this.program, "uSize"), this.params.size);
-    gl.uniform1f(gl.getUniformLocation(this.program, "uDensity"), this.params.density);
-    gl.uniform1f(gl.getUniformLocation(this.program, "uContrast"), this.params.contrast);
-    gl.uniform1f(gl.getUniformLocation(this.program, "uFlow"), this.params.flow);
+    gl.uniform1f(gl.getUniformLocation(this.program, "uScale"), this.params.scale);
+    gl.uniform1i(gl.getUniformLocation(this.program, "uOctaves"), this.params.octaves);
+    gl.uniform1f(gl.getUniformLocation(this.program, "uRoughness"), this.params.roughness);
+    gl.uniform1f(gl.getUniformLocation(this.program, "uRelief"), this.params.relief);
+    gl.uniform1f(gl.getUniformLocation(this.program, "uSeed"), this.params.seed);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
-  private renderFallback(color: [number, number, number], ratio: number) {
+  private renderFallback() {
     const context = this.fallback;
     if (!context) return;
-    const width = this.canvas.clientWidth;
-    const height = this.canvas.clientHeight;
-    context.setTransform(ratio, 0, 0, ratio, 0, 0);
-    context.fillStyle = `rgb(${color.map(channel => Math.round(channel * 255)).join(",")})`;
-    context.fillRect(0, 0, width, height);
-    let state = Math.floor(this.seed * 1000000) || 1;
-    const random = () => {
-      state = (Math.imul(state, 1664525) + 1013904223) | 0;
-      return (state >>> 0) / 4294967296;
-    };
-    const spacing = 6.8 * this.params.size / Math.sqrt(this.params.density);
-    const count = Math.ceil(width * height / (spacing * spacing));
-    context.lineCap = "round";
-    for (let index = 0; index < count; index += 1) {
-      const x = random() * width;
-      const y = random() * height;
-      const length = (2.5 + random() * 4) * this.params.size;
-      const tilt = (random() - 0.5) * (0.7 + this.params.flow);
-      const alpha = (0.025 + random() * 0.09) * this.params.contrast;
-      context.strokeStyle = random() < 0.5 ? `rgba(255,255,255,${alpha})` : `rgba(0,0,0,${alpha})`;
-      context.lineWidth = (0.45 + random() * 0.7) * this.params.size;
-      context.beginPath();
-      context.moveTo(x, y);
-      context.lineTo(x + tilt * length, y + length);
-      context.stroke();
+    const { width, height } = this.canvas;
+    const downsample = Math.min(1, Math.sqrt(350_000 / (width * height)));
+    const sampleWidth = Math.max(1, Math.round(width * downsample));
+    const sampleHeight = Math.max(1, Math.round(height * downsample));
+    const cssStep = this.canvas.clientWidth / sampleWidth;
+    const heights = new Float32Array(sampleWidth * sampleHeight);
+    const seed = Math.round(this.params.seed);
+    for (let y = 0; y < sampleHeight; y++) {
+      for (let x = 0; x < sampleWidth; x++) {
+        let frequency = 1;
+        let amplitude = 1;
+        let value = 0;
+        let totalAmplitude = 0;
+        for (let octave = 0; octave < this.params.octaves; octave++) {
+          if (this.params.scale / frequency < cssStep * 1.5) break;
+          const px = x * cssStep * frequency / this.params.scale + octave * 29.7;
+          const py = y * cssStep * frequency / this.params.scale + octave * 29.7;
+          value += amplitude * cpuPerlin(px, py, seed);
+          totalAmplitude += amplitude;
+          frequency *= 2;
+          amplitude *= this.params.roughness;
+        }
+        heights[y * sampleWidth + x] = value / (totalAmplitude || 1);
+      }
     }
+    const image = context.createImageData(sampleWidth, sampleHeight);
+    const lightLength = Math.hypot(...LIGHT);
+    for (let y = 0; y < sampleHeight; y++) {
+      for (let x = 0; x < sampleWidth; x++) {
+        const index = y * sampleWidth + x;
+        const left = heights[y * sampleWidth + Math.max(0, x - 1)];
+        const right = heights[y * sampleWidth + Math.min(sampleWidth - 1, x + 1)];
+        const above = heights[Math.max(0, y - 1) * sampleWidth + x];
+        const below = heights[Math.min(sampleHeight - 1, y + 1) * sampleWidth + x];
+        const nx = -(right - left) * this.params.relief / (2 * cssStep);
+        const ny = (below - above) * this.params.relief / (2 * cssStep);
+        const dot = Math.max(0, (nx * LIGHT[0] + ny * LIGHT[1] + LIGHT[2]) / (Math.hypot(nx, ny, 1) * lightLength));
+        const shade = 0.24 + 0.96 * dot;
+        for (let channel = 0; channel < 3; channel++) image.data[index * 4 + channel] = Math.round(BASE_COLOR[channel] * shade * 255);
+        image.data[index * 4 + 3] = 255;
+      }
+    }
+    const tile = document.createElement("canvas");
+    tile.width = sampleWidth;
+    tile.height = sampleHeight;
+    tile.getContext("2d")?.putImageData(image, 0, 0);
+    context.imageSmoothingEnabled = true;
+    context.drawImage(tile, 0, 0, width, height);
   }
 
   destroy() {

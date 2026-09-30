@@ -3,21 +3,22 @@
 import Link from "next/link";
 import { FlaskConical, Home } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_GRAIN, PaintedRenderer, type GrainParams } from "./core/PaintedRenderer";
+import { DEFAULT_NOISE, PaintedRenderer, type NoiseParams } from "./core/PaintedRenderer";
 import styles from "./painted.module.css";
 
-const GRAIN_CONTROLS: { key: keyof GrainParams; label: string; min: number; max: number; step: number }[] = [
-  { key: "size", label: "Grain size", min: 0.45, max: 2.2, step: 0.05 },
-  { key: "density", label: "Density", min: 0.35, max: 2.5, step: 0.05 },
-  { key: "contrast", label: "Relief", min: 0, max: 2.2, step: 0.05 },
-  { key: "flow", label: "Direction variation", min: 0, max: 2, step: 0.05 },
+const NOISE_CONTROLS: { key: keyof NoiseParams; label: string; min: number; max: number; step: number }[] = [
+  { key: "scale", label: "Noise scale", min: 3, max: 40, step: 1 },
+  { key: "octaves", label: "Detail layers", min: 1, max: 6, step: 1 },
+  { key: "roughness", label: "Detail strength", min: 0.1, max: 0.85, step: 0.05 },
+  { key: "relief", label: "Height / relief", min: 0, max: 15, step: 0.25 },
+  { key: "seed", label: "Pattern seed", min: 0, max: 100, step: 1 },
 ];
 
 export default function PaintedExperience() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<PaintedRenderer | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [grain, setGrain] = useState<GrainParams>(DEFAULT_GRAIN);
+  const [noise, setNoise] = useState<NoiseParams>(DEFAULT_NOISE);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -30,25 +31,17 @@ export default function PaintedExperience() {
     };
   }, []);
 
-  const updateGrain = (key: keyof GrainParams, value: number) => {
-    setGrain(current => ({ ...current, [key]: value }));
-    rendererRef.current?.setGrain({ [key]: value });
+  const updateNoise = (key: keyof NoiseParams, value: number) => {
+    setNoise(current => ({ ...current, [key]: value }));
+    rendererRef.current?.setNoise({ [key]: value });
   };
 
   return <main className={styles.page}>
     <canvas
       ref={canvasRef}
       className={styles.canvas}
-      role="button"
-      tabIndex={0}
-      aria-label="Painted texture. Click, tap, or press Enter to change its color."
-      onClick={() => rendererRef.current?.changeColor()}
-      onKeyDown={event => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          rendererRef.current?.changeColor();
-        }
-      }}
+      role="img"
+      aria-label="Single-color painted surface shaded by a Perlin-noise height field."
     />
     <div className={styles.menuRoot}>
       {menuOpen && <div className={styles.menu}>
@@ -60,11 +53,11 @@ export default function PaintedExperience() {
           </nav>
         </div>
         <div className={styles.controls}>
-          <span className={styles.sectionTitle}>Grain</span>
-          {GRAIN_CONTROLS.map(control => <label className={styles.control} key={control.key}>
-            <span className={styles.controlLabel}><span>{control.label}</span><output>{grain[control.key].toFixed(2)}</output></span>
-            <input type="range" min={control.min} max={control.max} step={control.step} value={grain[control.key]}
-              onChange={event => updateGrain(control.key, Number(event.target.value))} />
+          <span className={styles.sectionTitle}>Perlin surface</span>
+          {NOISE_CONTROLS.map(control => <label className={styles.control} key={control.key}>
+            <span className={styles.controlLabel}><span>{control.label}</span><output>{noise[control.key].toFixed(control.step >= 1 ? 0 : 2)}</output></span>
+            <input type="range" min={control.min} max={control.max} step={control.step} value={noise[control.key]}
+              onChange={event => updateNoise(control.key, Number(event.target.value))} />
           </label>)}
         </div>
       </div>}
