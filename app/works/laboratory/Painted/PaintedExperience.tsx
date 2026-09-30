@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FlaskConical, Home } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_COLOR, DEFAULT_NOISE, PaintedRenderer, type NoiseParams } from "./core/PaintedRenderer";
+import { DEFAULT_COLOR, DEFAULT_NOISE, DEFAULT_SHADOW_DEPTH, PaintedRenderer, type NoiseParams } from "./core/PaintedRenderer";
 import styles from "./painted.module.css";
 
 const NOISE_CONTROLS: { key: keyof NoiseParams; label: string; min: number; max: number; step: number }[] = [
@@ -20,6 +20,7 @@ export default function PaintedExperience() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [noise, setNoise] = useState<NoiseParams>(DEFAULT_NOISE);
   const [color, setColor] = useState(DEFAULT_COLOR);
+  const [shadowDepth, setShadowDepth] = useState(DEFAULT_SHADOW_DEPTH);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -42,6 +43,11 @@ export default function PaintedExperience() {
     rendererRef.current?.setColor(value);
   };
 
+  const updateShadowDepth = (value: number) => {
+    setShadowDepth(value);
+    rendererRef.current?.setShadowDepth(value);
+  };
+
   return <main className={styles.page}>
     <canvas
       ref={canvasRef}
@@ -59,10 +65,15 @@ export default function PaintedExperience() {
           </nav>
         </div>
         <div className={styles.controls}>
-          <span className={styles.sectionTitle}>Color</span>
+          <span className={styles.sectionTitle}>Appearance</span>
           <label className={styles.control}>
             <span className={styles.controlLabel}><span>Base color</span><output>{color.toUpperCase()}</output></span>
             <input className={styles.colorInput} type="color" value={color} onChange={event => updateColor(event.target.value)} />
+          </label>
+          <label className={styles.control}>
+            <span className={styles.controlLabel}><span>Shadow depth</span><output>{shadowDepth.toFixed(2)}</output></span>
+            <input type="range" min={0} max={2} step={0.05} value={shadowDepth}
+              onChange={event => updateShadowDepth(Number(event.target.value))} />
           </label>
           <span className={styles.sectionTitle}>Perlin surface</span>
           {NOISE_CONTROLS.map(control => <label className={styles.control} key={control.key}>

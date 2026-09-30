@@ -9,6 +9,7 @@ export type NoiseParams = {
 export const DEFAULT_NOISE: NoiseParams = { scale: 11, octaves: 4, roughness: 0.5, relief: 6, seed: 17 };
 
 export const DEFAULT_COLOR = "#4d7b95";
+export const DEFAULT_SHADOW_DEPTH = 1;
 const LIGHT: [number, number, number] = [-0.42, 0.46, 0.78];
 
 function colorChannels(hex: string): [number, number, number] {
@@ -30,6 +31,7 @@ uniform int uOctaves;
 uniform float uRoughness;
 uniform float uRelief;
 uniform float uSeed;
+uniform float uShadowDepth;
 out vec4 outColor;
 
 float hash21(vec2 p) {
@@ -89,7 +91,7 @@ void main() {
     1.0
   ));
   float illumination = max(dot(normal, normalize(uLight)), 0.0);
-  float shade = 0.24 + 0.96 * illumination;
+  float shade = mix(1.0, 0.24 + 0.96 * illumination, uShadowDepth);
   outColor = vec4(clamp(uColor * shade, 0.0, 1.0), 1.0);
 }
 `;
@@ -140,6 +142,7 @@ export class PaintedRenderer {
   private readonly buffer: WebGLBuffer | null = null;
   private params: NoiseParams = { ...DEFAULT_NOISE };
   private color = DEFAULT_COLOR;
+  private shadowDepth = DEFAULT_SHADOW_DEPTH;
   private frame: number | null = null;
   private destroyed = false;
 
@@ -189,6 +192,11 @@ export class PaintedRenderer {
     this.scheduleRender();
   }
 
+  setShadowDepth(value: number) {
+    this.shadowDepth = Math.max(0, Math.min(2, value));
+    this.scheduleRender();
+  }
+
   private scheduleRender() {
     if (this.frame !== null) cancelAnimationFrame(this.frame);
     this.frame = requestAnimationFrame(() => {
@@ -221,6 +229,7 @@ export class PaintedRenderer {
     gl.uniform1f(gl.getUniformLocation(this.program, "uRoughness"), this.params.roughness);
     gl.uniform1f(gl.getUniformLocation(this.program, "uRelief"), this.params.relief);
     gl.uniform1f(gl.getUniformLocation(this.program, "uSeed"), this.params.seed);
+    gl.uniform1f(gl.getUniformLocation(this.program, "uShadowDepth"), this.shadowDepth);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
@@ -265,7 +274,7 @@ export class PaintedRenderer {
         const nx = -(right - left) * this.params.relief / (2 * cssStep);
         const ny = (below - above) * this.params.relief / (2 * cssStep);
         const dot = Math.max(0, (nx * LIGHT[0] + ny * LIGHT[1] + LIGHT[2]) / (Math.hypot(nx, ny, 1) * lightLength));
-        const shade = 0.24 + 0.96 * dot;
+        const shade = 1 + this.shadowDepth * (0.24 + 0.96 * dot - 1);
         for (let channel = 0; channel < 3; channel++) image.data[index * 4 + channel] = Math.round(color[channel] * shade * 255);
         image.data[index * 4 + 3] = 255;
       }
