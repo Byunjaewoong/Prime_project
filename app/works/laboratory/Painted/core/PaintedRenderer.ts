@@ -10,6 +10,7 @@ export const DEFAULT_NOISE: NoiseParams = { scale: 11, octaves: 4, roughness: 0.
 
 export const DEFAULT_COLOR = "#4d7b95";
 export const DEFAULT_SHADOW_DEPTH = 1;
+const FIELD_ZOOM = 2; // Twice the span on each axis: four times the visible field area.
 const LIGHT: [number, number, number] = [-0.42, 0.46, 0.78];
 
 function colorChannels(hex: string): [number, number, number] {
@@ -26,6 +27,8 @@ precision highp float;
 uniform vec3 uColor;
 uniform vec3 uLight;
 uniform float uPixelRatio;
+uniform vec2 uViewportSize;
+uniform float uFieldZoom;
 uniform float uScale;
 uniform int uOctaves;
 uniform float uRoughness;
@@ -72,7 +75,7 @@ float heightAt(vec2 pixel) {
   float height = 0.0;
   float totalAmplitude = 0.0;
   for (int octave = 0; octave < 6; octave++) {
-    if (octave >= uOctaves || uScale / frequency < 1.5 / uPixelRatio) break;
+    if (octave >= uOctaves || uScale / frequency < 1.25 * uFieldZoom / uPixelRatio) break;
     height += amplitude * perlin(pixel * frequency / uScale + vec2(float(octave) * 29.7));
     totalAmplitude += amplitude;
     frequency *= 2.0;
@@ -82,12 +85,13 @@ float heightAt(vec2 pixel) {
 }
 
 void main() {
-  vec2 pixel = gl_FragCoord.xy / uPixelRatio;
+  vec2 screenPixel = gl_FragCoord.xy / uPixelRatio;
+  vec2 pixel = (screenPixel - uViewportSize * 0.5) * uFieldZoom + uViewportSize * 0.5;
   float height = heightAt(pixel);
   // z = height(x, y); the screen-space slopes define its 3D surface normal.
   vec3 normal = normalize(vec3(
-    -dFdx(height) * uPixelRatio * uRelief,
-    -dFdy(height) * uPixelRatio * uRelief,
+    -dFdx(height) * uPixelRatio * uRelief / uFieldZoom,
+    -dFdy(height) * uPixelRatio * uRelief / uFieldZoom,
     1.0
   ));
   float illumination = max(dot(normal, normalize(uLight)), 0.0);
@@ -207,7 +211,7 @@ export class PaintedRenderer {
 
   private render() {
     const area = Math.max(1, this.canvas.clientWidth * this.canvas.clientHeight);
-    const ratio = Math.min(window.devicePixelRatio || 1, 2, Math.sqrt(8_000_000 / area));
+    const ratio = Math.min(Math.max(window.devicePixelRatio || 1, 2), 3, Math.sqrt(12_000_000 / area));
     const width = Math.max(1, Math.round(this.canvas.clientWidth * ratio));
     const height = Math.max(1, Math.round(this.canvas.clientHeight * ratio));
     if (this.canvas.width !== width || this.canvas.height !== height) {
@@ -224,6 +228,8 @@ export class PaintedRenderer {
     gl.uniform3f(gl.getUniformLocation(this.program, "uColor"), ...colorChannels(this.color));
     gl.uniform3f(gl.getUniformLocation(this.program, "uLight"), ...LIGHT);
     gl.uniform1f(gl.getUniformLocation(this.program, "uPixelRatio"), ratio);
+    gl.uniform2f(gl.getUniformLocation(this.program, "uViewportSize"), this.canvas.clientWidth, this.canvas.clientHeight);
+    gl.uniform1f(gl.getUniformLocation(this.program, "uFieldZoom"), FIELD_ZOOM);
     gl.uniform1f(gl.getUniformLocation(this.program, "uScale"), this.params.scale);
     gl.uniform1i(gl.getUniformLocation(this.program, "uOctaves"), this.params.octaves);
     gl.uniform1f(gl.getUniformLocation(this.program, "uRoughness"), this.params.roughness);
@@ -238,22 +244,27 @@ export class PaintedRenderer {
     if (!context) return;
     const color = colorChannels(this.color);
     const { width, height } = this.canvas;
-    const downsample = Math.min(1, Math.sqrt(350_000 / (width * height)));
+    const downsample = Math.min(1, Math.sqrt(750_000 / (width * height)));
     const sampleWidth = Math.max(1, Math.round(width * downsample));
     const sampleHeight = Math.max(1, Math.round(height * downsample));
-    const cssStep = this.canvas.clientWidth / sampleWidth;
+    const cssStepX = this.canvas.clientWidth / sampleWidth;
+    const cssStepY = this.canvas.clientHeight / sampleHeight;
+    const worldStepX = cssStepX * FIELD_ZOOM;
+    const worldStepY = cssStepY * FIELD_ZOOM;
     const heights = new Float32Array(sampleWidth * sampleHeight);
     const seed = Math.round(this.params.seed);
     for (let y = 0; y < sampleHeight; y++) {
       for (let x = 0; x < sampleWidth; x++) {
+        const worldX = (x * cssStepX - this.canvas.clientWidth * 0.5) * FIELD_ZOOM + this.canvas.clientWidth * 0.5;
+        const worldY = (y * cssStepY - this.canvas.clientHeight * 0.5) * FIELD_ZOOM + this.canvas.clientHeight * 0.5;
         let frequency = 1;
         let amplitude = 1;
         let value = 0;
         let totalAmplitude = 0;
         for (let octave = 0; octave < this.params.octaves; octave++) {
-          if (this.params.scale / frequency < cssStep * 1.5) break;
-          const px = x * cssStep * frequency / this.params.scale + octave * 29.7;
-          const py = y * cssStep * frequency / this.params.scale + octave * 29.7;
+          if (this.params.scale / frequency < Math.max(worldStepX, worldStepY) * 1.25) break;
+          const px = worldX * frequency / this.params.scale + octave * 29.7;
+          const py = worldY * frequency / this.params.scale + octave * 29.7;
           value += amplitude * cpuPerlin(px, py, seed);
           totalAmplitude += amplitude;
           frequency *= 2;
@@ -271,8 +282,8 @@ export class PaintedRenderer {
         const right = heights[y * sampleWidth + Math.min(sampleWidth - 1, x + 1)];
         const above = heights[Math.max(0, y - 1) * sampleWidth + x];
         const below = heights[Math.min(sampleHeight - 1, y + 1) * sampleWidth + x];
-        const nx = -(right - left) * this.params.relief / (2 * cssStep);
-        const ny = (below - above) * this.params.relief / (2 * cssStep);
+        const nx = -(right - left) * this.params.relief / (2 * worldStepX);
+        const ny = (below - above) * this.params.relief / (2 * worldStepY);
         const dot = Math.max(0, (nx * LIGHT[0] + ny * LIGHT[1] + LIGHT[2]) / (Math.hypot(nx, ny, 1) * lightLength));
         const shade = 1 + this.shadowDepth * (0.24 + 0.96 * dot - 1);
         for (let channel = 0; channel < 3; channel++) image.data[index * 4 + channel] = Math.round(color[channel] * shade * 255);
