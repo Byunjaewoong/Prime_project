@@ -8,6 +8,9 @@ import { TrioPlanetRenderer } from "./core/TrioPlanetRenderer";
 import styles from "./trio.module.css";
 
 const INITIAL_CAMERA_EXTENT = 2.4;
+const trailAlpha = (progress: number) => 0.04 + Math.pow(progress, 1.6) * 0.74;
+const colorWithAlpha = (color: string, alpha: number) =>
+  `${color}${Math.round(alpha * 255).toString(16).padStart(2, "0")}`;
 
 export default function TrioExperience() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -80,21 +83,45 @@ export default function TrioExperience() {
       for (const [bodyIndex, body] of simulation.bodies.entries()) {
         context.strokeStyle = body.color;
         context.shadowColor = body.color;
-        for (let band = 0; band < 8; band += 1) {
-          const first = Math.floor(band / 8 * body.trail.length);
-          const last = Math.min(body.trail.length - 1, Math.ceil((band + 1) / 8 * body.trail.length));
-          if (last <= first) continue;
+        context.globalAlpha = 0.06;
+        context.shadowBlur = 7;
+        context.lineWidth = 1.15;
+        context.beginPath();
+        context.moveTo(screenX(body.trail[0].x), screenY(body.trail[0].y));
+        for (let index = 1; index < body.trail.length; index += 1) {
+          context.lineTo(screenX(body.trail[index].x), screenY(body.trail[index].y));
+        }
+        context.lineTo(screenX(body.x), screenY(body.y));
+        context.stroke();
+
+        context.globalAlpha = 1;
+        context.shadowBlur = 0;
+        context.lineCap = "butt";
+        for (let first = 0; first < body.trail.length; first += 8) {
+          const last = Math.min(body.trail.length - 1, first + 8);
+          const start = body.trail[first];
+          const end = last === body.trail.length - 1 ? body : body.trail[last];
+          const startX = screenX(start.x);
+          const startY = screenY(start.y);
+          const endX = screenX(end.x);
+          const endY = screenY(end.y);
+          const gradient = context.createLinearGradient(
+            startX, startY,
+            Math.abs(endX - startX) + Math.abs(endY - startY) < 0.001 ? startX + 1 : endX,
+            endY
+          );
+          gradient.addColorStop(0, colorWithAlpha(body.color, trailAlpha(first / body.trail.length)));
+          gradient.addColorStop(1, colorWithAlpha(body.color, trailAlpha(last === body.trail.length - 1 ? 1 : last / body.trail.length)));
+          context.strokeStyle = gradient;
           context.beginPath();
-          context.moveTo(screenX(body.trail[first].x), screenY(body.trail[first].y));
+          context.moveTo(startX, startY);
           for (let index = first + 1; index <= last; index += 1) {
             context.lineTo(screenX(body.trail[index].x), screenY(body.trail[index].y));
           }
-          if (band === 7) context.lineTo(screenX(body.x), screenY(body.y));
-          context.globalAlpha = 0.06 + ((band + 1) / 8) ** 1.6 * 0.72;
-          context.shadowBlur = 7;
-          context.lineWidth = 1.15;
+          if (last === body.trail.length - 1) context.lineTo(endX, endY);
           context.stroke();
         }
+        context.lineCap = "round";
 
         const x = screenX(body.x);
         const y = screenY(body.y);
