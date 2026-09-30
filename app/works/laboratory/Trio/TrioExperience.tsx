@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FlaskConical, Home, Pause, Play, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { TrioSimulation } from "./core/TrioSimulation";
+import { TrioPlanetRenderer } from "./core/TrioPlanetRenderer";
 import styles from "./trio.module.css";
 
 export default function TrioExperience() {
@@ -19,11 +20,12 @@ export default function TrioExperience() {
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return;
     const simulation = new TrioSimulation();
+    const planetRenderer = new TrioPlanetRenderer();
     simulationRef.current = simulation;
     let frame = 0;
     let previousTime = 0;
     let accumulator = 0;
-    let cameraExtent = 2;
+    let cameraExtent = 2.4;
     const timestep = 1 / 480;
 
     const draw = (now: number) => {
@@ -35,7 +37,7 @@ export default function TrioExperience() {
         accumulator -= timestep;
       }
       if (resetViewRef.current) {
-        cameraExtent = 2;
+        cameraExtent = 2.4;
         accumulator = 0;
         resetViewRef.current = false;
       }
@@ -67,7 +69,7 @@ export default function TrioExperience() {
       context.lineCap = "round";
       context.lineJoin = "round";
 
-      for (const body of simulation.bodies) {
+      for (const [bodyIndex, body] of simulation.bodies.entries()) {
         context.strokeStyle = body.color;
         context.shadowColor = body.color;
         for (let band = 0; band < 8; band += 1) {
@@ -97,12 +99,8 @@ export default function TrioExperience() {
         context.beginPath();
         context.arc(x, y, 22, 0, Math.PI * 2);
         context.fill();
-        context.shadowBlur = 12;
-        context.fillStyle = body.color;
-        context.beginPath();
-        context.arc(x, y, 5.5, 0, Math.PI * 2);
-        context.fill();
-        context.shadowBlur = 0;
+        const radius = Math.max(10, Math.min(15, Math.min(bounds.width, bounds.height) * 0.027));
+        planetRenderer.draw(context, body, bodyIndex, x, y, radius, ratio);
       }
       frame = requestAnimationFrame(draw);
     };
