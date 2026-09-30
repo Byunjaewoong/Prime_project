@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { FlaskConical, Home } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_COLOR, DEFAULT_NOISE, DEFAULT_SHADOW_DEPTH, PaintedRenderer, type NoiseParams } from "./core/PaintedRenderer";
+import { DEFAULT_COLOR, DEFAULT_LIGHT_DIRECTION, DEFAULT_NOISE, DEFAULT_SHADOW_DEPTH, PaintedRenderer, type LightDirection, type NoiseParams } from "./core/PaintedRenderer";
+import LightDirectionSphere from "./LightDirectionSphere";
 import styles from "./painted.module.css";
 
 const NOISE_CONTROLS: { key: keyof NoiseParams; label: string; min: number; max: number; step: number }[] = [
@@ -36,6 +37,7 @@ export default function PaintedExperience() {
   const [noise, setNoise] = useState<NoiseParams>(DEFAULT_NOISE);
   const [color, setColor] = useState(DEFAULT_COLOR);
   const [shadowDepth, setShadowDepth] = useState(DEFAULT_SHADOW_DEPTH);
+  const [lightDirection, setLightDirection] = useState<LightDirection>(DEFAULT_LIGHT_DIRECTION);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -61,6 +63,11 @@ export default function PaintedExperience() {
   const updateShadowDepth = (value: number) => {
     setShadowDepth(value);
     rendererRef.current?.setShadowDepth(value);
+  };
+
+  const updateLightDirection = (direction: LightDirection) => {
+    setLightDirection(direction);
+    rendererRef.current?.setLightDirection(direction);
   };
 
   return <main className={styles.page}>
@@ -97,6 +104,15 @@ export default function PaintedExperience() {
             <input type="range" min={0} max={2} step={0.05} value={shadowDepth}
               onChange={event => updateShadowDepth(Number(event.target.value))} />
           </label>
+          <div className={styles.control}>
+            <span className={styles.controlLabel}><span>Light direction</span><span>drag to rotate</span></span>
+            <LightDirectionSphere direction={lightDirection} onChange={updateLightDirection} />
+            <div className={styles.lightCoordinates} aria-live="off">
+              <span>X {lightDirection[0].toFixed(2)}</span>
+              <span>Y {lightDirection[1].toFixed(2)}</span>
+              <span>Z {lightDirection[2].toFixed(2)}</span>
+            </div>
+          </div>
           <span className={styles.sectionTitle}>Perlin surface</span>
           {NOISE_CONTROLS.map(control => <label className={styles.control} key={control.key}>
             <span className={styles.controlLabel}><span>{control.label}</span><output>{noise[control.key].toFixed(control.step >= 1 ? 0 : 2)}</output></span>

@@ -10,22 +10,21 @@ export const DEFAULT_NOISE: NoiseParams = { scale: 11, octaves: 4, roughness: 0.
 
 export const DEFAULT_COLOR = "#4d7b95";
 export const DEFAULT_SHADOW_DEPTH = 1;
+export type LightDirection = [number, number, number];
+export const DEFAULT_LIGHT_DIRECTION: LightDirection = [-0.42, 0.46, Math.sqrt(1 - 0.42 ** 2 - 0.46 ** 2)];
 const FIELD_ZOOM = 2; // Twice the span on each axis: four times the visible field area.
-const LIGHT: [number, number, number] = [-0.42, 0.46, 0.78];
 
 function colorChannels(hex: string): [number, number, number] {
   return [1, 3, 5].map(index => Number.parseInt(hex.slice(index, index + 2), 16) / 255) as [number, number, number];
 }
 
 const VERTEX_SHADER = `#version 300 es
-in vec2 aPosition;
+layout(location = 0) in vec2 aPosition;
 void main() { gl_Position = vec4(aPosition, 0.0, 1.0); }
 `;
 
-const FRAGMENT_SHADER = `#version 300 es
+const NORMAL_FRAGMENT_SHADER = `#version 300 es
 precision highp float;
-uniform vec3 uColor;
-uniform vec3 uLight;
 uniform float uPixelRatio;
 uniform vec2 uViewportSize;
 uniform float uFieldZoom;
@@ -34,7 +33,6 @@ uniform int uOctaves;
 uniform float uRoughness;
 uniform float uRelief;
 uniform float uSeed;
-uniform float uShadowDepth;
 out vec4 outColor;
 
 float hash21(vec2 p) {
@@ -94,6 +92,20 @@ void main() {
     -dFdy(height) * uPixelRatio * uRelief / uFieldZoom,
     1.0
   ));
+  outColor = vec4(normal * 0.5 + 0.5, 1.0);
+}
+`;
+
+const DISPLAY_FRAGMENT_SHADER = `#version 300 es
+precision highp float;
+uniform sampler2D uNormals;
+uniform vec3 uColor;
+uniform vec3 uLight;
+uniform float uShadowDepth;
+out vec4 outColor;
+
+void main() {
+  vec3 normal = normalize(texelFetch(uNormals, ivec2(gl_FragCoord.xy), 0).rgb * 2.0 - 1.0);
   float illumination = max(dot(normal, normalize(uLight)), 0.0);
   float shade = mix(1.0, 0.24 + 0.96 * illumination, uShadowDepth);
   outColor = vec4(clamp(uColor * shade, 0.0, 1.0), 1.0);
@@ -111,6 +123,20 @@ function compileShader(gl: WebGL2RenderingContext, type: number, source: string)
     throw new Error(`Painted shader compilation failed: ${message}`);
   }
   return shader;
+}
+
+function linkProgram(gl: WebGL2RenderingContext, vertex: WebGLShader, fragment: WebGLShader) {
+  const program = gl.createProgram();
+  if (!program) throw new Error("Could not create Painted program");
+  gl.attachShader(program, vertex);
+  gl.attachShader(program, fragment);
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    const message = gl.getProgramInfoLog(program);
+    gl.deleteProgram(program);
+    throw new Error(`Painted program link failed: ${message}`);
+  }
+  return program;
 }
 
 const CPU_GRADIENTS: [number, number][] = [
@@ -140,13 +166,22 @@ export class PaintedRenderer {
   private readonly canvas: HTMLCanvasElement;
   private readonly gl: WebGL2RenderingContext | null;
   private readonly fallback: CanvasRenderingContext2D | null;
-  private readonly program: WebGLProgram | null = null;
+  private readonly normalProgram: WebGLProgram | null = null;
+  private readonly displayProgram: WebGLProgram | null = null;
   private readonly vertexShader: WebGLShader | null = null;
-  private readonly fragmentShader: WebGLShader | null = null;
+  private readonly normalShader: WebGLShader | null = null;
+  private readonly displayShader: WebGLShader | null = null;
   private readonly buffer: WebGLBuffer | null = null;
+  private normalTexture: WebGLTexture | null = null;
+  private normalFramebuffer: WebGLFramebuffer | null = null;
+  private normalsDirty = true;
+  private cpuHeights: Float32Array | null = null;
+  private cpuSampleWidth = 0;
+  private cpuSampleHeight = 0;
   private params: NoiseParams = { ...DEFAULT_NOISE };
   private color = DEFAULT_COLOR;
   private shadowDepth = DEFAULT_SHADOW_DEPTH;
+  private lightDirection: LightDirection = [...DEFAULT_LIGHT_DIRECTION];
   private frame: number | null = null;
   private destroyed = false;
 
@@ -158,25 +193,21 @@ export class PaintedRenderer {
     if (this.gl) {
       const gl = this.gl;
       const vertex = compileShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER);
-      const fragment = compileShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SHADER);
-      const program = gl.createProgram();
-      if (!program) throw new Error("Could not create Painted program");
-      gl.attachShader(program, vertex);
-      gl.attachShader(program, fragment);
-      gl.linkProgram(program);
-      if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-        throw new Error(`Painted program link failed: ${gl.getProgramInfoLog(program)}`);
-      }
+      const normalShader = compileShader(gl, gl.FRAGMENT_SHADER, NORMAL_FRAGMENT_SHADER);
+      const displayShader = compileShader(gl, gl.FRAGMENT_SHADER, DISPLAY_FRAGMENT_SHADER);
+      const normalProgram = linkProgram(gl, vertex, normalShader);
+      const displayProgram = linkProgram(gl, vertex, displayShader);
       const buffer = gl.createBuffer();
       if (!buffer) throw new Error("Could not create Painted geometry");
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
-      const position = gl.getAttribLocation(program, "aPosition");
-      gl.enableVertexAttribArray(position);
-      gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
-      this.program = program;
+      gl.enableVertexAttribArray(0);
+      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+      this.normalProgram = normalProgram;
+      this.displayProgram = displayProgram;
       this.vertexShader = vertex;
-      this.fragmentShader = fragment;
+      this.normalShader = normalShader;
+      this.displayShader = displayShader;
       this.buffer = buffer;
     }
 
@@ -187,6 +218,8 @@ export class PaintedRenderer {
 
   setNoise(next: Partial<NoiseParams>) {
     this.params = { ...this.params, ...next };
+    this.normalsDirty = true;
+    this.cpuHeights = null;
     this.scheduleRender();
   }
 
@@ -201,12 +234,44 @@ export class PaintedRenderer {
     this.scheduleRender();
   }
 
+  setLightDirection(direction: LightDirection) {
+    const length = Math.hypot(...direction);
+    if (!Number.isFinite(length) || length < 0.001) return;
+    this.lightDirection = direction.map(component => component / length) as LightDirection;
+    this.scheduleRender();
+  }
+
   private scheduleRender() {
     if (this.frame !== null) cancelAnimationFrame(this.frame);
     this.frame = requestAnimationFrame(() => {
       this.frame = null;
       if (!this.destroyed) this.render();
     });
+  }
+
+  private ensureNormalTarget(width: number, height: number) {
+    const gl = this.gl;
+    if (!gl || this.normalTexture) return;
+    const texture = gl.createTexture();
+    const framebuffer = gl.createFramebuffer();
+    if (!texture || !framebuffer) throw new Error("Could not create Painted normal target");
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+    const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    if (status !== gl.FRAMEBUFFER_COMPLETE) {
+      gl.deleteTexture(texture);
+      gl.deleteFramebuffer(framebuffer);
+      throw new Error(`Painted normal target incomplete: ${status}`);
+    }
+    this.normalTexture = texture;
+    this.normalFramebuffer = framebuffer;
   }
 
   private render() {
@@ -217,25 +282,44 @@ export class PaintedRenderer {
     if (this.canvas.width !== width || this.canvas.height !== height) {
       this.canvas.width = width;
       this.canvas.height = height;
+      this.normalsDirty = true;
+      this.cpuHeights = null;
+      if (this.gl) {
+        if (this.normalTexture) this.gl.deleteTexture(this.normalTexture);
+        if (this.normalFramebuffer) this.gl.deleteFramebuffer(this.normalFramebuffer);
+        this.normalTexture = null;
+        this.normalFramebuffer = null;
+      }
     }
     const gl = this.gl;
-    if (!gl || !this.program) {
+    if (!gl || !this.normalProgram || !this.displayProgram) {
       this.renderFallback();
       return;
     }
+    this.ensureNormalTarget(width, height);
     gl.viewport(0, 0, width, height);
-    gl.useProgram(this.program);
-    gl.uniform3f(gl.getUniformLocation(this.program, "uColor"), ...colorChannels(this.color));
-    gl.uniform3f(gl.getUniformLocation(this.program, "uLight"), ...LIGHT);
-    gl.uniform1f(gl.getUniformLocation(this.program, "uPixelRatio"), ratio);
-    gl.uniform2f(gl.getUniformLocation(this.program, "uViewportSize"), this.canvas.clientWidth, this.canvas.clientHeight);
-    gl.uniform1f(gl.getUniformLocation(this.program, "uFieldZoom"), FIELD_ZOOM);
-    gl.uniform1f(gl.getUniformLocation(this.program, "uScale"), this.params.scale);
-    gl.uniform1i(gl.getUniformLocation(this.program, "uOctaves"), this.params.octaves);
-    gl.uniform1f(gl.getUniformLocation(this.program, "uRoughness"), this.params.roughness);
-    gl.uniform1f(gl.getUniformLocation(this.program, "uRelief"), this.params.relief);
-    gl.uniform1f(gl.getUniformLocation(this.program, "uSeed"), this.params.seed);
-    gl.uniform1f(gl.getUniformLocation(this.program, "uShadowDepth"), this.shadowDepth);
+    if (this.normalsDirty) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.normalFramebuffer);
+      gl.useProgram(this.normalProgram);
+      gl.uniform1f(gl.getUniformLocation(this.normalProgram, "uPixelRatio"), ratio);
+      gl.uniform2f(gl.getUniformLocation(this.normalProgram, "uViewportSize"), this.canvas.clientWidth, this.canvas.clientHeight);
+      gl.uniform1f(gl.getUniformLocation(this.normalProgram, "uFieldZoom"), FIELD_ZOOM);
+      gl.uniform1f(gl.getUniformLocation(this.normalProgram, "uScale"), this.params.scale);
+      gl.uniform1i(gl.getUniformLocation(this.normalProgram, "uOctaves"), this.params.octaves);
+      gl.uniform1f(gl.getUniformLocation(this.normalProgram, "uRoughness"), this.params.roughness);
+      gl.uniform1f(gl.getUniformLocation(this.normalProgram, "uRelief"), this.params.relief);
+      gl.uniform1f(gl.getUniformLocation(this.normalProgram, "uSeed"), this.params.seed);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      this.normalsDirty = false;
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.useProgram(this.displayProgram);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.normalTexture);
+    gl.uniform1i(gl.getUniformLocation(this.displayProgram, "uNormals"), 0);
+    gl.uniform3f(gl.getUniformLocation(this.displayProgram, "uColor"), ...colorChannels(this.color));
+    gl.uniform3f(gl.getUniformLocation(this.displayProgram, "uLight"), ...this.lightDirection);
+    gl.uniform1f(gl.getUniformLocation(this.displayProgram, "uShadowDepth"), this.shadowDepth);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
@@ -251,30 +335,36 @@ export class PaintedRenderer {
     const cssStepY = this.canvas.clientHeight / sampleHeight;
     const worldStepX = cssStepX * FIELD_ZOOM;
     const worldStepY = cssStepY * FIELD_ZOOM;
-    const heights = new Float32Array(sampleWidth * sampleHeight);
-    const seed = Math.round(this.params.seed);
-    for (let y = 0; y < sampleHeight; y++) {
-      for (let x = 0; x < sampleWidth; x++) {
-        const worldX = (x * cssStepX - this.canvas.clientWidth * 0.5) * FIELD_ZOOM + this.canvas.clientWidth * 0.5;
-        const worldY = (y * cssStepY - this.canvas.clientHeight * 0.5) * FIELD_ZOOM + this.canvas.clientHeight * 0.5;
-        let frequency = 1;
-        let amplitude = 1;
-        let value = 0;
-        let totalAmplitude = 0;
-        for (let octave = 0; octave < this.params.octaves; octave++) {
-          if (this.params.scale / frequency < Math.max(worldStepX, worldStepY) * 1.25) break;
-          const px = worldX * frequency / this.params.scale + octave * 29.7;
-          const py = worldY * frequency / this.params.scale + octave * 29.7;
-          value += amplitude * cpuPerlin(px, py, seed);
-          totalAmplitude += amplitude;
-          frequency *= 2;
-          amplitude *= this.params.roughness;
+    if (!this.cpuHeights || this.cpuSampleWidth !== sampleWidth || this.cpuSampleHeight !== sampleHeight) {
+      const heights = new Float32Array(sampleWidth * sampleHeight);
+      const seed = Math.round(this.params.seed);
+      for (let y = 0; y < sampleHeight; y++) {
+        for (let x = 0; x < sampleWidth; x++) {
+          const worldX = (x * cssStepX - this.canvas.clientWidth * 0.5) * FIELD_ZOOM + this.canvas.clientWidth * 0.5;
+          const worldY = (y * cssStepY - this.canvas.clientHeight * 0.5) * FIELD_ZOOM + this.canvas.clientHeight * 0.5;
+          let frequency = 1;
+          let amplitude = 1;
+          let value = 0;
+          let totalAmplitude = 0;
+          for (let octave = 0; octave < this.params.octaves; octave++) {
+            if (this.params.scale / frequency < Math.max(worldStepX, worldStepY) * 1.25) break;
+            const px = worldX * frequency / this.params.scale + octave * 29.7;
+            const py = worldY * frequency / this.params.scale + octave * 29.7;
+            value += amplitude * cpuPerlin(px, py, seed);
+            totalAmplitude += amplitude;
+            frequency *= 2;
+            amplitude *= this.params.roughness;
+          }
+          heights[y * sampleWidth + x] = value / (totalAmplitude || 1);
         }
-        heights[y * sampleWidth + x] = value / (totalAmplitude || 1);
       }
+      this.cpuHeights = heights;
+      this.cpuSampleWidth = sampleWidth;
+      this.cpuSampleHeight = sampleHeight;
     }
+    const heights = this.cpuHeights;
     const image = context.createImageData(sampleWidth, sampleHeight);
-    const lightLength = Math.hypot(...LIGHT);
+    const lightLength = Math.hypot(...this.lightDirection);
     for (let y = 0; y < sampleHeight; y++) {
       for (let x = 0; x < sampleWidth; x++) {
         const index = y * sampleWidth + x;
@@ -284,7 +374,7 @@ export class PaintedRenderer {
         const below = heights[Math.min(sampleHeight - 1, y + 1) * sampleWidth + x];
         const nx = -(right - left) * this.params.relief / (2 * worldStepX);
         const ny = (below - above) * this.params.relief / (2 * worldStepY);
-        const dot = Math.max(0, (nx * LIGHT[0] + ny * LIGHT[1] + LIGHT[2]) / (Math.hypot(nx, ny, 1) * lightLength));
+        const dot = Math.max(0, (nx * this.lightDirection[0] + ny * this.lightDirection[1] + this.lightDirection[2]) / (Math.hypot(nx, ny, 1) * lightLength));
         const shade = 1 + this.shadowDepth * (0.24 + 0.96 * dot - 1);
         for (let channel = 0; channel < 3; channel++) image.data[index * 4 + channel] = Math.round(color[channel] * shade * 255);
         image.data[index * 4 + 3] = 255;
@@ -303,10 +393,14 @@ export class PaintedRenderer {
     window.removeEventListener("resize", this.scheduleRender);
     if (this.frame !== null) cancelAnimationFrame(this.frame);
     if (this.gl) {
+      if (this.normalTexture) this.gl.deleteTexture(this.normalTexture);
+      if (this.normalFramebuffer) this.gl.deleteFramebuffer(this.normalFramebuffer);
       if (this.buffer) this.gl.deleteBuffer(this.buffer);
-      if (this.program) this.gl.deleteProgram(this.program);
+      if (this.normalProgram) this.gl.deleteProgram(this.normalProgram);
+      if (this.displayProgram) this.gl.deleteProgram(this.displayProgram);
       if (this.vertexShader) this.gl.deleteShader(this.vertexShader);
-      if (this.fragmentShader) this.gl.deleteShader(this.fragmentShader);
+      if (this.normalShader) this.gl.deleteShader(this.normalShader);
+      if (this.displayShader) this.gl.deleteShader(this.displayShader);
     }
   }
 }
