@@ -1,4 +1,5 @@
 import type { Body, Vec3 } from "./TrioSimulation";
+import { rotatingSurfaceDistance, surfaceRotation } from "@/app/lib/rotatingPlanetSurface";
 
 const light: Vec3 = (() => {
   const length = Math.hypot(-0.46, -0.38, 0.8);
@@ -33,8 +34,7 @@ export class TrioPlanetRenderer {
     const center = size * 0.5;
     const axis = body.appearance.axis;
     const palette = body.appearance.palette;
-    const sine = Math.sin(-body.spinAngle);
-    const cosine = Math.cos(-body.spinAngle);
+    const rotation = surfaceRotation(axis.x, axis.y, axis.z, body.spinAngle);
 
     // Planet's physical-pixel sphere shading, sampled in a rotating local frame.
     for (let py = 0; py < size; py += 1) {
@@ -44,17 +44,7 @@ export class TrioPlanetRenderer {
         const surfaceSquared = nx * nx + ny * ny;
         if (surfaceSquared > 1 + 1 / pixelRadius) continue;
         const nz = Math.sqrt(Math.max(0, 1 - Math.min(1, surfaceSquared)));
-        const axisDot = nx * axis.x + ny * axis.y + nz * axis.z;
-        const crossX = axis.y * nz - axis.z * ny;
-        const crossY = axis.z * nx - axis.x * nz;
-        const crossZ = axis.x * ny - axis.y * nx;
-        const localX = nx * cosine + crossX * sine + axis.x * axisDot * (1 - cosine);
-        const localY = ny * cosine + crossY * sine + axis.y * axisDot * (1 - cosine);
-        const localZ = nz * cosine + crossZ * sine + axis.z * axisDot * (1 - cosine);
-        const band = Math.sqrt(Math.max(0, 1 - axisDot * axisDot));
-        const detail = Math.sin(localX * 9 + Math.sin(localY * 7 + body.appearance.detailSeed) * 1.8)
-          + Math.sin(localY * 13 + localZ * 5 + body.appearance.detailSeed * 1.7) * 0.5;
-        const distance = Math.max(0, Math.min(1, band + detail * 0.08));
+        const distance = rotatingSurfaceDistance(nx, ny, nz, 1, rotation, body.appearance.detailSeed);
         const lambert = Math.max(0, nx * light.x + ny * light.y + nz * light.z);
         const lightLevel = 0.055 + Math.pow(lambert, 1.18) * 0.945;
         const rim = Math.pow(Math.max(0, 1 - nz), 2.4) * 0.14;

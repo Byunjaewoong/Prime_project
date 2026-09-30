@@ -1,3 +1,5 @@
+import { rotatingSurfaceDistance, surfaceRotation } from "@/app/lib/rotatingPlanetSurface";
+
 export class Calculate {
   static distanceLineToPoint(
     x3: number,
@@ -111,6 +113,10 @@ export class Planet {
 
   orbitDirectionVector: { x: number; y: number; z: number };
   renderingPixel: number;
+  surfaceSeed: number;
+  spinAngle: number;
+  spinSpeed: number;
+  lastSpinTime: number;
 
     // ⭐ 이 행성의 위성들
   satellites: Satellite[] = [];
@@ -174,6 +180,10 @@ export class Planet {
 
     this.generatePolar();
     this.colorSet();
+    this.surfaceSeed = Math.random() * Math.PI * 2;
+    this.spinAngle = Math.random() * Math.PI * 2;
+    this.spinSpeed = (Math.random() < 0.5 ? -1 : 1) * (0.35 + Math.random() * 0.65);
+    this.lastSpinTime = 0;
 
     this.windowX = this.spaceX;
     this.windowY = this.spaceY;
@@ -282,6 +292,10 @@ export class Planet {
       this.sunx,
       this.suny
     );
+    const now = performance.now();
+    if (this.lastSpinTime) this.spinAngle += this.spinSpeed * Math.min(0.05, (now - this.lastSpinTime) / 1000);
+    this.lastSpinTime = now;
+    const rotation = surfaceRotation(this.polarX, this.polarY, this.polarZ, this.spinAngle);
 
     for (
       let i = this.windowX - this.windowRadius;
@@ -314,14 +328,8 @@ export class Planet {
             z3
           );
 
-          const d = Calculate.distanceLineToPoint(
-            x3,
-            y3,
-            Math.abs(z3),
-            this.polarX,
-            this.polarY,
-            this.polarZ
-          );
+          const d = rotatingSurfaceDistance(x3, y3, z3, this.windowRadius, rotation, this.surfaceSeed)
+            * this.windowRadius;
 
           let r_c: number;
           let g_c: number;
@@ -440,6 +448,10 @@ export class Satellite {
   polarX: number;
   polarY: number;
   polarZ: number;
+  surfaceSeed: number;
+  spinAngle: number;
+  spinSpeed: number;
+  lastSpinTime: number;
 
   shadePolor: { x: number; y: number; z: number };
 
@@ -506,6 +518,10 @@ export class Satellite {
     // 최초 위치 계산
     this.updatePositionFromAngle();
     this.generatePolar();
+    this.surfaceSeed = Math.random() * Math.PI * 2;
+    this.spinAngle = Math.random() * Math.PI * 2;
+    this.spinSpeed = (Math.random() < 0.5 ? -1 : 1) * (0.35 + Math.random() * 0.65);
+    this.lastSpinTime = 0;
 
   }
 
@@ -683,6 +699,10 @@ export class Satellite {
     );
 
     const inUmbra = this.isInPlanetShadow(sunx, suny);
+    const now = performance.now();
+    if (this.lastSpinTime) this.spinAngle += this.spinSpeed * Math.min(0.05, (now - this.lastSpinTime) / 1000);
+    this.lastSpinTime = now;
+    const rotation = surfaceRotation(this.polarX, this.polarY, this.polarZ, this.spinAngle);
 
     for (
       let i = this.windowX - this.windowRadius;
@@ -716,14 +736,8 @@ export class Satellite {
             z3
           );
 
-          const d = Calculate.distanceLineToPoint(
-            x3,
-            y3,
-            Math.abs(z3),
-            this.polarX,
-            this.polarY,
-            this.polarZ
-          );
+          const d = rotatingSurfaceDistance(x3, y3, z3, this.windowRadius, rotation, this.surfaceSeed)
+            * this.windowRadius;
 
           const colorCalc = (base: number) =>
             base > 0

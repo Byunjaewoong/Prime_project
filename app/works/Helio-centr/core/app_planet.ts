@@ -1,4 +1,4 @@
-// app/works/orbit2/core/app_planet.ts
+import { rotatingSurfaceDistance, surfaceRotation } from "@/app/lib/rotatingPlanetSurface";
 
 export class Calculate {
   static distanceLineToPoint(
@@ -265,6 +265,10 @@ export class Planet {
   counter: number;
   renderingPixel: number = 1;
   pixelRatio: number;
+  surfaceSeed: number;
+  spinAngle: number;
+  spinSpeed: number;
+  lastSpinTime: number;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -332,6 +336,10 @@ export class Planet {
 
     this.generatePolar();
     this.colorSet();
+    this.surfaceSeed = Math.random() * Math.PI * 2;
+    this.spinAngle = Math.random() * Math.PI * 2;
+    this.spinSpeed = (Math.random() < 0.5 ? -1 : 1) * (0.35 + Math.random() * 0.65);
+    this.lastSpinTime = 0;
 
     this.windowX = this.spaceX;
     this.windowY = this.spaceY;
@@ -411,6 +419,10 @@ export class Planet {
     );
 
     this.renderingPixel = 1 / this.pixelRatio;
+    const now = performance.now();
+    if (this.lastSpinTime) this.spinAngle += this.spinSpeed * Math.min(0.05, (now - this.lastSpinTime) / 1000);
+    this.lastSpinTime = now;
+    const rotation = surfaceRotation(this.polarX, this.polarY, this.polarZ, this.spinAngle);
 
     for (
       let i = this.windowX - this.windowRadius;
@@ -445,14 +457,8 @@ export class Planet {
             y3,
             z3
           );
-          const d = Calculate.distanceLineToPoint(
-            x3,
-            y3,
-            z3,
-            this.polarX,
-            this.polarY,
-            this.polarZ
-          );
+          const d = rotatingSurfaceDistance(x3, y3, z3, this.windowRadius, rotation, this.surfaceSeed)
+            * this.windowRadius;
 
           let r_c: number;
           let g_c: number;
