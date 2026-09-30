@@ -7,6 +7,8 @@ import { BODY_COLORS, MAX_BODY_COUNT, MAX_MASS, MIN_BODY_COUNT, MIN_MASS, TrioSi
 import { TrioPlanetRenderer } from "./core/TrioPlanetRenderer";
 import styles from "./trio.module.css";
 
+const INITIAL_CAMERA_EXTENT = 2.4;
+
 export default function TrioExperience() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const simulationRef = useRef<TrioSimulation | null>(null);
@@ -27,7 +29,7 @@ export default function TrioExperience() {
     let frame = 0;
     let previousTime = 0;
     let accumulator = 0;
-    let cameraExtent = 2.4;
+    let cameraExtent = INITIAL_CAMERA_EXTENT;
     const timestep = 1 / 480;
 
     const draw = (now: number) => {
@@ -39,7 +41,7 @@ export default function TrioExperience() {
         accumulator -= timestep;
       }
       if (resetViewRef.current) {
-        cameraExtent = 2.4;
+        cameraExtent = INITIAL_CAMERA_EXTENT;
         accumulator = 0;
         resetViewRef.current = false;
       }
@@ -65,7 +67,11 @@ export default function TrioExperience() {
       }
       cameraExtent += (desiredExtent - cameraExtent) * (1 - Math.exp(-elapsed * 3));
       // Fit every body, including an escaping one, without changing the physics.
-      const scale = Math.min(bounds.width, bounds.height) * 0.42 / Math.max(cameraExtent, desiredExtent * 0.88);
+      const shortEdge = Math.max(1, Math.min(bounds.width, bounds.height));
+      const scale = shortEdge * 0.42 / Math.max(cameraExtent, desiredExtent * 0.88);
+      const referenceScale = shortEdge * 0.42 / INITIAL_CAMERA_EXTENT;
+      const worldRadius = Math.max(10, Math.min(15, shortEdge * 0.027)) / referenceScale;
+      const planetRadius = worldRadius * scale;
       const screenX = (x: number) => bounds.width * 0.5 + x * scale;
       const screenY = (y: number) => bounds.height * 0.5 + y * scale;
       context.lineCap = "round";
@@ -94,15 +100,15 @@ export default function TrioExperience() {
         const y = screenY(body.y);
         context.shadowBlur = 0;
         context.globalAlpha = 1;
-        const glow = context.createRadialGradient(x, y, 1, x, y, 22);
+        const glowRadius = planetRadius * 2.2;
+        const glow = context.createRadialGradient(x, y, glowRadius * 0.05, x, y, glowRadius);
         glow.addColorStop(0, body.color + "70");
         glow.addColorStop(1, body.color + "00");
         context.fillStyle = glow;
         context.beginPath();
-        context.arc(x, y, 22, 0, Math.PI * 2);
+        context.arc(x, y, glowRadius, 0, Math.PI * 2);
         context.fill();
-        const radius = Math.max(10, Math.min(15, Math.min(bounds.width, bounds.height) * 0.027));
-        planetRenderer.draw(context, body, bodyIndex, x, y, radius, ratio);
+        planetRenderer.draw(context, body, bodyIndex, x, y, planetRadius, ratio);
       }
       frame = requestAnimationFrame(draw);
     };
