@@ -122,6 +122,13 @@ export default function LaboratoryPage() {
               <span style={{ fontSize: "0.75rem", opacity: 0.3, marginLeft: 12 }}>three-body gravity</span>
             </Link>
           </li>
+
+          <li>
+            <Link href="/works/laboratory/Painted" style={{ textDecoration: "none", color: "inherit", display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "1px dotted rgba(26,64,49,0.2)", paddingBottom: "6px" }}>
+              <span>13. Painted</span>
+              <span style={{ fontSize: "0.75rem", opacity: 0.3, marginLeft: 12 }}>painted surface study</span>
+            </Link>
+          </li>
         </ul>
 
         {/* 하단 푸터 */}
