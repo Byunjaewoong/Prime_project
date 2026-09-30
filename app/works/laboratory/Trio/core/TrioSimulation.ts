@@ -21,6 +21,8 @@ const GRAVITY = 0.65;
 const SOFTENING = 0.075;
 const COLORS = ["#81ef00", "#ff008b", "#009fff"];
 const TRAIL_LENGTH = 420;
+export const MIN_MASS = 0.1;
+export const MAX_MASS = 5;
 
 function randomAppearance(): PlanetAppearance {
   const z = Math.random() * 2 - 1;
@@ -70,6 +72,7 @@ export class TrioSimulation {
 
   reset() {
     const positions = randomPositions();
+    const masses = this.bodies.map(body => body.mass);
     this.bodies = COLORS.map((color, index) => {
       const position = positions[index];
       const orbitalAngle = Math.atan2(position.y, position.x);
@@ -80,7 +83,7 @@ export class TrioSimulation {
         y: position.y,
         vx: -Math.sin(orbitalAngle) * speed + (Math.random() - 0.5) * 0.34,
         vy: Math.cos(orbitalAngle) * speed + (Math.random() - 0.5) * 0.34,
-        mass: 1,
+        mass: masses[index] ?? 1,
         color,
         trail: [],
         appearance: randomAppearance(),
@@ -89,10 +92,11 @@ export class TrioSimulation {
         baseSpinSpeed,
       };
     });
-    const centerX = this.bodies.reduce((sum, body) => sum + body.x, 0) / 3;
-    const centerY = this.bodies.reduce((sum, body) => sum + body.y, 0) / 3;
-    const velocityX = this.bodies.reduce((sum, body) => sum + body.vx, 0) / 3;
-    const velocityY = this.bodies.reduce((sum, body) => sum + body.vy, 0) / 3;
+    const totalMass = this.bodies.reduce((sum, body) => sum + body.mass, 0);
+    const centerX = this.bodies.reduce((sum, body) => sum + body.x * body.mass, 0) / totalMass;
+    const centerY = this.bodies.reduce((sum, body) => sum + body.y * body.mass, 0) / totalMass;
+    const velocityX = this.bodies.reduce((sum, body) => sum + body.vx * body.mass, 0) / totalMass;
+    const velocityY = this.bodies.reduce((sum, body) => sum + body.vy * body.mass, 0) / totalMass;
     for (const body of this.bodies) {
       body.x -= centerX;
       body.y -= centerY;
@@ -101,6 +105,11 @@ export class TrioSimulation {
       body.trail.push({ x: body.x, y: body.y });
     }
     this.trailClock = 0;
+  }
+
+  setMass(index: number, mass: number) {
+    const body = this.bodies[index];
+    if (body && Number.isFinite(mass)) body.mass = Math.max(MIN_MASS, Math.min(MAX_MASS, mass));
   }
 
   private accelerations(): Point[] {

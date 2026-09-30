@@ -3,9 +3,15 @@
 import Link from "next/link";
 import { FlaskConical, Home, Pause, Play, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { TrioSimulation } from "./core/TrioSimulation";
+import { MAX_MASS, MIN_MASS, TrioSimulation } from "./core/TrioSimulation";
 import { TrioPlanetRenderer } from "./core/TrioPlanetRenderer";
 import styles from "./trio.module.css";
+
+const MASS_CONTROLS = [
+  { label: "Green", color: "#81ef00" },
+  { label: "Pink", color: "#ff008b" },
+  { label: "Blue", color: "#009fff" },
+];
 
 export default function TrioExperience() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -14,6 +20,7 @@ export default function TrioExperience() {
   const resetViewRef = useRef(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [masses, setMasses] = useState([1, 1, 1]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -116,6 +123,11 @@ export default function TrioExperience() {
     setPaused(pausedRef.current);
   };
 
+  const updateMass = (index: number, mass: number) => {
+    simulationRef.current?.setMass(index, mass);
+    setMasses(previous => previous.map((value, bodyIndex) => bodyIndex === index ? mass : value));
+  };
+
   return <main className={styles.page}>
     <canvas ref={canvasRef} className={styles.canvas} aria-label="Three gravitational bodies with green, pink and blue orbit trails" />
     <div className={styles.menuRoot}>
@@ -126,6 +138,18 @@ export default function TrioExperience() {
             <Link href="/" aria-label="Home"><Home size={16} /></Link>
             <Link href="/works/laboratory" aria-label="Laboratory"><FlaskConical size={16} /></Link>
           </div>
+        </div>
+        <div className={styles.massSection}>
+          <span className={styles.sectionTitle}>Mass</span>
+          {MASS_CONTROLS.map((control, index) => <label className={styles.massControl} key={control.label}>
+            <span className={styles.massLabel}>
+              <span className={styles.massName}><span className={styles.colorDot} style={{ backgroundColor: control.color }} />{control.label}</span>
+              <output>{masses[index].toFixed(2)}</output>
+            </span>
+            <input type="range" min={MIN_MASS} max={MAX_MASS} step="0.05" value={masses[index]}
+              aria-label={`${control.label} body mass`} style={{ accentColor: control.color }}
+              onChange={event => updateMass(index, Number(event.target.value))} />
+          </label>)}
         </div>
         <button className={styles.action} type="button" onClick={togglePaused}>
           <span>{paused ? "Resume" : "Pause"}</span>{paused ? <Play size={15} /> : <Pause size={15} />}
