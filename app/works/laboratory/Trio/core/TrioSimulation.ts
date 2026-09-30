@@ -19,10 +19,12 @@ export type Body = Point & {
 
 const GRAVITY = 0.65;
 const SOFTENING = 0.075;
-const COLORS = ["#81ef00", "#ff008b", "#009fff"];
+export const BODY_COLORS = ["#81ef00", "#ff008b", "#009fff", "#ffc400", "#a766ff", "#00e0b8", "#ff733e", "#c4ef43", "#ff5fc8", "#80b6ff"];
 const TRAIL_LENGTH = 420;
 export const MIN_MASS = 0.1;
-export const MAX_MASS = 5;
+export const MAX_MASS = 100;
+export const MIN_BODY_COUNT = 1;
+export const MAX_BODY_COUNT = BODY_COLORS.length;
 
 function randomAppearance(): PlanetAppearance {
   const z = Math.random() * 2 - 1;
@@ -40,13 +42,14 @@ function randomAppearance(): PlanetAppearance {
   };
 }
 
-function randomPositions(): Point[] {
+function randomPositions(count: number): Point[] {
   const positions: Point[] = [];
-  for (let index = 0; index < 3; index += 1) {
+  const span = 3.5 * Math.max(1, Math.sqrt(count / 3));
+  for (let index = 0; index < count; index += 1) {
     let candidate: Point = { x: 0, y: 0 };
     let bestDistance = -1;
     for (let attempt = 0; attempt < 100; attempt += 1) {
-      const next = { x: (Math.random() - 0.5) * 3.5, y: (Math.random() - 0.5) * 3.5 };
+      const next = { x: (Math.random() - 0.5) * span, y: (Math.random() - 0.5) * span };
       const nearest = Math.min(...positions.map(point => Math.hypot(next.x - point.x, next.y - point.y)), Infinity);
       if (nearest > bestDistance) {
         candidate = next;
@@ -64,6 +67,7 @@ function randomPositions(): Point[] {
 
 export class TrioSimulation {
   bodies: Body[] = [];
+  private bodyCount = 3;
   private trailClock = 0;
 
   constructor() {
@@ -71,9 +75,10 @@ export class TrioSimulation {
   }
 
   reset() {
-    const positions = randomPositions();
+    const positions = randomPositions(this.bodyCount);
     const masses = this.bodies.map(body => body.mass);
-    this.bodies = COLORS.map((color, index) => {
+    this.bodies = Array.from({ length: this.bodyCount }, (_, index) => {
+      const color = BODY_COLORS[index];
       const position = positions[index];
       const orbitalAngle = Math.atan2(position.y, position.x);
       const speed = 0.22 + Math.random() * 0.28;
@@ -105,6 +110,14 @@ export class TrioSimulation {
       body.trail.push({ x: body.x, y: body.y });
     }
     this.trailClock = 0;
+  }
+
+  setBodyCount(count: number) {
+    if (!Number.isFinite(count)) return;
+    const nextCount = Math.max(MIN_BODY_COUNT, Math.min(MAX_BODY_COUNT, Math.round(count)));
+    if (nextCount === this.bodyCount) return;
+    this.bodyCount = nextCount;
+    this.reset();
   }
 
   setMass(index: number, mass: number) {

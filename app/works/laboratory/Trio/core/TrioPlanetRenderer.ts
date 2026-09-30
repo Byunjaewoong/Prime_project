@@ -14,14 +14,17 @@ function channelFromDistance(distance: number, coefficient: number) {
 }
 
 export class TrioPlanetRenderer {
-  private sprites = Array.from({ length: 3 }, () => {
+  private sprites: { canvas: HTMLCanvasElement; context: CanvasRenderingContext2D }[] = [];
+
+  private createSprite() {
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
     if (!context) throw new Error("2D canvas is unavailable");
     return { canvas, context };
-  });
+  }
 
   draw(context: CanvasRenderingContext2D, body: Body, index: number, x: number, y: number, radius: number, ratio: number) {
+    while (this.sprites.length <= index) this.sprites.push(this.createSprite());
     const sprite = this.sprites[index];
     const pixelRadius = Math.max(1, Math.round(radius * ratio));
     const size = pixelRadius * 2 + 2;

@@ -3,15 +3,9 @@
 import Link from "next/link";
 import { FlaskConical, Home, Pause, Play, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { MAX_MASS, MIN_MASS, TrioSimulation } from "./core/TrioSimulation";
+import { BODY_COLORS, MAX_BODY_COUNT, MAX_MASS, MIN_BODY_COUNT, MIN_MASS, TrioSimulation } from "./core/TrioSimulation";
 import { TrioPlanetRenderer } from "./core/TrioPlanetRenderer";
 import styles from "./trio.module.css";
-
-const MASS_CONTROLS = [
-  { label: "Green", color: "#81ef00" },
-  { label: "Pink", color: "#ff008b" },
-  { label: "Blue", color: "#009fff" },
-];
 
 export default function TrioExperience() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -20,6 +14,7 @@ export default function TrioExperience() {
   const resetViewRef = useRef(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [bodyCount, setBodyCount] = useState(3);
   const [masses, setMasses] = useState([1, 1, 1]);
 
   useEffect(() => {
@@ -69,7 +64,7 @@ export default function TrioExperience() {
         }
       }
       cameraExtent += (desiredExtent - cameraExtent) * (1 - Math.exp(-elapsed * 3));
-      // Fit all three bodies, including an escaping one, without changing the physics.
+      // Fit every body, including an escaping one, without changing the physics.
       const scale = Math.min(bounds.width, bounds.height) * 0.42 / Math.max(cameraExtent, desiredExtent * 0.88);
       const screenX = (x: number) => bounds.width * 0.5 + x * scale;
       const screenY = (y: number) => bounds.height * 0.5 + y * scale;
@@ -128,8 +123,16 @@ export default function TrioExperience() {
     setMasses(previous => previous.map((value, bodyIndex) => bodyIndex === index ? mass : value));
   };
 
+  const updateBodyCount = (count: number) => {
+    const simulation = simulationRef.current;
+    simulation?.setBodyCount(count);
+    setBodyCount(count);
+    setMasses(simulation?.bodies.map(body => body.mass) ?? Array.from({ length: count }, () => 1));
+    resetViewRef.current = true;
+  };
+
   return <main className={styles.page}>
-    <canvas ref={canvasRef} className={styles.canvas} aria-label="Three gravitational bodies with green, pink and blue orbit trails" />
+    <canvas ref={canvasRef} className={styles.canvas} aria-label={`${bodyCount} gravitational bodies with colored orbit trails`} />
     <div className={styles.menuRoot}>
       {menuOpen && <div className={styles.menu}>
         <div className={styles.menuHeader}>
@@ -140,14 +143,19 @@ export default function TrioExperience() {
           </div>
         </div>
         <div className={styles.massSection}>
+          <label className={styles.massControl}>
+            <span className={styles.massLabel}><span>Bodies</span><output>{bodyCount}</output></span>
+            <input type="range" min={MIN_BODY_COUNT} max={MAX_BODY_COUNT} step="1" value={bodyCount}
+              aria-label="Number of bodies" onChange={event => updateBodyCount(Number(event.target.value))} />
+          </label>
           <span className={styles.sectionTitle}>Mass</span>
-          {MASS_CONTROLS.map((control, index) => <label className={styles.massControl} key={control.label}>
+          {masses.map((mass, index) => <label className={styles.massControl} key={index}>
             <span className={styles.massLabel}>
-              <span className={styles.massName}><span className={styles.colorDot} style={{ backgroundColor: control.color }} />{control.label}</span>
-              <output>{masses[index].toFixed(2)}</output>
+              <span className={styles.massName}><span className={styles.colorDot} style={{ backgroundColor: BODY_COLORS[index] }} />Body {index + 1}</span>
+              <output>{mass.toFixed(2)}</output>
             </span>
-            <input type="range" min={MIN_MASS} max={MAX_MASS} step="0.05" value={masses[index]}
-              aria-label={`${control.label} body mass`} style={{ accentColor: control.color }}
+            <input type="range" min={MIN_MASS} max={MAX_MASS} step="0.05" value={mass}
+              aria-label={`Body ${index + 1} mass`} style={{ accentColor: BODY_COLORS[index] }}
               onChange={event => updateMass(index, Number(event.target.value))} />
           </label>)}
         </div>
