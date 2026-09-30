@@ -12,4 +12,5 @@
 .controlLabel { display: flex; justify-content: space-between; gap: 12px; color: rgba(255,255,255,.83); }
 .controlLabel output { color: #fff; font-variant-numeric: tabular-nums; }
 .control input { width: 100%; margin: 0; accent-color: #d2e2ea; cursor: pointer; }
+.control .colorInput { height: 34px; padding: 2px; border: 1px solid rgba(255,255,255,.35); border-radius: 5px; background: transparent; }
 .menuButton:focus-visible, .menuLinks a:focus-visible, .control input:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FlaskConical, Home } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_NOISE, PaintedRenderer, type NoiseParams } from "./core/PaintedRenderer";
+import { DEFAULT_COLOR, DEFAULT_NOISE, PaintedRenderer, type NoiseParams } from "./core/PaintedRenderer";
 import styles from "./painted.module.css";
 
 const NOISE_CONTROLS: { key: keyof NoiseParams; label: string; min: number; max: number; step: number }[] = [
@@ -19,6 +19,7 @@ export default function PaintedExperience() {
   const rendererRef = useRef<PaintedRenderer | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [noise, setNoise] = useState<NoiseParams>(DEFAULT_NOISE);
+  const [color, setColor] = useState(DEFAULT_COLOR);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -34,6 +35,11 @@ export default function PaintedExperience() {
   const updateNoise = (key: keyof NoiseParams, value: number) => {
     setNoise(current => ({ ...current, [key]: value }));
     rendererRef.current?.setNoise({ [key]: value });
+  };
+
+  const updateColor = (value: string) => {
+    setColor(value);
+    rendererRef.current?.setColor(value);
   };
 
   return <main className={styles.page}>
@@ -53,6 +59,11 @@ export default function PaintedExperience() {
           </nav>
         </div>
         <div className={styles.controls}>
+          <span className={styles.sectionTitle}>Color</span>
+          <label className={styles.control}>
+            <span className={styles.controlLabel}><span>Base color</span><output>{color.toUpperCase()}</output></span>
+            <input className={styles.colorInput} type="color" value={color} onChange={event => updateColor(event.target.value)} />
+          </label>
           <span className={styles.sectionTitle}>Perlin surface</span>
           {NOISE_CONTROLS.map(control => <label className={styles.control} key={control.key}>
             <span className={styles.controlLabel}><span>{control.label}</span><output>{noise[control.key].toFixed(control.step >= 1 ? 0 : 2)}</output></span>

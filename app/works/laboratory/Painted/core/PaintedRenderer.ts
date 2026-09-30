@@ -8,8 +8,12 @@ export type NoiseParams = {
 
 export const DEFAULT_NOISE: NoiseParams = { scale: 11, octaves: 4, roughness: 0.5, relief: 6, seed: 17 };
 
-const BASE_COLOR: [number, number, number] = [77 / 255, 123 / 255, 149 / 255];
+export const DEFAULT_COLOR = "#4d7b95";
 const LIGHT: [number, number, number] = [-0.42, 0.46, 0.78];
+
+function colorChannels(hex: string): [number, number, number] {
+  return [1, 3, 5].map(index => Number.parseInt(hex.slice(index, index + 2), 16) / 255) as [number, number, number];
+}
 
 const VERTEX_SHADER = `#version 300 es
 in vec2 aPosition;
@@ -135,6 +139,7 @@ export class PaintedRenderer {
   private readonly fragmentShader: WebGLShader | null = null;
   private readonly buffer: WebGLBuffer | null = null;
   private params: NoiseParams = { ...DEFAULT_NOISE };
+  private color = DEFAULT_COLOR;
   private frame: number | null = null;
   private destroyed = false;
 
@@ -178,6 +183,12 @@ export class PaintedRenderer {
     this.scheduleRender();
   }
 
+  setColor(hex: string) {
+    if (!/^#[0-9a-f]{6}$/i.test(hex)) return;
+    this.color = hex;
+    this.scheduleRender();
+  }
+
   private scheduleRender() {
     if (this.frame !== null) cancelAnimationFrame(this.frame);
     this.frame = requestAnimationFrame(() => {
@@ -202,7 +213,7 @@ export class PaintedRenderer {
     }
     gl.viewport(0, 0, width, height);
     gl.useProgram(this.program);
-    gl.uniform3f(gl.getUniformLocation(this.program, "uColor"), ...BASE_COLOR);
+    gl.uniform3f(gl.getUniformLocation(this.program, "uColor"), ...colorChannels(this.color));
     gl.uniform3f(gl.getUniformLocation(this.program, "uLight"), ...LIGHT);
     gl.uniform1f(gl.getUniformLocation(this.program, "uPixelRatio"), ratio);
     gl.uniform1f(gl.getUniformLocation(this.program, "uScale"), this.params.scale);
@@ -216,6 +227,7 @@ export class PaintedRenderer {
   private renderFallback() {
     const context = this.fallback;
     if (!context) return;
+    const color = colorChannels(this.color);
     const { width, height } = this.canvas;
     const downsample = Math.min(1, Math.sqrt(350_000 / (width * height)));
     const sampleWidth = Math.max(1, Math.round(width * downsample));
@@ -254,7 +266,7 @@ export class PaintedRenderer {
         const ny = (below - above) * this.params.relief / (2 * cssStep);
         const dot = Math.max(0, (nx * LIGHT[0] + ny * LIGHT[1] + LIGHT[2]) / (Math.hypot(nx, ny, 1) * lightLength));
         const shade = 0.24 + 0.96 * dot;
-        for (let channel = 0; channel < 3; channel++) image.data[index * 4 + channel] = Math.round(BASE_COLOR[channel] * shade * 255);
+        for (let channel = 0; channel < 3; channel++) image.data[index * 4 + channel] = Math.round(color[channel] * shade * 255);
         image.data[index * 4 + 3] = 255;
       }
     }
