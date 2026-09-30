@@ -3,7 +3,14 @@
 .canvas:focus-visible { outline: 2px solid rgba(255,255,255,.85); outline-offset: -5px; }
 .menuRoot { position: fixed; z-index: 2; right: 20px; bottom: max(20px, env(safe-area-inset-bottom)); display: flex; align-items: flex-end; gap: 10px; font-family: var(--font-courier), monospace; }
 .menuButton { display: grid; width: 48px; height: 48px; place-items: center; border: 1px solid rgba(255,255,255,.38); border-radius: 50%; background: rgba(18,28,34,.24); color: #fff; cursor: pointer; font: 500 14px var(--font-courier), monospace; backdrop-filter: blur(8px); }
-.menu { display: flex; min-width: 184px; align-items: center; justify-content: space-between; padding: 11px 12px; border: 1px solid rgba(255,255,255,.3); border-radius: 12px; background: rgba(18,28,34,.48); color: #fff; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; backdrop-filter: blur(12px); }
+.menu { width: min(290px, calc(100vw - 92px)); max-height: calc(100svh - 80px); overflow-y: auto; padding: 15px; border: 1px solid rgba(255,255,255,.3); border-radius: 12px; background: rgba(18,28,34,.68); color: #fff; font-size: 12px; backdrop-filter: blur(12px); }
+.menuHeader { display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,.22); letter-spacing: .08em; text-transform: uppercase; }
 .menuLinks { display: flex; gap: 7px; }
 .menuLinks a { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid rgba(255,255,255,.3); border-radius: 50%; color: #fff; }
-.menuButton:focus-visible, .menuLinks a:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.controls { display: grid; gap: 16px; padding-top: 16px; }
+.sectionTitle { color: rgba(255,255,255,.57); font-size: 10px; letter-spacing: .16em; text-transform: uppercase; }
+.control { display: grid; gap: 8px; }
+.controlLabel { display: flex; justify-content: space-between; gap: 12px; color: rgba(255,255,255,.83); }
+.controlLabel output { color: #fff; font-variant-numeric: tabular-nums; }
+.control input { width: 100%; margin: 0; accent-color: #d2e2ea; cursor: pointer; }
+.menuButton:focus-visible, .menuLinks a:focus-visible, .control input:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
