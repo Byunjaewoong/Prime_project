@@ -52,9 +52,9 @@ function drawSphere(canvas: HTMLCanvasElement, direction: LightDirection) {
     const rz = z + qw * tz + qx * ty - qy * tx;
     if (rz <= 0) continue;
 
-    const fade = Math.max(0, Math.min(1, (z - 0.06) / 0.32));
-    const cap = fade * fade * (3 - 2 * fade);
-    const alpha = (0.85 - cap * 0.81) * (0.58 + rz * 0.42);
+    // Dot opacity falls continuously toward the vector axis (local +Z).
+    const axisFade = Math.pow(Math.max(0, z), 3.2);
+    const alpha = 0.85 * (1 - axisFade) * (0.58 + rz * 0.42);
     context.fillStyle = `rgba(238,242,239,${alpha})`;
     context.beginPath();
     context.arc(center + rx * RADIUS, center - ry * RADIUS, 0.62 + rz * 0.44, 0, Math.PI * 2);
