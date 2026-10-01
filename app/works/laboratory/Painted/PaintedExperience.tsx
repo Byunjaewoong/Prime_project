@@ -30,12 +30,46 @@ const PALETTE = [
   { name: "Charcoal", hex: "#626b70" },
 ] as const;
 
+type HslColor = { hue: number; saturation: number; lightness: number };
+
+function hexToHsl(hex: string): HslColor {
+  const [r, g, b] = [1, 3, 5].map(index => Number.parseInt(hex.slice(index, index + 2), 16) / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+  const lightness = (max + min) / 2;
+  let hue = 0;
+  if (delta > 0) {
+    if (max === r) hue = ((g - b) / delta) % 6;
+    else if (max === g) hue = (b - r) / delta + 2;
+    else hue = (r - g) / delta + 4;
+    hue = (hue * 60 + 360) % 360;
+  }
+  const saturation = delta === 0 ? 0 : delta / (1 - Math.abs(2 * lightness - 1));
+  return { hue: Math.round(hue), saturation: Math.round(saturation * 100), lightness: Math.round(lightness * 100) };
+}
+
+function hslToHex({ hue, saturation, lightness }: HslColor): string {
+  const s = saturation / 100;
+  const l = lightness / 100;
+  const chroma = (1 - Math.abs(2 * l - 1)) * s;
+  const secondary = chroma * (1 - Math.abs((hue / 60) % 2 - 1));
+  const offset = l - chroma / 2;
+  const channels = hue < 60 ? [chroma, secondary, 0]
+    : hue < 120 ? [secondary, chroma, 0]
+      : hue < 180 ? [0, chroma, secondary]
+        : hue < 240 ? [0, secondary, chroma]
+          : hue < 300 ? [secondary, 0, chroma] : [chroma, 0, secondary];
+  return `#${channels.map(channel => Math.round((channel + offset) * 255).toString(16).padStart(2, "0")).join("")}`;
+}
+
 export default function PaintedExperience() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<PaintedRenderer | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [noise, setNoise] = useState<NoiseParams>(DEFAULT_NOISE);
   const [color, setColor] = useState(DEFAULT_COLOR);
+  const [hsl, setHsl] = useState<HslColor>(() => hexToHsl(DEFAULT_COLOR));
   const [shadowDepth, setShadowDepth] = useState(DEFAULT_SHADOW_DEPTH);
   const [lightDirection, setLightDirection] = useState<LightDirection>(DEFAULT_LIGHT_DIRECTION);
   const [playing, setPlaying] = useState(false);
@@ -62,7 +96,16 @@ export default function PaintedExperience() {
 
   const updateColor = (value: string) => {
     setColor(value);
+    setHsl(hexToHsl(value));
     rendererRef.current?.setColor(value);
+  };
+
+  const updateHsl = (key: keyof HslColor, value: number) => {
+    const next = { ...hsl, [key]: value };
+    const hex = hslToHex(next);
+    setHsl(next);
+    setColor(hex);
+    rendererRef.current?.setColor(hex);
   };
 
   const updateShadowDepth = (value: number) => {
@@ -135,6 +178,19 @@ export default function PaintedExperience() {
                 <span>{choice.name}</span>
               </button>)}
             </div>
+            <label className={styles.colorPicker}>
+              <span>Custom color</span>
+              <input type="color" value={color} aria-label="Custom color" onChange={event => updateColor(event.target.value)} />
+            </label>
+            {([
+              { key: "hue", label: "Hue", max: 360, unit: "°" },
+              { key: "saturation", label: "Saturation", max: 100, unit: "%" },
+              { key: "lightness", label: "Lightness", max: 100, unit: "%" },
+            ] as const).map(control => <label className={styles.colorControl} key={control.key}>
+              <span className={styles.controlLabel}><span>{control.label}</span><output>{hsl[control.key]}{control.unit}</output></span>
+              <input type="range" min={0} max={control.max} step={1} value={hsl[control.key]}
+                onChange={event => updateHsl(control.key, Number(event.target.value))} />
+            </label>)}
           </div>
           <label className={styles.control}>
             <span className={styles.controlLabel}><span>Shadow depth</span><output>{shadowDepth.toFixed(2)}</output></span>
