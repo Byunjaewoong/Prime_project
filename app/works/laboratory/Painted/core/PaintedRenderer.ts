@@ -6,13 +6,13 @@ export type NoiseParams = {
   seed: number;
 };
 
-export const DEFAULT_NOISE: NoiseParams = { scale: 11, octaves: 4, roughness: 0.5, relief: 6, seed: 17 };
+export const DEFAULT_NOISE: NoiseParams = { scale: 40, octaves: 6, roughness: 0.45, relief: 15, seed: 45 };
 
-export const DEFAULT_COLOR = "#4d7b95";
-export const DEFAULT_SHADOW_DEPTH = 1;
+export const DEFAULT_COLOR = "#ffffff";
+export const DEFAULT_SHADOW_DEPTH = 0.2;
 export const DEFAULT_PEAK_HOLD = 0.25;
 export type LightDirection = [number, number, number];
-export const DEFAULT_LIGHT_DIRECTION: LightDirection = [-0.42, 0.46, Math.sqrt(1 - 0.42 ** 2 - 0.46 ** 2)];
+export const DEFAULT_LIGHT_DIRECTION: LightDirection = [-0.05, Math.sqrt(1 - 0.05 ** 2 - 0.2 ** 2), 0.2];
 const FIELD_ZOOM = 2; // Twice the span on each axis: four times the visible field area.
 // Pairwise-coprime transition lengths; their alignment takes 8 * 11 * 13 seconds at 1x.
 const CYCLES = [

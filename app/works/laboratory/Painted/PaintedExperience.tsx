@@ -70,7 +70,7 @@ export default function PaintedExperience() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [noise, setNoise] = useState<NoiseParams>(DEFAULT_NOISE);
   const [color, setColor] = useState(DEFAULT_COLOR);
-  const [hsl, setHsl] = useState<HslColor>(() => hexToHsl(DEFAULT_COLOR));
+  const [hsl, setHsl] = useState<HslColor>({ hue: 202, saturation: 32, lightness: 100 });
   const [shadowDepth, setShadowDepth] = useState(DEFAULT_SHADOW_DEPTH);
   const [lightDirection, setLightDirection] = useState<LightDirection>(DEFAULT_LIGHT_DIRECTION);
   const [playing, setPlaying] = useState(false);
