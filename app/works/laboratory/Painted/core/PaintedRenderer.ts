@@ -144,7 +144,7 @@ function linkProgram(gl: WebGL2RenderingContext, vertex: WebGLShader, fragment: 
   return program;
 }
 
-type NormalTarget = { texture: WebGLTexture; framebuffer: WebGLFramebuffer; dirty: boolean };
+type NormalTarget = { texture: WebGLTexture; framebuffer: WebGLFramebuffer; dirty: boolean; rowsRendered: number };
 
 const CPU_GRADIENTS: [number, number][] = [
   [1, 0], [-1, 0], [0, 1], [0, -1],
@@ -181,13 +181,16 @@ export class PaintedRenderer {
   private readonly buffer: WebGLBuffer | null = null;
   private sourceTarget: NormalTarget | null = null;
   private nextTarget: NormalTarget | null = null;
+  private queuedTarget: NormalTarget | null = null;
   private cpuHeights: Float32Array | null = null;
   private cpuNextHeights: Float32Array | null = null;
+  private cpuQueuedHeights: Float32Array | null = null;
   private cpuSampleWidth = 0;
   private cpuSampleHeight = 0;
   private params: NoiseParams = { ...DEFAULT_NOISE };
   private sourceSeed = DEFAULT_NOISE.seed;
   private nextSeed: number | null = null;
+  private queuedSeed: number | null = null;
   private morphProgress = 0;
   private morphSpeed = 1;
   private playing = false;
@@ -235,14 +238,20 @@ export class PaintedRenderer {
     this.params = { ...this.params, ...next };
     if (next.seed !== undefined) {
       this.sourceSeed = next.seed;
-      this.nextSeed = this.playing ? this.randomNextSeed() : null;
+      this.nextSeed = this.playing ? this.randomSeedExcluding(this.sourceSeed) : null;
+      this.queuedSeed = this.playing && this.nextSeed !== null
+        ? this.randomSeedExcluding(this.sourceSeed, this.nextSeed) : null;
       this.morphProgress = 0;
       this.lastFrameTime = null;
     }
-    if (this.sourceTarget) this.sourceTarget.dirty = true;
-    if (this.nextTarget) this.nextTarget.dirty = true;
+    for (const target of [this.sourceTarget, this.nextTarget, this.queuedTarget]) {
+      if (!target) continue;
+      target.dirty = true;
+      target.rowsRendered = 0;
+    }
     this.cpuHeights = null;
     this.cpuNextHeights = null;
+    this.cpuQueuedHeights = null;
     this.scheduleRender();
   }
 
@@ -250,7 +259,10 @@ export class PaintedRenderer {
     if (this.playing === playing) return;
     this.playing = playing;
     this.lastFrameTime = null;
-    if (playing && this.nextSeed === null) this.nextSeed = this.randomNextSeed();
+    if (playing && this.nextSeed === null) this.nextSeed = this.randomSeedExcluding(this.sourceSeed);
+    if (playing && this.queuedSeed === null && this.nextSeed !== null) {
+      this.queuedSeed = this.randomSeedExcluding(this.sourceSeed, this.nextSeed);
+    }
     this.scheduleRender();
   }
 
@@ -258,9 +270,13 @@ export class PaintedRenderer {
     this.morphSpeed = Math.max(0.1, Math.min(3, value));
   }
 
-  private randomNextSeed() {
-    const offset = 1 + Math.floor(Math.random() * 100);
-    return (Math.round(this.sourceSeed) + offset) % 101;
+  private randomSeedExcluding(...excluded: number[]) {
+    const start = Math.floor(Math.random() * 101);
+    for (let offset = 0; offset < 101; offset++) {
+      const candidate = (start + offset) % 101;
+      if (!excluded.includes(candidate)) return candidate;
+    }
+    return start;
   }
 
   setColor(hex: string) {
@@ -313,7 +329,7 @@ export class PaintedRenderer {
       gl.deleteFramebuffer(framebuffer);
       throw new Error(`Painted normal target incomplete: ${status}`);
     }
-    return { texture, framebuffer, dirty: true };
+    return { texture, framebuffer, dirty: true, rowsRendered: 0 };
   }
 
   private deleteNormalTarget(target: NormalTarget | null) {
@@ -322,12 +338,15 @@ export class PaintedRenderer {
     this.gl.deleteFramebuffer(target.framebuffer);
   }
 
-  private renderNormalTarget(target: NormalTarget, seed: number, ratio: number) {
+  private renderNormalTarget(target: NormalTarget, seed: number, ratio: number, rowBudget = this.canvas.height) {
     const gl = this.gl;
     const program = this.normalProgram;
     if (!gl || !program || !target.dirty) return;
+    const rows = Math.min(rowBudget, this.canvas.height - target.rowsRendered);
     gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
     gl.useProgram(program);
+    gl.enable(gl.SCISSOR_TEST);
+    gl.scissor(0, target.rowsRendered, this.canvas.width, rows);
     gl.uniform1f(gl.getUniformLocation(program, "uPixelRatio"), ratio);
     gl.uniform2f(gl.getUniformLocation(program, "uViewportSize"), this.canvas.clientWidth, this.canvas.clientHeight);
     gl.uniform1f(gl.getUniformLocation(program, "uFieldZoom"), FIELD_ZOOM);
@@ -337,23 +356,30 @@ export class PaintedRenderer {
     gl.uniform1f(gl.getUniformLocation(program, "uRelief"), this.params.relief);
     gl.uniform1f(gl.getUniformLocation(program, "uSeed"), seed);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    target.dirty = false;
+    gl.disable(gl.SCISSOR_TEST);
+    target.rowsRendered += rows;
+    target.dirty = target.rowsRendered < this.canvas.height;
   }
 
   private render(now: number) {
     if (this.playing) {
       if (this.lastFrameTime !== null) {
         this.morphProgress += Math.min(now - this.lastFrameTime, 100) * this.morphSpeed / 8000;
-        if (this.morphProgress >= 1 && this.nextSeed !== null) {
+        if (this.morphProgress >= 1 && this.nextSeed !== null && this.queuedSeed !== null) {
           this.morphProgress -= 1;
-          [this.sourceTarget, this.nextTarget] = [this.nextTarget, this.sourceTarget];
-          [this.cpuHeights, this.cpuNextHeights] = [this.cpuNextHeights, this.cpuHeights];
+          [this.sourceTarget, this.nextTarget, this.queuedTarget] = [this.nextTarget, this.queuedTarget, this.sourceTarget];
+          [this.cpuHeights, this.cpuNextHeights, this.cpuQueuedHeights] =
+            [this.cpuNextHeights, this.cpuQueuedHeights, this.cpuHeights];
           this.sourceSeed = this.nextSeed;
+          this.nextSeed = this.queuedSeed;
+          this.queuedSeed = this.randomSeedExcluding(this.sourceSeed, this.nextSeed);
           this.params.seed = this.sourceSeed;
           this.onSeedReached?.(this.sourceSeed);
-          this.nextSeed = this.randomNextSeed();
-          if (this.nextTarget) this.nextTarget.dirty = true;
-          this.cpuNextHeights = null;
+          if (this.queuedTarget) {
+            this.queuedTarget.dirty = true;
+            this.queuedTarget.rowsRendered = 0;
+          }
+          this.cpuQueuedHeights = null;
         }
       }
       this.lastFrameTime = now;
@@ -367,10 +393,13 @@ export class PaintedRenderer {
       this.canvas.height = height;
       this.cpuHeights = null;
       this.cpuNextHeights = null;
+      this.cpuQueuedHeights = null;
       this.deleteNormalTarget(this.sourceTarget);
       this.deleteNormalTarget(this.nextTarget);
+      this.deleteNormalTarget(this.queuedTarget);
       this.sourceTarget = null;
       this.nextTarget = null;
+      this.queuedTarget = null;
     }
     const gl = this.gl;
     if (!gl || !this.normalProgram || !this.displayProgram) {
@@ -379,9 +408,13 @@ export class PaintedRenderer {
     }
     this.sourceTarget ??= this.createNormalTarget(width, height);
     if (this.nextSeed !== null) this.nextTarget ??= this.createNormalTarget(width, height);
+    if (this.queuedSeed !== null) this.queuedTarget ??= this.createNormalTarget(width, height);
     gl.viewport(0, 0, width, height);
     this.renderNormalTarget(this.sourceTarget, this.sourceSeed, ratio);
     if (this.nextSeed !== null && this.nextTarget) this.renderNormalTarget(this.nextTarget, this.nextSeed, ratio);
+    if (this.playing && this.queuedSeed !== null && this.queuedTarget) {
+      this.renderNormalTarget(this.queuedTarget, this.queuedSeed, ratio, Math.ceil(height / 24));
+    }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.useProgram(this.displayProgram);
     gl.activeTexture(gl.TEXTURE0);
@@ -390,7 +423,7 @@ export class PaintedRenderer {
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.nextTarget?.texture ?? this.sourceTarget.texture);
     gl.uniform1i(gl.getUniformLocation(this.displayProgram, "uNormalsB"), 1);
-    const blend = this.nextSeed === null ? 0 : this.morphProgress ** 2 * (3 - 2 * this.morphProgress);
+    const blend = this.nextSeed === null ? 0 : this.morphProgress;
     gl.uniform1f(gl.getUniformLocation(this.displayProgram, "uBlend"), blend);
     gl.uniform3f(gl.getUniformLocation(this.displayProgram, "uColor"), ...colorChannels(this.color));
     gl.uniform3f(gl.getUniformLocation(this.displayProgram, "uLight"), ...this.lightDirection);
@@ -413,6 +446,7 @@ export class PaintedRenderer {
     if (this.cpuSampleWidth !== sampleWidth || this.cpuSampleHeight !== sampleHeight) {
       this.cpuHeights = null;
       this.cpuNextHeights = null;
+      this.cpuQueuedHeights = null;
       this.cpuSampleWidth = sampleWidth;
       this.cpuSampleHeight = sampleHeight;
     }
@@ -443,9 +477,12 @@ export class PaintedRenderer {
     };
     this.cpuHeights ??= computeHeights(this.sourceSeed);
     if (this.nextSeed !== null) this.cpuNextHeights ??= computeHeights(this.nextSeed);
+    if (this.playing && this.queuedSeed !== null && !this.cpuQueuedHeights && this.morphProgress > 0.1) {
+      this.cpuQueuedHeights = computeHeights(this.queuedSeed);
+    }
     const heights = this.cpuHeights;
     const nextHeights = this.cpuNextHeights;
-    const blend = nextHeights ? this.morphProgress ** 2 * (3 - 2 * this.morphProgress) : 0;
+    const blend = nextHeights ? this.morphProgress : 0;
     const heightAt = (index: number) => heights[index] * (1 - blend) + (nextHeights?.[index] ?? heights[index]) * blend;
     const image = context.createImageData(sampleWidth, sampleHeight);
     const lightLength = Math.hypot(...this.lightDirection);
@@ -479,6 +516,7 @@ export class PaintedRenderer {
     if (this.gl) {
       this.deleteNormalTarget(this.sourceTarget);
       this.deleteNormalTarget(this.nextTarget);
+      this.deleteNormalTarget(this.queuedTarget);
       if (this.buffer) this.gl.deleteBuffer(this.buffer);
       if (this.normalProgram) this.gl.deleteProgram(this.normalProgram);
       if (this.displayProgram) this.gl.deleteProgram(this.displayProgram);
