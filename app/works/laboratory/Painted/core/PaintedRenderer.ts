@@ -267,7 +267,7 @@ export class PaintedRenderer {
   }
 
   setMorphSpeed(value: number) {
-    this.morphSpeed = Math.max(0.1, Math.min(3, value));
+    this.morphSpeed = Math.max(0.1, Math.min(6, value));
   }
 
   private randomSeedExcluding(...excluded: number[]) {
@@ -413,7 +413,8 @@ export class PaintedRenderer {
     this.renderNormalTarget(this.sourceTarget, this.sourceSeed, ratio);
     if (this.nextSeed !== null && this.nextTarget) this.renderNormalTarget(this.nextTarget, this.nextSeed, ratio);
     if (this.playing && this.queuedSeed !== null && this.queuedTarget) {
-      this.renderNormalTarget(this.queuedTarget, this.queuedSeed, ratio, Math.ceil(height / 24));
+      const prepFrames = Math.max(8, Math.min(48, Math.ceil(24 / this.morphSpeed)));
+      this.renderNormalTarget(this.queuedTarget, this.queuedSeed, ratio, Math.ceil(height / prepFrames));
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.useProgram(this.displayProgram);

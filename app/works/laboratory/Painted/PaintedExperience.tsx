@@ -110,7 +110,7 @@ export default function PaintedExperience() {
           </button>
           <label className={styles.control}>
             <span className={styles.controlLabel}><span>Change speed</span><output>{morphSpeed.toFixed(2)}×</output></span>
-            <input type="range" min={0.1} max={3} step={0.05} value={morphSpeed}
+            <input type="range" min={0.1} max={6} step={0.05} value={morphSpeed}
               onChange={event => updateMorphSpeed(Number(event.target.value))} />
           </label>
           <span className={styles.sectionTitle}>Appearance</span>
