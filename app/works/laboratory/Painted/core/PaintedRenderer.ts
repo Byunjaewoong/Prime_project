@@ -116,7 +116,9 @@ void main() {
   float targetPeak = smoothstep(0.04, 0.22, target.a * 2.0 - 1.0);
   float departure = uPeakHold * sourcePeak;
   float arrival = 1.0 - uPeakHold * targetPeak;
-  float localBlend = clamp((uBlend - departure) / (arrival - departure), 0.0, 1.0);
+  float center = clamp((departure + arrival) * 0.5, 0.01, 0.99);
+  float span = max(arrival - departure, 0.02);
+  float localBlend = clamp((uBlend - center) / span + 0.5, 0.0, 1.0);
   vec3 normal = normalize(mix(source.rgb, target.rgb, localBlend) * 2.0 - 1.0);
   float illumination = max(dot(normal, normalize(uLight)), 0.0);
   float shade = mix(1.0, 0.24 + 0.96 * illumination, uShadowDepth);
@@ -279,7 +281,7 @@ export class PaintedRenderer {
   }
 
   setPeakHold(value: number) {
-    this.peakHold = Math.max(0, Math.min(0.4, value));
+    this.peakHold = Math.max(0, Math.min(1, value));
     this.scheduleRender();
   }
 
@@ -508,7 +510,9 @@ export class PaintedRenderer {
       const target = nextHeights[index];
       const departure = this.peakHold * peakWeight(source);
       const arrival = 1 - this.peakHold * peakWeight(target);
-      const localBlend = Math.max(0, Math.min(1, (blend - departure) / (arrival - departure)));
+      const center = Math.max(0.01, Math.min(0.99, (departure + arrival) * 0.5));
+      const span = Math.max(arrival - departure, 0.02);
+      const localBlend = Math.max(0, Math.min(1, (blend - center) / span + 0.5));
       return source + (target - source) * localBlend;
     };
     const image = context.createImageData(sampleWidth, sampleHeight);

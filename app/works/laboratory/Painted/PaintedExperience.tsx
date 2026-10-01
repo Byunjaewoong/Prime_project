@@ -121,7 +121,7 @@ export default function PaintedExperience() {
           </label>
           <label className={styles.control}>
             <span className={styles.controlLabel}><span>Peak hold</span><output>{peakHold.toFixed(2)}</output></span>
-            <input type="range" min={0} max={0.4} step={0.01} value={peakHold}
+            <input type="range" min={0} max={1} step={0.01} value={peakHold}
               onChange={event => updatePeakHold(Number(event.target.value))} />
           </label>
           <span className={styles.sectionTitle}>Appearance</span>
