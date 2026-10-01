@@ -12,6 +12,12 @@
 .controlLabel { display: flex; justify-content: space-between; gap: 12px; color: rgba(255,255,255,.83); }
 .controlLabel output { color: #fff; font-variant-numeric: tabular-nums; }
 .control input { width: 100%; margin: 0; accent-color: #d2e2ea; cursor: pointer; }
+.range { display: flex; width: 100%; min-height: 30px; align-items: center; user-select: none; }
+.rangeTrack { position: relative; width: calc(100% - 32px); height: 5px; margin: 0 16px; border-radius: 999px; background: rgba(255,255,255,.3); }
+.rangeFill { height: 100%; border-radius: inherit; background: #d2e2ea; pointer-events: none; }
+.rangeThumb { position: absolute; top: 50%; width: 32px; height: 32px; transform: translate(-50%, -50%); border-radius: 50%; cursor: grab; touch-action: none; }
+.rangeThumb::after { position: absolute; top: 50%; left: 50%; width: 16px; height: 16px; transform: translate(-50%, -50%); border: 2px solid rgba(18,28,34,.32); border-radius: 50%; background: #d2e2ea; content: ""; }
+.rangeThumb:active { cursor: grabbing; }
 .playButton { display: flex; min-height: 36px; align-items: center; justify-content: center; gap: 9px; border: 1px solid rgba(255,255,255,.35); border-radius: 6px; background: rgba(255,255,255,.07); color: #fff; cursor: pointer; font: 12px var(--font-courier), monospace; }
 .playButton[aria-pressed="true"] { background: rgba(255,255,255,.2); border-color: rgba(255,255,255,.7); }
 .palette { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
@@ -24,4 +30,4 @@
 .lightSphere { width: 188px; height: 188px; align-self: center; touch-action: none; cursor: grab; }
 .lightSphere:active { cursor: grabbing; }
 .lightCoordinates { display: flex; justify-content: space-around; gap: 8px; color: rgba(255,255,255,.65); font-size: 10px; font-variant-numeric: tabular-nums; }
-.menuButton:focus-visible, .menuLinks a:focus-visible, .control input:focus-visible, .paletteOption:focus-visible, .lightSphere:focus-visible, .playButton:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.menuButton:focus-visible, .menuLinks a:focus-visible, .control input:focus-visible, .range:focus-visible, .paletteOption:focus-visible, .lightSphere:focus-visible, .playButton:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }

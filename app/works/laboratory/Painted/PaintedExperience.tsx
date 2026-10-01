@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FlaskConical, Home, Pause, Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { DEFAULT_COLOR, DEFAULT_LIGHT_DIRECTION, DEFAULT_NOISE, DEFAULT_PEAK_HOLD, DEFAULT_SHADOW_DEPTH, PaintedRenderer, type LightDirection, type NoiseParams } from "./core/PaintedRenderer";
+import DragOnlyRange from "./DragOnlyRange";
 import LightDirectionSphere from "./LightDirectionSphere";
 import styles from "./painted.module.css";
 
@@ -157,16 +158,14 @@ export default function PaintedExperience() {
             {playing ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}
             <span>{playing ? "Pause" : "Play"}</span>
           </button>
-          <label className={styles.control}>
+          <div className={styles.control}>
             <span className={styles.controlLabel}><span>Change speed</span><output>{morphSpeed.toFixed(2)}×</output></span>
-            <input type="range" min={0.1} max={6} step={0.05} value={morphSpeed}
-              onChange={event => updateMorphSpeed(Number(event.target.value))} />
-          </label>
-          <label className={styles.control}>
+            <DragOnlyRange label="Change speed" min={0.1} max={6} step={0.05} value={morphSpeed} onChange={updateMorphSpeed} />
+          </div>
+          <div className={styles.control}>
             <span className={styles.controlLabel}><span>Peak hold</span><output>{peakHold.toFixed(2)}</output></span>
-            <input type="range" min={0} max={1} step={0.01} value={peakHold}
-              onChange={event => updatePeakHold(Number(event.target.value))} />
-          </label>
+            <DragOnlyRange label="Peak hold" min={0} max={1} step={0.01} value={peakHold} onChange={updatePeakHold} />
+          </div>
           <span className={styles.sectionTitle}>Appearance</span>
           <div className={styles.control}>
             <span className={styles.controlLabel}><span>Base color</span><output>{color.toUpperCase()}</output></span>
@@ -186,17 +185,16 @@ export default function PaintedExperience() {
               { key: "hue", label: "Hue", max: 360, unit: "°" },
               { key: "saturation", label: "Saturation", max: 100, unit: "%" },
               { key: "lightness", label: "Lightness", max: 100, unit: "%" },
-            ] as const).map(control => <label className={styles.colorControl} key={control.key}>
+            ] as const).map(control => <div className={styles.colorControl} key={control.key}>
               <span className={styles.controlLabel}><span>{control.label}</span><output>{hsl[control.key]}{control.unit}</output></span>
-              <input type="range" min={0} max={control.max} step={1} value={hsl[control.key]}
-                onChange={event => updateHsl(control.key, Number(event.target.value))} />
-            </label>)}
+              <DragOnlyRange label={control.label} min={0} max={control.max} step={1} value={hsl[control.key]}
+                onChange={value => updateHsl(control.key, value)} />
+            </div>)}
           </div>
-          <label className={styles.control}>
+          <div className={styles.control}>
             <span className={styles.controlLabel}><span>Shadow depth</span><output>{shadowDepth.toFixed(2)}</output></span>
-            <input type="range" min={0} max={2} step={0.05} value={shadowDepth}
-              onChange={event => updateShadowDepth(Number(event.target.value))} />
-          </label>
+            <DragOnlyRange label="Shadow depth" min={0} max={2} step={0.05} value={shadowDepth} onChange={updateShadowDepth} />
+          </div>
           <div className={styles.control}>
             <span className={styles.controlLabel}><span>Light direction</span><span>drag to rotate</span></span>
             <LightDirectionSphere direction={lightDirection} onChange={updateLightDirection} />
@@ -207,11 +205,11 @@ export default function PaintedExperience() {
             </div>
           </div>
           <span className={styles.sectionTitle}>Perlin surface</span>
-          {NOISE_CONTROLS.map(control => <label className={styles.control} key={control.key}>
+          {NOISE_CONTROLS.map(control => <div className={styles.control} key={control.key}>
             <span className={styles.controlLabel}><span>{control.label}</span><output>{noise[control.key].toFixed(control.step >= 1 ? 0 : 2)}</output></span>
-            <input type="range" min={control.min} max={control.max} step={control.step} value={noise[control.key]}
-              onChange={event => updateNoise(control.key, Number(event.target.value))} />
-          </label>)}
+            <DragOnlyRange label={control.label} min={control.min} max={control.max} step={control.step} value={noise[control.key]}
+              onChange={value => updateNoise(control.key, value)} />
+          </div>)}
         </div>
       </div>}
       <button className={styles.menuButton} type="button" aria-label={menuOpen ? "Close menu" : "Open menu"}
