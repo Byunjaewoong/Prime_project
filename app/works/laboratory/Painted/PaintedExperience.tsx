@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FlaskConical, Home, Pause, Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_COLOR, DEFAULT_LIGHT_DIRECTION, DEFAULT_NOISE, DEFAULT_SHADOW_DEPTH, PaintedRenderer, type LightDirection, type NoiseParams } from "./core/PaintedRenderer";
+import { DEFAULT_COLOR, DEFAULT_LIGHT_DIRECTION, DEFAULT_NOISE, DEFAULT_PEAK_HOLD, DEFAULT_SHADOW_DEPTH, PaintedRenderer, type LightDirection, type NoiseParams } from "./core/PaintedRenderer";
 import LightDirectionSphere from "./LightDirectionSphere";
 import styles from "./painted.module.css";
 
@@ -40,6 +40,7 @@ export default function PaintedExperience() {
   const [lightDirection, setLightDirection] = useState<LightDirection>(DEFAULT_LIGHT_DIRECTION);
   const [playing, setPlaying] = useState(false);
   const [morphSpeed, setMorphSpeed] = useState(1);
+  const [peakHold, setPeakHold] = useState(DEFAULT_PEAK_HOLD);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -85,6 +86,11 @@ export default function PaintedExperience() {
     rendererRef.current?.setMorphSpeed(value);
   };
 
+  const updatePeakHold = (value: number) => {
+    setPeakHold(value);
+    rendererRef.current?.setPeakHold(value);
+  };
+
   return <main className={styles.page}>
     <canvas
       ref={canvasRef}
@@ -112,6 +118,11 @@ export default function PaintedExperience() {
             <span className={styles.controlLabel}><span>Change speed</span><output>{morphSpeed.toFixed(2)}×</output></span>
             <input type="range" min={0.1} max={6} step={0.05} value={morphSpeed}
               onChange={event => updateMorphSpeed(Number(event.target.value))} />
+          </label>
+          <label className={styles.control}>
+            <span className={styles.controlLabel}><span>Peak hold</span><output>{peakHold.toFixed(2)}</output></span>
+            <input type="range" min={0} max={0.4} step={0.01} value={peakHold}
+              onChange={event => updatePeakHold(Number(event.target.value))} />
           </label>
           <span className={styles.sectionTitle}>Appearance</span>
           <div className={styles.control}>

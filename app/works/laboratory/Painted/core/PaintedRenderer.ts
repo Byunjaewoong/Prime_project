@@ -10,6 +10,7 @@ export const DEFAULT_NOISE: NoiseParams = { scale: 11, octaves: 4, roughness: 0.
 
 export const DEFAULT_COLOR = "#4d7b95";
 export const DEFAULT_SHADOW_DEPTH = 1;
+export const DEFAULT_PEAK_HOLD = 0.25;
 export type LightDirection = [number, number, number];
 export const DEFAULT_LIGHT_DIRECTION: LightDirection = [-0.42, 0.46, Math.sqrt(1 - 0.42 ** 2 - 0.46 ** 2)];
 const FIELD_ZOOM = 2; // Twice the span on each axis: four times the visible field area.
@@ -92,7 +93,7 @@ void main() {
     -dFdy(height) * uPixelRatio * uRelief / uFieldZoom,
     1.0
   ));
-  outColor = vec4(normal * 0.5 + 0.5, 1.0);
+  outColor = vec4(normal * 0.5 + 0.5, clamp(height * 0.5 + 0.5, 0.0, 1.0));
 }
 `;
 
@@ -101,6 +102,7 @@ precision highp float;
 uniform sampler2D uNormalsA;
 uniform sampler2D uNormalsB;
 uniform float uBlend;
+uniform float uPeakHold;
 uniform vec3 uColor;
 uniform vec3 uLight;
 uniform float uShadowDepth;
@@ -108,9 +110,14 @@ out vec4 outColor;
 
 void main() {
   ivec2 pixel = ivec2(gl_FragCoord.xy);
-  vec3 normalA = texelFetch(uNormalsA, pixel, 0).rgb * 2.0 - 1.0;
-  vec3 normalB = texelFetch(uNormalsB, pixel, 0).rgb * 2.0 - 1.0;
-  vec3 normal = normalize(mix(normalA, normalB, uBlend));
+  vec4 source = texelFetch(uNormalsA, pixel, 0);
+  vec4 target = texelFetch(uNormalsB, pixel, 0);
+  float sourcePeak = smoothstep(0.04, 0.22, source.a * 2.0 - 1.0);
+  float targetPeak = smoothstep(0.04, 0.22, target.a * 2.0 - 1.0);
+  float departure = uPeakHold * sourcePeak;
+  float arrival = 1.0 - uPeakHold * targetPeak;
+  float localBlend = clamp((uBlend - departure) / (arrival - departure), 0.0, 1.0);
+  vec3 normal = normalize(mix(source.rgb, target.rgb, localBlend) * 2.0 - 1.0);
   float illumination = max(dot(normal, normalize(uLight)), 0.0);
   float shade = mix(1.0, 0.24 + 0.96 * illumination, uShadowDepth);
   outColor = vec4(clamp(uColor * shade, 0.0, 1.0), 1.0);
@@ -193,6 +200,7 @@ export class PaintedRenderer {
   private queuedSeed: number | null = null;
   private morphProgress = 0;
   private morphSpeed = 1;
+  private peakHold = DEFAULT_PEAK_HOLD;
   private playing = false;
   private lastFrameTime: number | null = null;
   private color = DEFAULT_COLOR;
@@ -268,6 +276,11 @@ export class PaintedRenderer {
 
   setMorphSpeed(value: number) {
     this.morphSpeed = Math.max(0.1, Math.min(6, value));
+  }
+
+  setPeakHold(value: number) {
+    this.peakHold = Math.max(0, Math.min(0.4, value));
+    this.scheduleRender();
   }
 
   private randomSeedExcluding(...excluded: number[]) {
@@ -426,6 +439,7 @@ export class PaintedRenderer {
     gl.uniform1i(gl.getUniformLocation(this.displayProgram, "uNormalsB"), 1);
     const blend = this.nextSeed === null ? 0 : this.morphProgress;
     gl.uniform1f(gl.getUniformLocation(this.displayProgram, "uBlend"), blend);
+    gl.uniform1f(gl.getUniformLocation(this.displayProgram, "uPeakHold"), this.peakHold);
     gl.uniform3f(gl.getUniformLocation(this.displayProgram, "uColor"), ...colorChannels(this.color));
     gl.uniform3f(gl.getUniformLocation(this.displayProgram, "uLight"), ...this.lightDirection);
     gl.uniform1f(gl.getUniformLocation(this.displayProgram, "uShadowDepth"), this.shadowDepth);
@@ -484,7 +498,19 @@ export class PaintedRenderer {
     const heights = this.cpuHeights;
     const nextHeights = this.cpuNextHeights;
     const blend = nextHeights ? this.morphProgress : 0;
-    const heightAt = (index: number) => heights[index] * (1 - blend) + (nextHeights?.[index] ?? heights[index]) * blend;
+    const peakWeight = (height: number) => {
+      const level = Math.max(0, Math.min(1, (height - 0.04) / 0.18));
+      return level * level * (3 - 2 * level);
+    };
+    const heightAt = (index: number) => {
+      const source = heights[index];
+      if (!nextHeights) return source;
+      const target = nextHeights[index];
+      const departure = this.peakHold * peakWeight(source);
+      const arrival = 1 - this.peakHold * peakWeight(target);
+      const localBlend = Math.max(0, Math.min(1, (blend - departure) / (arrival - departure)));
+      return source + (target - source) * localBlend;
+    };
     const image = context.createImageData(sampleWidth, sampleHeight);
     const lightLength = Math.hypot(...this.lightDirection);
     for (let y = 0; y < sampleHeight; y++) {
