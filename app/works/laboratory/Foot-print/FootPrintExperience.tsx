@@ -5,8 +5,9 @@ import { FlaskConical, Home } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import DragOnlyRange from "../Painted/DragOnlyRange";
 import LightDirectionSphere from "../Painted/LightDirectionSphere";
-import { DEFAULT_LIGHT_DIRECTION, PaintedRenderer, type LightDirection } from "../Painted/core/PaintedRenderer";
-import { FootPrintRenderer, type FootPrintShape } from "./core/FootPrintRenderer";
+import { DEFAULT_COLOR, DEFAULT_LIGHT_DIRECTION, DEFAULT_NOISE, DEFAULT_SHADOW_DEPTH, PaintedRenderer, type LightDirection, type NoiseParams } from "../Painted/core/PaintedRenderer";
+import { PAINTED_NOISE_CONTROLS } from "../Painted/noiseControls";
+import { DEFAULT_INSIDE_NOISE, FootPrintRenderer, type FootPrintShape } from "./core/FootPrintRenderer";
 import paintedStyles from "../Painted/painted.module.css";
 import styles from "./footprint.module.css";
 
@@ -15,6 +16,8 @@ const SHAPES: { value: FootPrintShape; label: string }[] = [
   { value: "square", label: "Square" },
   { value: "triangle", label: "Triangle" },
 ];
+
+type SurfaceTab = "outside" | "inside";
 
 export default function FootPrintExperience() {
   const snowCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -25,6 +28,13 @@ export default function FootPrintExperience() {
   const [shape, setShape] = useState<FootPrintShape>("circle");
   const [size, setSize] = useState(36);
   const [depth, setDepth] = useState(11);
+  const [surfaceTab, setSurfaceTab] = useState<SurfaceTab>("outside");
+  const [outsideNoise, setOutsideNoise] = useState<NoiseParams>(DEFAULT_NOISE);
+  const [insideNoise, setInsideNoise] = useState<NoiseParams>(DEFAULT_INSIDE_NOISE);
+  const [outsideColor, setOutsideColor] = useState(DEFAULT_COLOR);
+  const [insideColor, setInsideColor] = useState(DEFAULT_COLOR);
+  const [outsideShadow, setOutsideShadow] = useState(DEFAULT_SHADOW_DEPTH);
+  const [insideShadow, setInsideShadow] = useState(1);
   const [lightDirection, setLightDirection] = useState<LightDirection>(DEFAULT_LIGHT_DIRECTION);
 
   useEffect(() => {
@@ -55,6 +65,40 @@ export default function FootPrintExperience() {
     printsRef.current?.setLightDirection(direction);
   };
 
+  const updateNoise = (key: keyof NoiseParams, value: number) => {
+    if (surfaceTab === "outside") {
+      setOutsideNoise(current => ({ ...current, [key]: value }));
+      snowRef.current?.setNoise({ [key]: value });
+    } else {
+      setInsideNoise(current => ({ ...current, [key]: value }));
+      printsRef.current?.setNoise({ [key]: value });
+    }
+  };
+
+  const updateColor = (value: string) => {
+    if (surfaceTab === "outside") {
+      setOutsideColor(value);
+      snowRef.current?.setColor(value);
+    } else {
+      setInsideColor(value);
+      printsRef.current?.setColor(value);
+    }
+  };
+
+  const updateShadow = (value: number) => {
+    if (surfaceTab === "outside") {
+      setOutsideShadow(value);
+      snowRef.current?.setShadowDepth(value);
+    } else {
+      setInsideShadow(value);
+      printsRef.current?.setShadowDepth(value);
+    }
+  };
+
+  const selectedNoise = surfaceTab === "outside" ? outsideNoise : insideNoise;
+  const selectedColor = surfaceTab === "outside" ? outsideColor : insideColor;
+  const selectedShadow = surfaceTab === "outside" ? outsideShadow : insideShadow;
+
   return <main className={paintedStyles.page}>
     <canvas ref={snowCanvasRef} className={paintedStyles.canvas} aria-hidden="true" />
     <canvas ref={printCanvasRef} className={styles.printCanvas} onPointerDown={pressSnow}
@@ -83,6 +127,34 @@ export default function FootPrintExperience() {
             <DragOnlyRange label="Impression depth" min={2} max={25} step={1} value={depth} onChange={setDepth} />
           </div>
           <button className={paintedStyles.playButton} type="button" onClick={() => printsRef.current?.clear()}>Clear prints</button>
+          <span className={paintedStyles.sectionTitle}>Surface texture</span>
+          <div className={styles.surfaceTabs} role="tablist" aria-label="Surface texture area">
+            {(["outside", "inside"] as const).map(tab => <button key={tab} type="button" role="tab"
+              aria-selected={surfaceTab === tab} aria-controls="footprint-surface-controls"
+              className={styles.surfaceTab} onClick={() => setSurfaceTab(tab)}>
+              {tab === "outside" ? "Outside" : "Inside"}
+            </button>)}
+          </div>
+          <div id="footprint-surface-controls" className={styles.surfaceControls} role="tabpanel"
+            aria-label={`${surfaceTab === "outside" ? "Outside" : "Inside"} texture controls`}>
+            <label className={paintedStyles.colorPicker}>
+              <span>Base color</span>
+              <input type="color" value={selectedColor} aria-label={`${surfaceTab} base color`}
+                onChange={event => updateColor(event.target.value)} />
+            </label>
+            <div className={paintedStyles.control}>
+              <span className={paintedStyles.controlLabel}><span>Shadow depth</span><output>{selectedShadow.toFixed(2)}</output></span>
+              <DragOnlyRange label={`${surfaceTab} shadow depth`} min={0} max={2} step={0.05}
+                value={selectedShadow} onChange={updateShadow} />
+            </div>
+            {PAINTED_NOISE_CONTROLS.map(control => <div className={paintedStyles.control} key={control.key}>
+              <span className={paintedStyles.controlLabel}><span>{control.label}</span>
+                <output>{selectedNoise[control.key].toFixed(control.step >= 1 ? 0 : 2)}</output></span>
+              <DragOnlyRange label={`${surfaceTab} ${control.label}`} min={control.min} max={control.max}
+                step={control.step} value={selectedNoise[control.key]}
+                onChange={value => updateNoise(control.key, value)} />
+            </div>)}
+          </div>
           <span className={paintedStyles.sectionTitle}>Light</span>
           <div className={paintedStyles.control}>
             <span className={paintedStyles.controlLabel}><span>Light direction</span><span>drag to rotate</span></span>

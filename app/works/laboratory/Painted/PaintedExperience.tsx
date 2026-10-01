@@ -6,15 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import { DEFAULT_COLOR, DEFAULT_LIGHT_DIRECTION, DEFAULT_NOISE, DEFAULT_PEAK_HOLD, DEFAULT_SHADOW_DEPTH, PaintedRenderer, type LightDirection, type NoiseParams } from "./core/PaintedRenderer";
 import DragOnlyRange from "./DragOnlyRange";
 import LightDirectionSphere from "./LightDirectionSphere";
+import { PAINTED_NOISE_CONTROLS } from "./noiseControls";
 import styles from "./painted.module.css";
-
-const NOISE_CONTROLS: { key: keyof NoiseParams; label: string; min: number; max: number; step: number }[] = [
-  { key: "scale", label: "Noise scale", min: 3, max: 40, step: 1 },
-  { key: "octaves", label: "Detail layers", min: 1, max: 6, step: 1 },
-  { key: "roughness", label: "Detail strength", min: 0.1, max: 0.85, step: 0.05 },
-  { key: "relief", label: "Height / relief", min: 0, max: 15, step: 0.25 },
-  { key: "seed", label: "Pattern seed", min: 0, max: 100, step: 1 },
-];
 
 const PALETTE = [
   { name: "Slate", hex: "#4d7b95" },
@@ -205,7 +198,7 @@ export default function PaintedExperience() {
             </div>
           </div>
           <span className={styles.sectionTitle}>Perlin surface</span>
-          {NOISE_CONTROLS.map(control => <div className={styles.control} key={control.key}>
+          {PAINTED_NOISE_CONTROLS.map(control => <div className={styles.control} key={control.key}>
             <span className={styles.controlLabel}><span>{control.label}</span><output>{noise[control.key].toFixed(control.step >= 1 ? 0 : 2)}</output></span>
             <DragOnlyRange label={control.label} min={control.min} max={control.max} step={control.step} value={noise[control.key]}
               onChange={value => updateNoise(control.key, value)} />

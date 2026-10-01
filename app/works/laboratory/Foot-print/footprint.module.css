@@ -3,4 +3,9 @@
 .shapeChoice { min-height: 36px; padding: 4px; border: 1px solid rgba(255,255,255,.25); border-radius: 6px; background: rgba(255,255,255,.05); color: rgba(255,255,255,.82); cursor: pointer; font: 11px var(--font-courier), monospace; }
 .shapeChoice[aria-pressed="true"] { border-color: rgba(255,255,255,.9); background: rgba(255,255,255,.2); color: #fff; }
 .shapeChoice:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.surfaceTabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.surfaceTab { min-height: 36px; border: 1px solid rgba(255,255,255,.25); border-radius: 6px; background: rgba(255,255,255,.05); color: rgba(255,255,255,.75); cursor: pointer; font: 11px var(--font-courier), monospace; }
+.surfaceTab[aria-selected="true"] { border-color: rgba(255,255,255,.9); background: rgba(255,255,255,.2); color: #fff; }
+.surfaceTab:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.surfaceControls { display: grid; gap: 16px; }
 .hint { color: rgba(255,255,255,.6); font-size: 10px; }
