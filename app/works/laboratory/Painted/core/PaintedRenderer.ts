@@ -14,6 +14,12 @@ export const DEFAULT_PEAK_HOLD = 0.25;
 export type LightDirection = [number, number, number];
 export const DEFAULT_LIGHT_DIRECTION: LightDirection = [-0.42, 0.46, Math.sqrt(1 - 0.42 ** 2 - 0.46 ** 2)];
 const FIELD_ZOOM = 2; // Twice the span on each axis: four times the visible field area.
+// Pairwise-coprime transition lengths; their alignment takes 8 * 11 * 13 seconds at 1x.
+const CYCLES = [
+  { seconds: 8, weight: 0.62, spatialScale: 1, resolution: 1 },
+  { seconds: 11, weight: 0.25, spatialScale: 1.8, resolution: 0.5 },
+  { seconds: 13, weight: 0.13, spatialScale: 3.2, resolution: 0.375 },
+] as const;
 
 function colorChannels(hex: string): [number, number, number] {
   return [1, 3, 5].map(index => Number.parseInt(hex.slice(index, index + 2), 16) / 255) as [number, number, number];
@@ -99,27 +105,43 @@ void main() {
 
 const DISPLAY_FRAGMENT_SHADER = `#version 300 es
 precision highp float;
-uniform sampler2D uNormalsA;
-uniform sampler2D uNormalsB;
-uniform float uBlend;
+uniform sampler2D uNormalsA0;
+uniform sampler2D uNormalsB0;
+uniform sampler2D uNormalsA1;
+uniform sampler2D uNormalsB1;
+uniform sampler2D uNormalsA2;
+uniform sampler2D uNormalsB2;
+uniform vec3 uBlends;
 uniform float uPeakHold;
 uniform vec3 uColor;
 uniform vec3 uLight;
 uniform float uShadowDepth;
 out vec4 outColor;
 
-void main() {
-  ivec2 pixel = ivec2(gl_FragCoord.xy);
-  vec4 source = texelFetch(uNormalsA, pixel, 0);
-  vec4 target = texelFetch(uNormalsB, pixel, 0);
+vec2 slopeAt(vec4 source, vec4 target, float blend) {
   float sourcePeak = smoothstep(0.04, 0.22, source.a * 2.0 - 1.0);
   float targetPeak = smoothstep(0.04, 0.22, target.a * 2.0 - 1.0);
   float departure = uPeakHold * sourcePeak;
   float arrival = 1.0 - uPeakHold * targetPeak;
   float center = clamp((departure + arrival) * 0.5, 0.01, 0.99);
   float span = max(arrival - departure, 0.02);
-  float localBlend = clamp((uBlend - center) / span + 0.5, 0.0, 1.0);
-  vec3 normal = normalize(mix(source.rgb, target.rgb, localBlend) * 2.0 - 1.0);
+  float localBlend = clamp((blend - center) / span + 0.5, 0.0, 1.0);
+  vec3 normalA = source.rgb * 2.0 - 1.0;
+  vec3 normalB = target.rgb * 2.0 - 1.0;
+  vec2 slopeA = normalA.xy / max(normalA.z, 0.05);
+  vec2 slopeB = normalB.xy / max(normalB.z, 0.05);
+  // Mixing independent slopes loses contrast near the midpoint. Preserve its RMS energy.
+  float energy = inversesqrt(max((1.0 - localBlend) * (1.0 - localBlend) + localBlend * localBlend, 0.5));
+  return mix(slopeA, slopeB, localBlend) * energy;
+}
+
+void main() {
+  vec2 uv = gl_FragCoord.xy / vec2(textureSize(uNormalsA0, 0));
+  vec2 slope =
+    0.62 * slopeAt(texture(uNormalsA0, uv), texture(uNormalsB0, uv), uBlends.x) +
+    0.25 * slopeAt(texture(uNormalsA1, uv), texture(uNormalsB1, uv), uBlends.y) +
+    0.13 * slopeAt(texture(uNormalsA2, uv), texture(uNormalsB2, uv), uBlends.z);
+  vec3 normal = normalize(vec3(slope, 1.0));
   float illumination = max(dot(normal, normalize(uLight)), 0.0);
   float shade = mix(1.0, 0.24 + 0.96 * illumination, uShadowDepth);
   outColor = vec4(clamp(uColor * shade, 0.0, 1.0), 1.0);
@@ -153,7 +175,19 @@ function linkProgram(gl: WebGL2RenderingContext, vertex: WebGLShader, fragment: 
   return program;
 }
 
-type NormalTarget = { texture: WebGLTexture; framebuffer: WebGLFramebuffer; dirty: boolean; rowsRendered: number };
+type NormalTarget = { texture: WebGLTexture; framebuffer: WebGLFramebuffer; width: number; height: number; dirty: boolean; rowsRendered: number };
+type NoiseCycle = {
+  sourceSeed: number;
+  nextSeed: number | null;
+  queuedSeed: number | null;
+  progress: number;
+  sourceTarget: NormalTarget | null;
+  nextTarget: NormalTarget | null;
+  queuedTarget: NormalTarget | null;
+  cpuHeights: Float32Array | null;
+  cpuNextHeights: Float32Array | null;
+  cpuQueuedHeights: Float32Array | null;
+};
 
 const CPU_GRADIENTS: [number, number][] = [
   [1, 0], [-1, 0], [0, 1], [0, -1],
@@ -188,19 +222,21 @@ export class PaintedRenderer {
   private readonly normalShader: WebGLShader | null = null;
   private readonly displayShader: WebGLShader | null = null;
   private readonly buffer: WebGLBuffer | null = null;
-  private sourceTarget: NormalTarget | null = null;
-  private nextTarget: NormalTarget | null = null;
-  private queuedTarget: NormalTarget | null = null;
-  private cpuHeights: Float32Array | null = null;
-  private cpuNextHeights: Float32Array | null = null;
-  private cpuQueuedHeights: Float32Array | null = null;
+  private cycles: NoiseCycle[] = CYCLES.map((_, index) => ({
+    sourceSeed: (DEFAULT_NOISE.seed + index * 31) % 101,
+    nextSeed: null,
+    queuedSeed: null,
+    progress: 0,
+    sourceTarget: null,
+    nextTarget: null,
+    queuedTarget: null,
+    cpuHeights: null,
+    cpuNextHeights: null,
+    cpuQueuedHeights: null,
+  }));
   private cpuSampleWidth = 0;
   private cpuSampleHeight = 0;
   private params: NoiseParams = { ...DEFAULT_NOISE };
-  private sourceSeed = DEFAULT_NOISE.seed;
-  private nextSeed: number | null = null;
-  private queuedSeed: number | null = null;
-  private morphProgress = 0;
   private morphSpeed = 1;
   private peakHold = DEFAULT_PEAK_HOLD;
   private playing = false;
@@ -247,21 +283,26 @@ export class PaintedRenderer {
   setNoise(next: Partial<NoiseParams>) {
     this.params = { ...this.params, ...next };
     if (next.seed !== undefined) {
-      this.sourceSeed = next.seed;
-      this.nextSeed = this.playing ? this.randomSeedExcluding(this.sourceSeed) : null;
-      this.queuedSeed = this.playing && this.nextSeed !== null
-        ? this.randomSeedExcluding(this.sourceSeed, this.nextSeed) : null;
-      this.morphProgress = 0;
+      const seed = next.seed;
+      this.cycles.forEach((cycle, index) => {
+        cycle.sourceSeed = (seed + index * 31) % 101;
+        cycle.nextSeed = this.playing ? this.randomSeedExcluding(cycle.sourceSeed) : null;
+        cycle.queuedSeed = this.playing && cycle.nextSeed !== null
+          ? this.randomSeedExcluding(cycle.sourceSeed, cycle.nextSeed) : null;
+        cycle.progress = 0;
+      });
       this.lastFrameTime = null;
     }
-    for (const target of [this.sourceTarget, this.nextTarget, this.queuedTarget]) {
-      if (!target) continue;
-      target.dirty = true;
-      target.rowsRendered = 0;
+    for (const cycle of this.cycles) {
+      for (const target of [cycle.sourceTarget, cycle.nextTarget, cycle.queuedTarget]) {
+        if (!target) continue;
+        target.dirty = true;
+        target.rowsRendered = 0;
+      }
+      cycle.cpuHeights = null;
+      cycle.cpuNextHeights = null;
+      cycle.cpuQueuedHeights = null;
     }
-    this.cpuHeights = null;
-    this.cpuNextHeights = null;
-    this.cpuQueuedHeights = null;
     this.scheduleRender();
   }
 
@@ -269,9 +310,11 @@ export class PaintedRenderer {
     if (this.playing === playing) return;
     this.playing = playing;
     this.lastFrameTime = null;
-    if (playing && this.nextSeed === null) this.nextSeed = this.randomSeedExcluding(this.sourceSeed);
-    if (playing && this.queuedSeed === null && this.nextSeed !== null) {
-      this.queuedSeed = this.randomSeedExcluding(this.sourceSeed, this.nextSeed);
+    for (const cycle of this.cycles) {
+      if (playing && cycle.nextSeed === null) cycle.nextSeed = this.randomSeedExcluding(cycle.sourceSeed);
+      if (playing && cycle.queuedSeed === null && cycle.nextSeed !== null) {
+        cycle.queuedSeed = this.randomSeedExcluding(cycle.sourceSeed, cycle.nextSeed);
+      }
     }
     this.scheduleRender();
   }
@@ -330,8 +373,8 @@ export class PaintedRenderer {
     const framebuffer = gl.createFramebuffer();
     if (!texture || !framebuffer) throw new Error("Could not create Painted normal target");
     gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
@@ -344,7 +387,7 @@ export class PaintedRenderer {
       gl.deleteFramebuffer(framebuffer);
       throw new Error(`Painted normal target incomplete: ${status}`);
     }
-    return { texture, framebuffer, dirty: true, rowsRendered: 0 };
+    return { texture, framebuffer, width, height, dirty: true, rowsRendered: 0 };
   }
 
   private deleteNormalTarget(target: NormalTarget | null) {
@@ -353,49 +396,59 @@ export class PaintedRenderer {
     this.gl.deleteFramebuffer(target.framebuffer);
   }
 
-  private renderNormalTarget(target: NormalTarget, seed: number, ratio: number, rowBudget = this.canvas.height) {
+  private renderNormalTarget(target: NormalTarget, seed: number, spatialScale: number, rowBudget = target.height) {
     const gl = this.gl;
     const program = this.normalProgram;
     if (!gl || !program || !target.dirty) return;
-    const rows = Math.min(rowBudget, this.canvas.height - target.rowsRendered);
+    const rows = Math.min(rowBudget, target.height - target.rowsRendered);
     gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
     gl.useProgram(program);
+    gl.viewport(0, 0, target.width, target.height);
     gl.enable(gl.SCISSOR_TEST);
-    gl.scissor(0, target.rowsRendered, this.canvas.width, rows);
-    gl.uniform1f(gl.getUniformLocation(program, "uPixelRatio"), ratio);
+    gl.scissor(0, target.rowsRendered, target.width, rows);
+    gl.uniform1f(gl.getUniformLocation(program, "uPixelRatio"), target.width / this.canvas.clientWidth);
     gl.uniform2f(gl.getUniformLocation(program, "uViewportSize"), this.canvas.clientWidth, this.canvas.clientHeight);
     gl.uniform1f(gl.getUniformLocation(program, "uFieldZoom"), FIELD_ZOOM);
-    gl.uniform1f(gl.getUniformLocation(program, "uScale"), this.params.scale);
+    gl.uniform1f(gl.getUniformLocation(program, "uScale"), this.params.scale * spatialScale);
     gl.uniform1i(gl.getUniformLocation(program, "uOctaves"), this.params.octaves);
     gl.uniform1f(gl.getUniformLocation(program, "uRoughness"), this.params.roughness);
-    gl.uniform1f(gl.getUniformLocation(program, "uRelief"), this.params.relief);
+    gl.uniform1f(gl.getUniformLocation(program, "uRelief"), this.params.relief * spatialScale);
     gl.uniform1f(gl.getUniformLocation(program, "uSeed"), seed);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     gl.disable(gl.SCISSOR_TEST);
     target.rowsRendered += rows;
-    target.dirty = target.rowsRendered < this.canvas.height;
+    target.dirty = target.rowsRendered < target.height;
   }
 
   private render(now: number) {
     if (this.playing) {
       if (this.lastFrameTime !== null) {
-        this.morphProgress += Math.min(now - this.lastFrameTime, 100) * this.morphSpeed / 8000;
-        if (this.morphProgress >= 1 && this.nextSeed !== null && this.queuedSeed !== null) {
-          this.morphProgress -= 1;
-          [this.sourceTarget, this.nextTarget, this.queuedTarget] = [this.nextTarget, this.queuedTarget, this.sourceTarget];
-          [this.cpuHeights, this.cpuNextHeights, this.cpuQueuedHeights] =
-            [this.cpuNextHeights, this.cpuQueuedHeights, this.cpuHeights];
-          this.sourceSeed = this.nextSeed;
-          this.nextSeed = this.queuedSeed;
-          this.queuedSeed = this.randomSeedExcluding(this.sourceSeed, this.nextSeed);
-          this.params.seed = this.sourceSeed;
-          this.onSeedReached?.(this.sourceSeed);
-          if (this.queuedTarget) {
-            this.queuedTarget.dirty = true;
-            this.queuedTarget.rowsRendered = 0;
+        const elapsed = Math.min(now - this.lastFrameTime, 100) * this.morphSpeed / 1000;
+        this.cycles.forEach((cycle, index) => {
+          cycle.progress += elapsed / CYCLES[index].seconds;
+          if (cycle.progress >= 1 && cycle.nextSeed !== null && cycle.queuedSeed !== null) {
+            if (cycle.queuedTarget?.dirty) {
+              this.renderNormalTarget(cycle.queuedTarget, cycle.queuedSeed, CYCLES[index].spatialScale);
+            }
+            cycle.progress -= 1;
+            [cycle.sourceTarget, cycle.nextTarget, cycle.queuedTarget] =
+              [cycle.nextTarget, cycle.queuedTarget, cycle.sourceTarget];
+            [cycle.cpuHeights, cycle.cpuNextHeights, cycle.cpuQueuedHeights] =
+              [cycle.cpuNextHeights, cycle.cpuQueuedHeights, cycle.cpuHeights];
+            cycle.sourceSeed = cycle.nextSeed;
+            cycle.nextSeed = cycle.queuedSeed;
+            cycle.queuedSeed = this.randomSeedExcluding(cycle.sourceSeed, cycle.nextSeed);
+            if (index === 0) {
+              this.params.seed = cycle.sourceSeed;
+              this.onSeedReached?.(cycle.sourceSeed);
+            }
+            if (cycle.queuedTarget) {
+              cycle.queuedTarget.dirty = true;
+              cycle.queuedTarget.rowsRendered = 0;
+            }
+            cycle.cpuQueuedHeights = null;
           }
-          this.cpuQueuedHeights = null;
-        }
+        });
       }
       this.lastFrameTime = now;
     }
@@ -406,41 +459,55 @@ export class PaintedRenderer {
     if (this.canvas.width !== width || this.canvas.height !== height) {
       this.canvas.width = width;
       this.canvas.height = height;
-      this.cpuHeights = null;
-      this.cpuNextHeights = null;
-      this.cpuQueuedHeights = null;
-      this.deleteNormalTarget(this.sourceTarget);
-      this.deleteNormalTarget(this.nextTarget);
-      this.deleteNormalTarget(this.queuedTarget);
-      this.sourceTarget = null;
-      this.nextTarget = null;
-      this.queuedTarget = null;
+      for (const cycle of this.cycles) {
+        cycle.cpuHeights = null;
+        cycle.cpuNextHeights = null;
+        cycle.cpuQueuedHeights = null;
+        this.deleteNormalTarget(cycle.sourceTarget);
+        this.deleteNormalTarget(cycle.nextTarget);
+        this.deleteNormalTarget(cycle.queuedTarget);
+        cycle.sourceTarget = null;
+        cycle.nextTarget = null;
+        cycle.queuedTarget = null;
+      }
     }
     const gl = this.gl;
     if (!gl || !this.normalProgram || !this.displayProgram) {
       this.renderFallback();
       return;
     }
-    this.sourceTarget ??= this.createNormalTarget(width, height);
-    if (this.nextSeed !== null) this.nextTarget ??= this.createNormalTarget(width, height);
-    if (this.queuedSeed !== null) this.queuedTarget ??= this.createNormalTarget(width, height);
-    gl.viewport(0, 0, width, height);
-    this.renderNormalTarget(this.sourceTarget, this.sourceSeed, ratio);
-    if (this.nextSeed !== null && this.nextTarget) this.renderNormalTarget(this.nextTarget, this.nextSeed, ratio);
-    if (this.playing && this.queuedSeed !== null && this.queuedTarget) {
-      const prepFrames = Math.max(8, Math.min(48, Math.ceil(24 / this.morphSpeed)));
-      this.renderNormalTarget(this.queuedTarget, this.queuedSeed, ratio, Math.ceil(height / prepFrames));
-    }
+    const displayProgram = this.displayProgram;
+    this.cycles.forEach((cycle, index) => {
+      const config = CYCLES[index];
+      const targetWidth = Math.max(1, Math.round(width * config.resolution));
+      const targetHeight = Math.max(1, Math.round(height * config.resolution));
+      cycle.sourceTarget ??= this.createNormalTarget(targetWidth, targetHeight);
+      if (cycle.nextSeed !== null) cycle.nextTarget ??= this.createNormalTarget(targetWidth, targetHeight);
+      if (cycle.queuedSeed !== null) cycle.queuedTarget ??= this.createNormalTarget(targetWidth, targetHeight);
+      this.renderNormalTarget(cycle.sourceTarget, cycle.sourceSeed, config.spatialScale);
+      if (cycle.nextSeed !== null && cycle.nextTarget) {
+        this.renderNormalTarget(cycle.nextTarget, cycle.nextSeed, config.spatialScale);
+      }
+      if (this.playing && cycle.queuedSeed !== null && cycle.queuedTarget) {
+        const prepFrames = Math.max(8, Math.min(48, Math.ceil(24 / this.morphSpeed)));
+        this.renderNormalTarget(cycle.queuedTarget, cycle.queuedSeed, config.spatialScale,
+          Math.ceil(targetHeight / prepFrames));
+      }
+    });
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.useProgram(this.displayProgram);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.sourceTarget.texture);
-    gl.uniform1i(gl.getUniformLocation(this.displayProgram, "uNormalsA"), 0);
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, this.nextTarget?.texture ?? this.sourceTarget.texture);
-    gl.uniform1i(gl.getUniformLocation(this.displayProgram, "uNormalsB"), 1);
-    const blend = this.nextSeed === null ? 0 : this.morphProgress;
-    gl.uniform1f(gl.getUniformLocation(this.displayProgram, "uBlend"), blend);
+    gl.useProgram(displayProgram);
+    gl.viewport(0, 0, width, height);
+    this.cycles.forEach((cycle, index) => {
+      if (!cycle.sourceTarget) return;
+      gl.activeTexture(gl.TEXTURE0 + index * 2);
+      gl.bindTexture(gl.TEXTURE_2D, cycle.sourceTarget.texture);
+      gl.uniform1i(gl.getUniformLocation(displayProgram, `uNormalsA${index}`), index * 2);
+      gl.activeTexture(gl.TEXTURE0 + index * 2 + 1);
+      gl.bindTexture(gl.TEXTURE_2D, cycle.nextTarget?.texture ?? cycle.sourceTarget.texture);
+      gl.uniform1i(gl.getUniformLocation(displayProgram, `uNormalsB${index}`), index * 2 + 1);
+    });
+    gl.uniform3f(gl.getUniformLocation(displayProgram, "uBlends"),
+      ...this.cycles.map(cycle => cycle.nextSeed === null ? 0 : cycle.progress) as [number, number, number]);
     gl.uniform1f(gl.getUniformLocation(this.displayProgram, "uPeakHold"), this.peakHold);
     gl.uniform3f(gl.getUniformLocation(this.displayProgram, "uColor"), ...colorChannels(this.color));
     gl.uniform3f(gl.getUniformLocation(this.displayProgram, "uLight"), ...this.lightDirection);
@@ -461,13 +528,15 @@ export class PaintedRenderer {
     const worldStepX = cssStepX * FIELD_ZOOM;
     const worldStepY = cssStepY * FIELD_ZOOM;
     if (this.cpuSampleWidth !== sampleWidth || this.cpuSampleHeight !== sampleHeight) {
-      this.cpuHeights = null;
-      this.cpuNextHeights = null;
-      this.cpuQueuedHeights = null;
+      for (const cycle of this.cycles) {
+        cycle.cpuHeights = null;
+        cycle.cpuNextHeights = null;
+        cycle.cpuQueuedHeights = null;
+      }
       this.cpuSampleWidth = sampleWidth;
       this.cpuSampleHeight = sampleHeight;
     }
-    const computeHeights = (seedValue: number) => {
+    const computeHeights = (seedValue: number, spatialScale: number) => {
       const heights = new Float32Array(sampleWidth * sampleHeight);
       const seed = Math.round(seedValue);
       for (let y = 0; y < sampleHeight; y++) {
@@ -479,9 +548,10 @@ export class PaintedRenderer {
           let value = 0;
           let totalAmplitude = 0;
           for (let octave = 0; octave < this.params.octaves; octave++) {
-            if (this.params.scale / frequency < Math.max(worldStepX, worldStepY) * 1.25) break;
-            const px = worldX * frequency / this.params.scale + octave * 29.7;
-            const py = worldY * frequency / this.params.scale + octave * 29.7;
+            const scale = this.params.scale * spatialScale;
+            if (scale / frequency < Math.max(worldStepX, worldStepY) * 1.25) break;
+            const px = worldX * frequency / scale + octave * 29.7;
+            const py = worldY * frequency / scale + octave * 29.7;
             value += amplitude * cpuPerlin(px, py, seed);
             totalAmplitude += amplitude;
             frequency *= 2;
@@ -492,28 +562,32 @@ export class PaintedRenderer {
       }
       return heights;
     };
-    this.cpuHeights ??= computeHeights(this.sourceSeed);
-    if (this.nextSeed !== null) this.cpuNextHeights ??= computeHeights(this.nextSeed);
-    if (this.playing && this.queuedSeed !== null && !this.cpuQueuedHeights && this.morphProgress > 0.1) {
-      this.cpuQueuedHeights = computeHeights(this.queuedSeed);
-    }
-    const heights = this.cpuHeights;
-    const nextHeights = this.cpuNextHeights;
-    const blend = nextHeights ? this.morphProgress : 0;
+    this.cycles.forEach((cycle, index) => {
+      const spatialScale = CYCLES[index].spatialScale;
+      cycle.cpuHeights ??= computeHeights(cycle.sourceSeed, spatialScale);
+      if (cycle.nextSeed !== null) cycle.cpuNextHeights ??= computeHeights(cycle.nextSeed, spatialScale);
+      if (this.playing && cycle.queuedSeed !== null && !cycle.cpuQueuedHeights && cycle.progress > 0.1) {
+        cycle.cpuQueuedHeights = computeHeights(cycle.queuedSeed, spatialScale);
+      }
+    });
     const peakWeight = (height: number) => {
       const level = Math.max(0, Math.min(1, (height - 0.04) / 0.18));
       return level * level * (3 - 2 * level);
     };
     const heightAt = (index: number) => {
-      const source = heights[index];
-      if (!nextHeights) return source;
-      const target = nextHeights[index];
-      const departure = this.peakHold * peakWeight(source);
-      const arrival = 1 - this.peakHold * peakWeight(target);
-      const center = Math.max(0.01, Math.min(0.99, (departure + arrival) * 0.5));
-      const span = Math.max(arrival - departure, 0.02);
-      const localBlend = Math.max(0, Math.min(1, (blend - center) / span + 0.5));
-      return source + (target - source) * localBlend;
+      let total = 0;
+      this.cycles.forEach((cycle, cycleIndex) => {
+        const source = cycle.cpuHeights![index];
+        const target = cycle.cpuNextHeights?.[index] ?? source;
+        const departure = this.peakHold * peakWeight(source);
+        const arrival = 1 - this.peakHold * peakWeight(target);
+        const center = Math.max(0.01, Math.min(0.99, (departure + arrival) * 0.5));
+        const span = Math.max(arrival - departure, 0.02);
+        const localBlend = Math.max(0, Math.min(1, (cycle.progress - center) / span + 0.5));
+        total += CYCLES[cycleIndex].weight * CYCLES[cycleIndex].spatialScale
+          * (source + (target - source) * localBlend);
+      });
+      return total;
     };
     const image = context.createImageData(sampleWidth, sampleHeight);
     const lightLength = Math.hypot(...this.lightDirection);
@@ -545,9 +619,11 @@ export class PaintedRenderer {
     window.removeEventListener("resize", this.scheduleRender);
     if (this.frame !== null) cancelAnimationFrame(this.frame);
     if (this.gl) {
-      this.deleteNormalTarget(this.sourceTarget);
-      this.deleteNormalTarget(this.nextTarget);
-      this.deleteNormalTarget(this.queuedTarget);
+      for (const cycle of this.cycles) {
+        this.deleteNormalTarget(cycle.sourceTarget);
+        this.deleteNormalTarget(cycle.nextTarget);
+        this.deleteNormalTarget(cycle.queuedTarget);
+      }
       if (this.buffer) this.gl.deleteBuffer(this.buffer);
       if (this.normalProgram) this.gl.deleteProgram(this.normalProgram);
       if (this.displayProgram) this.gl.deleteProgram(this.displayProgram);
