@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FlaskConical, Home } from "lucide-react";
+import { FlaskConical, Home, Pause, Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { DEFAULT_COLOR, DEFAULT_LIGHT_DIRECTION, DEFAULT_NOISE, DEFAULT_SHADOW_DEPTH, PaintedRenderer, type LightDirection, type NoiseParams } from "./core/PaintedRenderer";
 import LightDirectionSphere from "./LightDirectionSphere";
@@ -38,11 +38,15 @@ export default function PaintedExperience() {
   const [color, setColor] = useState(DEFAULT_COLOR);
   const [shadowDepth, setShadowDepth] = useState(DEFAULT_SHADOW_DEPTH);
   const [lightDirection, setLightDirection] = useState<LightDirection>(DEFAULT_LIGHT_DIRECTION);
+  const [playing, setPlaying] = useState(false);
+  const [morphSpeed, setMorphSpeed] = useState(1);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const renderer = new PaintedRenderer(canvas);
+    const renderer = new PaintedRenderer(canvas, seed => {
+      setNoise(current => ({ ...current, seed }));
+    });
     rendererRef.current = renderer;
     return () => {
       renderer.destroy();
@@ -70,6 +74,17 @@ export default function PaintedExperience() {
     rendererRef.current?.setLightDirection(direction);
   };
 
+  const togglePlaying = () => {
+    const next = !playing;
+    setPlaying(next);
+    rendererRef.current?.setPlaying(next);
+  };
+
+  const updateMorphSpeed = (value: number) => {
+    setMorphSpeed(value);
+    rendererRef.current?.setMorphSpeed(value);
+  };
+
   return <main className={styles.page}>
     <canvas
       ref={canvasRef}
@@ -87,6 +102,17 @@ export default function PaintedExperience() {
           </nav>
         </div>
         <div className={styles.controls}>
+          <span className={styles.sectionTitle}>Evolution</span>
+          <button className={styles.playButton} type="button" aria-label={playing ? "Pause noise evolution" : "Play noise evolution"}
+            aria-pressed={playing} onClick={togglePlaying}>
+            {playing ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}
+            <span>{playing ? "Pause" : "Play"}</span>
+          </button>
+          <label className={styles.control}>
+            <span className={styles.controlLabel}><span>Change speed</span><output>{morphSpeed.toFixed(2)}×</output></span>
+            <input type="range" min={0.1} max={3} step={0.05} value={morphSpeed}
+              onChange={event => updateMorphSpeed(Number(event.target.value))} />
+          </label>
           <span className={styles.sectionTitle}>Appearance</span>
           <div className={styles.control}>
             <span className={styles.controlLabel}><span>Base color</span><output>{color.toUpperCase()}</output></span>
