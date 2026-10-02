@@ -2,10 +2,13 @@ import { DEFAULT_COLOR, DEFAULT_LIGHT_DIRECTION, DEFAULT_NOISE, type LightDirect
 import { PAINTED_PERLIN_GLSL } from "../../Painted/core/paintedNoise";
 
 export type FootPrintShape = "circle" | "square" | "triangle";
+export type ImpressionLayer = "layer1" | "layer2";
 
-type Stamp = { x: number; y: number; shape: FootPrintShape; size: number; depth: number };
+type Stamp = { x: number; y: number; shape: FootPrintShape; size: number; depth: number; layer: ImpressionLayer };
+type SurfaceSettings = { noise: NoiseParams; color: string; shadowDepth: number };
 const MAX_STAMPS = 120;
 export const DEFAULT_INSIDE_NOISE: NoiseParams = { ...DEFAULT_NOISE, scale: 28, roughness: 0.6 };
+export const DEFAULT_LAYER2_NOISE: NoiseParams = { ...DEFAULT_INSIDE_NOISE, scale: 10, seed: 73 };
 export const DEFAULT_INSIDE_SHADOW_DEPTH = 0.8;
 
 const VERTEX_SHADER = `#version 300 es
@@ -20,12 +23,20 @@ uniform vec2 uViewport;
 uniform sampler2D uStampData;
 uniform int uCount;
 uniform vec3 uLight;
-uniform vec3 uColor;
-uniform float uShadowDepth;
-uniform float uScale;
-uniform int uOctaves;
-uniform float uRoughness;
-uniform float uRelief;
+uniform vec3 uColor1;
+uniform vec3 uColor2;
+uniform float uShadowDepth1;
+uniform float uShadowDepth2;
+uniform float uScale1;
+uniform float uScale2;
+uniform int uOctaves1;
+uniform int uOctaves2;
+uniform float uRoughness1;
+uniform float uRoughness2;
+uniform float uRelief1;
+uniform float uRelief2;
+uniform float uSeed1;
+uniform float uSeed2;
 uniform float uSeed;
 out vec4 outColor;
 
@@ -39,7 +50,7 @@ float segmentDistance(vec2 p, vec2 a, vec2 b) {
 float shapeDistance(vec2 pixel, vec4 stamp) {
   vec2 p = pixel - stamp.xy;
   float size = stamp.z;
-  int shape = int(floor(stamp.w / 32.0 + 0.0001));
+  int shape = int(floor(stamp.w / 32.0 + 0.0001)) % 3;
   if (shape == 0) return length(p) - size;
   if (shape == 1) {
     vec2 q = abs(p) - vec2(size * 0.86);
@@ -61,7 +72,7 @@ float smoothMin(float a, float b, float softness) {
   return min(a, b) - blend * blend * softness * 0.25;
 }
 
-vec3 unionField(vec2 pixel) {
+vec4 unionField(vec2 pixel) {
   vec2 world = (pixel - uViewport * 0.5) * 2.0 + uViewport * 0.5;
   float fineEdge = perlin(world / 6.0 + vec2(41.3));
   float broadEdge = perlin(world / 17.0 + vec2(7.1));
@@ -70,55 +81,69 @@ vec3 unionField(vec2 pixel) {
   float depthSum = 0.0;
   float wallSum = 0.0;
   float weightSum = 0.0;
+  float layer2Sum = 0.0;
   for (int index = 0; index < ${MAX_STAMPS}; index++) {
     if (index >= uCount) break;
     vec4 stamp = texelFetch(uStampData, ivec2(index, 0), 0);
     float distance = shapeDistance(pixel, stamp) + edgeWarp;
     distanceToEdge = index == 0 ? distance : smoothMin(distanceToEdge, distance, 7.0);
     float weight = 1.0 - smoothstep(-4.0, 8.0, distance);
-    int shape = int(floor(stamp.w / 32.0 + 0.0001));
-    depthSum += (stamp.w - float(shape) * 32.0) * weight;
+    int code = int(floor(stamp.w / 32.0 + 0.0001));
+    depthSum += (stamp.w - float(code) * 32.0) * weight;
     wallSum += clamp(stamp.z * 0.22, 5.0, 12.0) * weight;
     weightSum += weight;
+    layer2Sum += float(code / 3) * weight;
   }
   float wallWidth = wallSum / max(weightSum, 0.0001);
   wallWidth *= clamp(1.0 + fineEdge * 0.32 + broadEdge * 0.42, 0.7, 1.3);
-  return vec3(distanceToEdge, depthSum / max(weightSum, 0.0001), wallWidth);
+  return vec4(distanceToEdge, depthSum / max(weightSum, 0.0001), wallWidth,
+    layer2Sum / max(weightSum, 0.0001));
 }
 
 float wallHeight(vec2 pixel) {
-  vec3 field = unionField(pixel);
+  vec4 field = unionField(pixel);
   float wallWidth = max(field.z, 5.0);
   return -field.y * (1.0 - smoothstep(-wallWidth, 2.0, field.x));
 }
 
-float interiorNoise(vec2 pixel) {
-  // The same Painted Perlin controls are exposed independently for the inside.
+float interiorNoise(vec2 pixel, float scale, int octaves, float roughness, float seed) {
+  // Each impression samples the same Painted Perlin field with its own controls.
   vec2 world = (pixel - uViewport * 0.5) * 2.0 + uViewport * 0.5;
   float frequency = 1.0;
   float amplitude = 1.0;
   float height = 0.0;
   float total = 0.0;
   for (int octave = 0; octave < 6; octave++) {
-    if (octave >= uOctaves || uScale / frequency < 2.5 / uRatio) break;
-    height += amplitude * perlin(world * frequency / uScale + vec2(float(octave) * 29.7));
+    if (octave >= octaves || scale / frequency < 2.5 / uRatio) break;
+    height += amplitude * perlinSeeded(world * frequency / scale + vec2(float(octave) * 29.7), seed);
     total += amplitude;
     frequency *= 2.0;
-    amplitude *= uRoughness;
+    amplitude *= roughness;
   }
   return height / max(total, 0.001);
 }
 
 void main() {
   vec2 pixel = vec2(gl_FragCoord.x / uRatio, uViewport.y - gl_FragCoord.y / uRatio);
-  vec3 field = unionField(pixel);
+  vec4 field = unionField(pixel);
   float distanceToEdge = field.x;
+  float layer2Mix = clamp(field.w, 0.0, 1.0);
   float wallWidth = max(field.z, 5.0);
   float bottom = 1.0 - smoothstep(-wallWidth * 1.5, -wallWidth * 0.45, distanceToEdge);
   float texturedSurface = 1.0 - smoothstep(-wallWidth * 2.0, 2.0, distanceToEdge);
-  float grain = interiorNoise(pixel);
+  float grain;
+  if (layer2Mix >= 0.999) {
+    grain = interiorNoise(pixel, uScale2, uOctaves2, uRoughness2, uSeed2);
+  } else {
+    grain = interiorNoise(pixel, uScale1, uOctaves1, uRoughness1, uSeed1);
+    if (layer2Mix > 0.001) {
+      grain = mix(grain, interiorNoise(pixel, uScale2, uOctaves2, uRoughness2, uSeed2), layer2Mix);
+    }
+  }
+  float relief = mix(uRelief1, uRelief2, layer2Mix);
+  float shadowDepth = mix(uShadowDepth1, uShadowDepth2, layer2Mix);
   float height = -field.y * (1.0 - smoothstep(-wallWidth, 2.0, distanceToEdge))
-    + grain * uRelief * 0.5 * texturedSurface;
+    + grain * relief * 0.5 * texturedSurface;
   vec3 normal = normalize(vec3(-dFdx(height) * uRatio, -dFdy(height) * uRatio, 1.0));
   if (distanceToEdge > 4.0) discard;
   vec3 light = normalize(uLight);
@@ -134,9 +159,9 @@ void main() {
   }
 
   float wall = smoothstep(-wallWidth, 2.0, distanceToEdge);
-  vec3 snow = uColor * mix(0.82 + grain * 0.18, 0.98, wall * 0.72);
-  float diffuse = mix(1.0, 0.28 + 0.72 * max(dot(normal, light), 0.0), uShadowDepth);
-  vec3 color = snow * diffuse * (1.0 - 0.72 * min(uShadowDepth, 1.0) * wallShadow * bottom);
+  vec3 snow = mix(uColor1, uColor2, layer2Mix) * mix(0.82 + grain * 0.18, 0.98, wall * 0.72);
+  float diffuse = mix(1.0, 0.28 + 0.72 * max(dot(normal, light), 0.0), shadowDepth);
+  vec3 color = snow * diffuse * (1.0 - 0.72 * min(shadowDepth, 1.0) * wallShadow * bottom);
   float alpha = 1.0 - smoothstep(-3.0, 4.5, distanceToEdge);
   outColor = vec4(color * alpha, alpha);
 }
@@ -169,9 +194,10 @@ export class FootPrintRenderer {
   private readonly buffer: WebGLBuffer | null = null;
   private readonly stampTexture: WebGLTexture | null = null;
   private readonly stamps: Stamp[] = [];
-  private noise: NoiseParams = { ...DEFAULT_INSIDE_NOISE };
-  private color = DEFAULT_COLOR;
-  private shadowDepth = DEFAULT_INSIDE_SHADOW_DEPTH;
+  private readonly surfaces: Record<ImpressionLayer, SurfaceSettings> = {
+    layer1: { noise: { ...DEFAULT_INSIDE_NOISE }, color: DEFAULT_COLOR, shadowDepth: DEFAULT_INSIDE_SHADOW_DEPTH },
+    layer2: { noise: { ...DEFAULT_LAYER2_NOISE }, color: DEFAULT_COLOR, shadowDepth: DEFAULT_INSIDE_SHADOW_DEPTH },
+  };
   private lightDirection: LightDirection = [...DEFAULT_LIGHT_DIRECTION];
   private readonly onResize = () => this.renderAll();
 
@@ -215,11 +241,11 @@ export class FootPrintRenderer {
     this.renderAll();
   }
 
-  stamp(x: number, y: number, shape: FootPrintShape, size: number, depth: number) {
+  stamp(x: number, y: number, shape: FootPrintShape, size: number, depth: number, layer: ImpressionLayer) {
     const width = this.canvas.clientWidth;
     const height = this.canvas.clientHeight;
     if (!width || !height) return;
-    this.stamps.push({ x: x / width, y: y / height, shape, size, depth });
+    this.stamps.push({ x: x / width, y: y / height, shape, size, depth, layer });
     if (this.stamps.length > MAX_STAMPS) this.stamps.shift();
     this.renderAll();
   }
@@ -231,19 +257,19 @@ export class FootPrintRenderer {
     this.renderAll();
   }
 
-  setNoise(next: Partial<NoiseParams>) {
-    this.noise = { ...this.noise, ...next };
+  setNoise(layer: ImpressionLayer, next: Partial<NoiseParams>) {
+    this.surfaces[layer].noise = { ...this.surfaces[layer].noise, ...next };
     this.renderAll();
   }
 
-  setColor(hex: string) {
+  setColor(layer: ImpressionLayer, hex: string) {
     if (!/^#[0-9a-f]{6}$/i.test(hex)) return;
-    this.color = hex;
+    this.surfaces[layer].color = hex;
     this.renderAll();
   }
 
-  setShadowDepth(value: number) {
-    this.shadowDepth = Math.max(0, Math.min(2, value));
+  setShadowDepth(layer: ImpressionLayer, value: number) {
+    this.surfaces[layer].shadowDepth = Math.max(0, Math.min(2, value));
     this.renderAll();
   }
 
@@ -279,13 +305,18 @@ export class FootPrintRenderer {
       gl.uniform1f(gl.getUniformLocation(program, "uRatio"), ratio);
       gl.uniform2f(gl.getUniformLocation(program, "uViewport"), cssWidth, cssHeight);
       gl.uniform3f(gl.getUniformLocation(program, "uLight"), ...this.lightDirection);
-      gl.uniform3f(gl.getUniformLocation(program, "uColor"), ...colorChannels(this.color));
-      gl.uniform1f(gl.getUniformLocation(program, "uShadowDepth"), this.shadowDepth);
-      gl.uniform1f(gl.getUniformLocation(program, "uScale"), this.noise.scale);
-      gl.uniform1i(gl.getUniformLocation(program, "uOctaves"), this.noise.octaves);
-      gl.uniform1f(gl.getUniformLocation(program, "uRoughness"), this.noise.roughness);
-      gl.uniform1f(gl.getUniformLocation(program, "uRelief"), this.noise.relief);
-      gl.uniform1f(gl.getUniformLocation(program, "uSeed"), this.noise.seed);
+      // Keep the impression edge stable while each interior layer varies independently.
+      gl.uniform1f(gl.getUniformLocation(program, "uSeed"), DEFAULT_INSIDE_NOISE.seed);
+      for (const [layer, suffix] of [["layer1", "1"], ["layer2", "2"]] as const) {
+        const { noise, color, shadowDepth } = this.surfaces[layer];
+        gl.uniform3f(gl.getUniformLocation(program, `uColor${suffix}`), ...colorChannels(color));
+        gl.uniform1f(gl.getUniformLocation(program, `uShadowDepth${suffix}`), shadowDepth);
+        gl.uniform1f(gl.getUniformLocation(program, `uScale${suffix}`), noise.scale);
+        gl.uniform1i(gl.getUniformLocation(program, `uOctaves${suffix}`), noise.octaves);
+        gl.uniform1f(gl.getUniformLocation(program, `uRoughness${suffix}`), noise.roughness);
+        gl.uniform1f(gl.getUniformLocation(program, `uRelief${suffix}`), noise.relief);
+        gl.uniform1f(gl.getUniformLocation(program, `uSeed${suffix}`), noise.seed);
+      }
       for (const group of this.overlappingGroups(cssWidth, cssHeight)) this.drawGroup(group, ratio);
       gl.disable(gl.BLEND);
     } else if (this.fallback) {
@@ -327,8 +358,10 @@ export class FootPrintRenderer {
       const x = stamp.x * cssWidth;
       const y = stamp.y * cssHeight;
       const bound = stamp.size + 18;
-      data.set([x, y, stamp.size,
-        stamp.depth + (stamp.shape === "circle" ? 0 : stamp.shape === "square" ? 32 : 64)], index * 4);
+      const shapeIndex = stamp.shape === "circle" ? 0 : stamp.shape === "square" ? 1 : 2;
+      const layerIndex = stamp.layer === "layer1" ? 0 : 1;
+      // Depth stays below 32; the remaining bands retain shape and texture per stamp.
+      data.set([x, y, stamp.size, stamp.depth + (shapeIndex + layerIndex * 3) * 32], index * 4);
       minX = Math.min(minX, x - bound);
       minY = Math.min(minY, y - bound);
       maxX = Math.max(maxX, x + bound);
@@ -352,49 +385,54 @@ export class FootPrintRenderer {
     if (!context) return;
     const ratio = this.canvas.width / this.canvas.clientWidth;
     context.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    const channels = colorChannels(this.color);
-    const tint = (brightness: number) => `rgb(${channels.map(channel => Math.round(channel * brightness * 255)).join(",")})`;
     for (const group of this.overlappingGroups(this.canvas.clientWidth, this.canvas.clientHeight)) {
-      const path = new Path2D();
-      let x = 0;
-      let y = 0;
-      let size = 0;
-      let depth = 0;
-      for (const stamp of group) {
-        const stampX = stamp.x * this.canvas.width;
-        const stampY = stamp.y * this.canvas.height;
-        const stampSize = stamp.size * ratio;
-        x += stampX;
-        y += stampY;
-        size = Math.max(size, stampSize);
-        depth = Math.max(depth, stamp.depth);
-        if (stamp.shape === "circle") path.moveTo(stampX + stampSize, stampY);
-        if (stamp.shape === "circle") path.arc(stampX, stampY, stampSize, 0, Math.PI * 2);
-        else if (stamp.shape === "square") path.rect(stampX - stampSize * 0.86, stampY - stampSize * 0.86, stampSize * 1.72, stampSize * 1.72);
-        else {
-          path.moveTo(stampX, stampY - stampSize);
-          path.lineTo(stampX - stampSize * 0.866, stampY + stampSize * 0.5);
-          path.lineTo(stampX + stampSize * 0.866, stampY + stampSize * 0.5);
-          path.closePath();
+      for (const layer of ["layer1", "layer2"] as const) {
+        const layerStamps = group.filter(stamp => stamp.layer === layer);
+        if (!layerStamps.length) continue;
+        const { color, shadowDepth } = this.surfaces[layer];
+        const channels = colorChannels(color);
+        const tint = (brightness: number) => `rgb(${channels.map(channel => Math.round(channel * brightness * 255)).join(",")})`;
+        const path = new Path2D();
+        let x = 0;
+        let y = 0;
+        let size = 0;
+        let depth = 0;
+        for (const stamp of layerStamps) {
+          const stampX = stamp.x * this.canvas.width;
+          const stampY = stamp.y * this.canvas.height;
+          const stampSize = stamp.size * ratio;
+          x += stampX;
+          y += stampY;
+          size = Math.max(size, stampSize);
+          depth = Math.max(depth, stamp.depth);
+          if (stamp.shape === "circle") path.moveTo(stampX + stampSize, stampY);
+          if (stamp.shape === "circle") path.arc(stampX, stampY, stampSize, 0, Math.PI * 2);
+          else if (stamp.shape === "square") path.rect(stampX - stampSize * 0.86, stampY - stampSize * 0.86, stampSize * 1.72, stampSize * 1.72);
+          else {
+            path.moveTo(stampX, stampY - stampSize);
+            path.lineTo(stampX - stampSize * 0.866, stampY + stampSize * 0.5);
+            path.lineTo(stampX + stampSize * 0.866, stampY + stampSize * 0.5);
+            path.closePath();
+          }
         }
+        x /= layerStamps.length;
+        y /= layerStamps.length;
+        const lightX = this.lightDirection[0];
+        const lightY = -this.lightDirection[1];
+        const gradient = context.createLinearGradient(
+          x + lightX * size, y + lightY * size,
+          x - lightX * size, y - lightY * size,
+        );
+        gradient.addColorStop(0, tint(Math.max(0.15, 1 - shadowDepth * 0.77)));
+        gradient.addColorStop(0.4, tint(Math.max(0.2, 1 - shadowDepth * 0.52)));
+        gradient.addColorStop(1, tint(Math.max(0.25, 1 - shadowDepth * 0.32)));
+        context.save();
+        context.shadowColor = `rgba(36,40,43,${Math.min(shadowDepth * 0.65, 0.85)})`;
+        context.shadowBlur = depth * ratio * 0.7;
+        context.fillStyle = gradient;
+        context.fill(path);
+        context.restore();
       }
-      x /= group.length;
-      y /= group.length;
-      const lightX = this.lightDirection[0];
-      const lightY = -this.lightDirection[1];
-      const gradient = context.createLinearGradient(
-        x + lightX * size, y + lightY * size,
-        x - lightX * size, y - lightY * size,
-      );
-      gradient.addColorStop(0, tint(Math.max(0.15, 1 - this.shadowDepth * 0.77)));
-      gradient.addColorStop(0.4, tint(Math.max(0.2, 1 - this.shadowDepth * 0.52)));
-      gradient.addColorStop(1, tint(Math.max(0.25, 1 - this.shadowDepth * 0.32)));
-      context.save();
-      context.shadowColor = `rgba(36,40,43,${Math.min(this.shadowDepth * 0.65, 0.85)})`;
-      context.shadowBlur = depth * ratio * 0.7;
-      context.fillStyle = gradient;
-      context.fill(path);
-      context.restore();
     }
   }
 

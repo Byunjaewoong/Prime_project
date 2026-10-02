@@ -7,7 +7,7 @@ import DragOnlyRange from "../Painted/DragOnlyRange";
 import LightDirectionSphere from "../Painted/LightDirectionSphere";
 import { DEFAULT_COLOR, DEFAULT_LIGHT_DIRECTION, DEFAULT_NOISE, DEFAULT_SHADOW_DEPTH, PaintedRenderer, type LightDirection, type NoiseParams } from "../Painted/core/PaintedRenderer";
 import { PAINTED_NOISE_CONTROLS } from "../Painted/noiseControls";
-import { DEFAULT_INSIDE_NOISE, DEFAULT_INSIDE_SHADOW_DEPTH, FootPrintRenderer, type FootPrintShape } from "./core/FootPrintRenderer";
+import { DEFAULT_INSIDE_NOISE, DEFAULT_INSIDE_SHADOW_DEPTH, DEFAULT_LAYER2_NOISE, FootPrintRenderer, type FootPrintShape, type ImpressionLayer } from "./core/FootPrintRenderer";
 import paintedStyles from "../Painted/painted.module.css";
 import styles from "./footprint.module.css";
 
@@ -17,7 +17,12 @@ const SHAPES: { value: FootPrintShape; label: string }[] = [
   { value: "triangle", label: "Triangle" },
 ];
 
-type SurfaceTab = "outside" | "inside";
+type SurfaceTab = "outside" | ImpressionLayer;
+const SURFACE_TABS: { value: SurfaceTab; label: string }[] = [
+  { value: "outside", label: "Outside" },
+  { value: "layer1", label: "Layer 1" },
+  { value: "layer2", label: "Layer 2" },
+];
 
 export default function FootPrintExperience() {
   const snowCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -28,13 +33,20 @@ export default function FootPrintExperience() {
   const [shape, setShape] = useState<FootPrintShape>("circle");
   const [size, setSize] = useState(36);
   const [depth, setDepth] = useState(4);
-  const [surfaceTab, setSurfaceTab] = useState<SurfaceTab>("inside");
+  const [impressionLayer, setImpressionLayer] = useState<ImpressionLayer>("layer1");
+  const [surfaceTab, setSurfaceTab] = useState<SurfaceTab>("layer1");
   const [outsideNoise, setOutsideNoise] = useState<NoiseParams>(DEFAULT_NOISE);
-  const [insideNoise, setInsideNoise] = useState<NoiseParams>(DEFAULT_INSIDE_NOISE);
+  const [layerNoise, setLayerNoise] = useState<Record<ImpressionLayer, NoiseParams>>({
+    layer1: DEFAULT_INSIDE_NOISE,
+    layer2: DEFAULT_LAYER2_NOISE,
+  });
   const [outsideColor, setOutsideColor] = useState(DEFAULT_COLOR);
-  const [insideColor, setInsideColor] = useState(DEFAULT_COLOR);
+  const [layerColor, setLayerColor] = useState<Record<ImpressionLayer, string>>({ layer1: DEFAULT_COLOR, layer2: DEFAULT_COLOR });
   const [outsideShadow, setOutsideShadow] = useState(DEFAULT_SHADOW_DEPTH);
-  const [insideShadow, setInsideShadow] = useState(DEFAULT_INSIDE_SHADOW_DEPTH);
+  const [layerShadow, setLayerShadow] = useState<Record<ImpressionLayer, number>>({
+    layer1: DEFAULT_INSIDE_SHADOW_DEPTH,
+    layer2: DEFAULT_INSIDE_SHADOW_DEPTH,
+  });
   const [lightDirection, setLightDirection] = useState<LightDirection>(DEFAULT_LIGHT_DIRECTION);
 
   useEffect(() => {
@@ -56,7 +68,7 @@ export default function FootPrintExperience() {
   const pressSnow = (event: PointerEvent<HTMLCanvasElement>) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     const rect = event.currentTarget.getBoundingClientRect();
-    printsRef.current?.stamp(event.clientX - rect.left, event.clientY - rect.top, shape, size, depth);
+    printsRef.current?.stamp(event.clientX - rect.left, event.clientY - rect.top, shape, size, depth, impressionLayer);
   };
 
   const updateLightDirection = (direction: LightDirection) => {
@@ -70,8 +82,8 @@ export default function FootPrintExperience() {
       setOutsideNoise(current => ({ ...current, [key]: value }));
       snowRef.current?.setNoise({ [key]: value });
     } else {
-      setInsideNoise(current => ({ ...current, [key]: value }));
-      printsRef.current?.setNoise({ [key]: value });
+      setLayerNoise(current => ({ ...current, [surfaceTab]: { ...current[surfaceTab], [key]: value } }));
+      printsRef.current?.setNoise(surfaceTab, { [key]: value });
     }
   };
 
@@ -80,8 +92,8 @@ export default function FootPrintExperience() {
       setOutsideColor(value);
       snowRef.current?.setColor(value);
     } else {
-      setInsideColor(value);
-      printsRef.current?.setColor(value);
+      setLayerColor(current => ({ ...current, [surfaceTab]: value }));
+      printsRef.current?.setColor(surfaceTab, value);
     }
   };
 
@@ -90,14 +102,15 @@ export default function FootPrintExperience() {
       setOutsideShadow(value);
       snowRef.current?.setShadowDepth(value);
     } else {
-      setInsideShadow(value);
-      printsRef.current?.setShadowDepth(value);
+      setLayerShadow(current => ({ ...current, [surfaceTab]: value }));
+      printsRef.current?.setShadowDepth(surfaceTab, value);
     }
   };
 
-  const selectedNoise = surfaceTab === "outside" ? outsideNoise : insideNoise;
-  const selectedColor = surfaceTab === "outside" ? outsideColor : insideColor;
-  const selectedShadow = surfaceTab === "outside" ? outsideShadow : insideShadow;
+  const selectedNoise = surfaceTab === "outside" ? outsideNoise : layerNoise[surfaceTab];
+  const selectedColor = surfaceTab === "outside" ? outsideColor : layerColor[surfaceTab];
+  const selectedShadow = surfaceTab === "outside" ? outsideShadow : layerShadow[surfaceTab];
+  const selectedSurfaceLabel = SURFACE_TABS.find(tab => tab.value === surfaceTab)?.label ?? "Outside";
 
   return <main className={paintedStyles.page}>
     <canvas ref={snowCanvasRef} className={paintedStyles.canvas} aria-hidden="true" />
@@ -119,6 +132,14 @@ export default function FootPrintExperience() {
               aria-pressed={shape === choice.value} onClick={() => setShape(choice.value)}>{choice.label}</button>)}
           </div>
           <div className={paintedStyles.control}>
+            <span className={paintedStyles.controlLabel}>Interior texture</span>
+            <div className={styles.layerChoices} role="group" aria-label="Impression interior texture">
+              {(["layer1", "layer2"] as const).map(layer => <button key={layer} type="button"
+                className={styles.shapeChoice} aria-pressed={impressionLayer === layer}
+                onClick={() => setImpressionLayer(layer)}>{layer === "layer1" ? "Layer 1" : "Layer 2"}</button>)}
+            </div>
+          </div>
+          <div className={paintedStyles.control}>
             <span className={paintedStyles.controlLabel}><span>Size</span><output>{size}</output></span>
             <DragOnlyRange label="Impression size" min={18} max={80} step={1} value={size} onChange={setSize} />
           </div>
@@ -129,14 +150,14 @@ export default function FootPrintExperience() {
           <button className={paintedStyles.playButton} type="button" onClick={() => printsRef.current?.clear()}>Clear prints</button>
           <span className={paintedStyles.sectionTitle}>Surface texture</span>
           <div className={styles.surfaceTabs} role="tablist" aria-label="Surface texture area">
-            {(["outside", "inside"] as const).map(tab => <button key={tab} type="button" role="tab"
-              aria-selected={surfaceTab === tab} aria-controls="footprint-surface-controls"
-              className={styles.surfaceTab} onClick={() => setSurfaceTab(tab)}>
-              {tab === "outside" ? "Outside" : "Inside"}
+            {SURFACE_TABS.map(tab => <button key={tab.value} type="button" role="tab"
+              aria-selected={surfaceTab === tab.value} aria-controls="footprint-surface-controls"
+              className={styles.surfaceTab} onClick={() => setSurfaceTab(tab.value)}>
+              {tab.label}
             </button>)}
           </div>
           <div id="footprint-surface-controls" className={styles.surfaceControls} role="tabpanel"
-            aria-label={`${surfaceTab === "outside" ? "Outside" : "Inside"} texture controls`}>
+            aria-label={`${selectedSurfaceLabel} texture controls`}>
             <label className={paintedStyles.colorPicker}>
               <span>Base color</span>
               <input type="color" value={selectedColor} aria-label={`${surfaceTab} base color`}
