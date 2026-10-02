@@ -35,16 +35,16 @@ export default function SoleExperience() {
         <span>new pattern</span>
       </button>
     </header>
-    <section className={styles.stage} aria-label="Procedurally generated black and white outsole">
+    <section className={styles.stage} aria-label="Procedurally generated three-tone outsole">
       <svg className={styles.sole} viewBox="0 0 420 1000" role="img"
-        aria-label={`${familyName} shoe sole. Black areas are raised tread; white areas are recessed.`}>
+        aria-label={`${familyName} shoe sole. Black areas are raised tread, gray is the low-load waist, and white areas are recessed.`}>
         <defs>
           <clipPath id="sole-outline-clip"><path d={SOLE_OUTLINE} /></clipPath>
         </defs>
         <g clipPath="url(#sole-outline-clip)">
           {marks.map((mark, index) => <path key={index} d={mark.d} transform={mark.transform}
-            fill={mark.strokeWidth ? "none" : mark.tone === "ink" ? "#111111" : "#ffffff"}
-            stroke={mark.strokeWidth ? mark.tone === "ink" ? "#111111" : "#ffffff" : undefined}
+            fill={mark.strokeWidth ? "none" : mark.tone === "ink" ? "#111111" : mark.tone === "gray" ? "#b9b9b9" : "#ffffff"}
+            stroke={mark.strokeWidth ? mark.tone === "ink" ? "#111111" : mark.tone === "gray" ? "#b9b9b9" : "#ffffff" : undefined}
             strokeWidth={mark.strokeWidth} strokeLinecap="round" strokeLinejoin="round" />)}
         </g>
         <path d={SOLE_OUTLINE} fill="none" stroke="#111111" strokeWidth="1.1" vectorEffect="non-scaling-stroke" />

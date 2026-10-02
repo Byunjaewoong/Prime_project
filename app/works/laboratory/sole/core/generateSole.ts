@@ -52,13 +52,13 @@ function traceOutline() {
     ${curveThrough(right)} C ${rounded(topRight.x - 6)} 14 ${rounded(topLeft.x + 6)} 14 ${topLeft.x} ${topLeft.y} Z`;
 }
 
-// White is recessed rubber, black is raised contact; the photo itself is never rendered.
+// White is recessed rubber, black is raised contact, gray is the low-load waist.
 export const SOLE_OUTLINE = traceOutline();
 
 export type SoleFamily = "trail" | "chevron" | "waffle" | "segmented";
 export type SoleMark = {
   d: string;
-  tone: "ink" | "paper";
+  tone: "ink" | "paper" | "gray";
   transform?: string;
   strokeWidth?: number;
 };
@@ -116,6 +116,9 @@ function rotated(angle: number, x: number, y: number) {
 export function generateSole(seed: number, family: SoleFamily): SoleMark[] {
   const next = randomSource(seed);
   const random = (min: number, max: number) => min + (max - min) * next();
+  const archNext = randomSource(seed ^ 0x9e3779b9);
+  const archRandom = (min: number, max: number) => min + (max - min) * archNext();
+  const gray: SoleMark[] = [];
   const ink: SoleMark[] = [];
   const cuts: SoleMark[] = [];
   const solid = (d: string, transform?: string) => ink.push({ d, tone: "ink", transform });
@@ -142,9 +145,59 @@ export function generateSole(seed: number, family: SoleFamily): SoleMark[] {
     if (hollow) cut(circle(x + random(-1.2, 1.2), y + random(-1.2, 1.2), radius * random(0.23, 0.34)));
   };
 
+  // A flexible midfoot plate follows the narrow, off-center photo silhouette.
+  // Its span, slanted shoulders, and recessed flex cuts change with each seed.
+  const top = archRandom(502, 530);
+  const bottom = archRandom(695, 730);
+  const middle = (top + bottom) / 2;
+  const topBounds = boundsAt(top);
+  const middleBounds = boundsAt(middle);
+  const bottomBounds = boundsAt(bottom);
+  const topLeft = topBounds.left + archRandom(5, 13);
+  const topRight = topBounds.right - archRandom(5, 15);
+  const middleLeft = middleBounds.left + archRandom(4, 11);
+  const middleRight = middleBounds.right - archRandom(4, 12);
+  const bottomLeft = bottomBounds.left + archRandom(6, 16);
+  const bottomRight = bottomBounds.right - archRandom(6, 14);
+  const center = archRandom(225, 244);
+  const topSlope = archRandom(18, 46) * (archNext() < 0.5 ? -1 : 1);
+  const bottomSlope = archRandom(18, 44) * (archNext() < 0.5 ? -1 : 1);
+  const topLeftY = top - topSlope / 2 + archRandom(-5, 5);
+  const topRightY = top + topSlope / 2 + archRandom(-5, 5);
+  const bottomLeftY = bottom - bottomSlope / 2 + archRandom(-6, 6);
+  const bottomRightY = bottom + bottomSlope / 2 + archRandom(-6, 6);
+  gray.push({
+    tone: "gray",
+    d: `M ${rounded(topLeft)} ${rounded(topLeftY)}
+      Q ${rounded(center + archRandom(-18, 18))} ${rounded(top + archRandom(-13, 15))} ${rounded(topRight)} ${rounded(topRightY)}
+      C ${rounded(middleRight + 18)} ${rounded(top + 57)} ${rounded(middleRight)} ${rounded(middle - 30)} ${rounded(middleRight)} ${rounded(middle)}
+      Q ${rounded(bottomRight + 2)} ${rounded(bottom - 41)} ${rounded(bottomRight)} ${rounded(bottomRightY)}
+      Q ${rounded(center + archRandom(-17, 17))} ${rounded(bottom + archRandom(-19, 13))} ${rounded(bottomLeft)} ${rounded(bottomLeftY)}
+      C ${rounded(middleLeft - 12)} ${rounded(bottom - 43)} ${rounded(middleLeft)} ${rounded(middle + 24)} ${rounded(middleLeft)} ${rounded(middle)}
+      Q ${rounded(topLeft - 7)} ${rounded(top + 42)} ${rounded(topLeft)} ${rounded(topLeftY)} Z`,
+  });
+  const archVariant = Math.floor(archNext() * 3);
+  if (archVariant === 0) {
+    const offset = archRandom(-22, 22);
+    stroke(`M ${rounded(center + offset)} ${rounded(top + 9)} C ${rounded(center - 25 + offset)} ${rounded(middle - 30)} ${rounded(center + 29 + offset)} ${rounded(middle + 20)} ${rounded(center + offset)} ${rounded(bottom - 8)}`,
+      archRandom(10, 19), "paper");
+  } else if (archVariant === 1) {
+    for (let index = 0; index < 3; index++) {
+      const y = top + 46 + index * (bottom - top - 75) / 2;
+      stroke(`M ${rounded(middleLeft + 16)} ${rounded(y - 16)} L ${rounded(middleRight - 17)} ${rounded(y + 20)}`,
+        archRandom(7, 12), "paper");
+    }
+  } else {
+    for (let index = 0; index < 4; index++) {
+      const y = top + 38 + index * (bottom - top - 65) / 3;
+      const x = center + (index % 2 ? 33 : -29) + archRandom(-8, 8);
+      cut(roundedRect(x - archRandom(13, 19), y - 8, archRandom(26, 40), archRandom(14, 22), 8));
+    }
+  }
+
   if (family === "trail") {
     // Longitudinal edge lugs, staggered contact pods, and isolated traction studs.
-    for (const start of [154, 734]) {
+    for (const start of [154, 752]) {
       const rows = start === 154 ? 6 : 4;
       for (let row = 0; row < rows; row++) {
         const y = start + row * (start === 154 ? 63 : 55) + random(-8, 8);
@@ -162,7 +215,7 @@ export function generateSole(seed: number, family: SoleFamily): SoleMark[] {
         stud(x, y + random(-7, 7), random(13, 19), true);
       }
     }
-    for (let row = 0; row < 6; row++) {
+    for (let row = 0; row < 5; row++) {
       const y = 199 + row * 60 + random(-8, 8);
       const x = 209 + (row % 2 ? 26 : -23) + random(-12, 12);
       const w = random(70, 90);
@@ -176,14 +229,9 @@ export function generateSole(seed: number, family: SoleFamily): SoleMark[] {
       if (next() > 0.2) cut(circle(x + random(-12, 12), y + random(-5, 5), random(3.3, 5.2)));
     }
     for (let index = 0; index < 8; index++) {
-      const y = index < 5 ? random(190, 505) : random(768, 910);
+      const y = index < 5 ? random(190, 480) : random(768, 910);
       const x = random(boundsAt(y).left + 88, boundsAt(y).right - 88);
       stud(x, y, random(9, 15), next() > 0.35);
-    }
-    // A few diagonal arch bars break the repeating forefoot/heel rhythm.
-    for (let index = 0; index < 3; index++) {
-      const y = 552 + index * 43;
-      stroke(`M ${rounded(128 + index * 8)} ${y} L ${rounded(285 + index * 4)} ${y + 66}`, random(13, 20));
     }
     stud(245, 848, 12, true);
   } else if (family === "chevron") {
@@ -200,9 +248,6 @@ export function generateSole(seed: number, family: SoleFamily): SoleMark[] {
       const center = 208 + random(-9, 9);
       stroke(`M ${rounded(left + 19)} ${rounded(y + 12)} L ${rounded(center)} ${rounded(y - 14)} L ${rounded(right - 19)} ${rounded(y + 12)}`, random(12, 16));
     }
-    for (const x of [151, 207, 265]) {
-      stroke(`M ${x - 17} 530 Q ${x + 15} 606 ${x - 8} 693`, random(13, 19));
-    }
     for (let row = 0; row < 4; row++) {
       const y = 172 + row * 99 + random(-9, 9);
       sideLug(-1, y, random(37, 52), random(31, 39), false);
@@ -211,14 +256,14 @@ export function generateSole(seed: number, family: SoleFamily): SoleMark[] {
     stroke("M 209 102 L 209 451", random(5, 7), "paper");
     stroke("M 209 752 L 209 942", random(5, 7), "paper");
   } else if (family === "waffle") {
-    // Dense separated contact cells, with the arch left sparse for flex.
-    for (const [start, end, pitch] of [[80, 495, 43], [525, 680, 48], [730, 965, 42]]) {
+    // Dense separated contact cells at the two load-bearing ends.
+    for (const [start, end, pitch] of [[80, 495, 43], [730, 965, 42]]) {
       for (let y = start, row = 0; y < end; y += pitch, row++) {
         const { left, right } = boundsAt(y);
-        const inset = start === 525 ? 54 : 14;
+        const inset = 14;
         const offset = row % 2 ? pitch * 0.45 : 0;
         for (let x = left + inset + offset; x < right - inset - 25; x += pitch) {
-          if (next() < (start === 525 ? 0.72 : 0.94)) {
+          if (next() < 0.94) {
             const cell = random(28, 35);
             const cellX = x + random(-3, 3);
             const cellY = y + random(-3, 3);
@@ -257,12 +302,8 @@ export function generateSole(seed: number, family: SoleFamily): SoleMark[] {
         }
       }
     }
-    for (let index = 0; index < 4; index++) {
-      const y = 540 + index * 41;
-      stroke(`M ${142 + index * 6} ${y} L ${286 - index * 7} ${y + 35}`, random(11, 16));
-    }
     for (const y of [104, 371, 771, 902]) stud(210 + random(-15, 15), y, random(8, 13), true);
   }
 
-  return [...ink, ...cuts];
+  return [...gray, ...ink, ...cuts];
 }
