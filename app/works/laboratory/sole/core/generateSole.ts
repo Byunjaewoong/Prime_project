@@ -1,6 +1,59 @@
-// A hand-traced outline of the supplied outsole photograph, normalized to a 420 × 1000 viewBox.
-// Every tread family is clipped by this vector shape; white is recessed rubber, black is raised contact.
-export const SOLE_OUTLINE = "M 209 18 C 259 15 311 37 342 78 C 371 116 389 180 394 249 C 401 328 395 406 375 476 C 364 517 349 555 342 605 C 334 665 344 730 348 786 C 355 856 345 916 310 953 C 283 981 248 996 211 996 C 174 995 139 981 111 952 C 78 918 66 862 77 789 C 87 723 101 665 100 609 C 99 559 83 517 67 469 C 44 401 34 332 38 261 C 42 188 57 123 87 78 C 116 37 160 20 209 18 Z";
+// Sampled left/right silhouette bounds from the supplied 691 × 1280 outsole photograph.
+// The forefoot leans left, the narrow waist shifts right, and the heel returns left.
+// Both the vector outline and tread placement use this same traced profile.
+const PHOTO_PROFILE: [number, number, number][] = [
+  [27, 293, 325], [40, 250, 376], [55, 227, 405], [80, 207, 431],
+  [105, 191, 453], [130, 178, 470], [155, 166, 485], [180, 157, 499],
+  [205, 150, 511], [230, 145, 520], [255, 141, 533], [280, 136, 544],
+  [305, 135, 552], [330, 134, 559], [355, 135, 566], [380, 140, 568],
+  [405, 143, 567], [430, 147, 575], [455, 152, 578], [480, 158, 580],
+  [505, 165, 581], [530, 172, 579], [555, 181, 576], [580, 190, 573],
+  [605, 197, 570], [630, 206, 567], [655, 214, 564], [680, 223, 560],
+  [705, 232, 555], [730, 238, 552], [755, 240, 547], [780, 240, 544],
+  [805, 239, 541], [830, 237, 539], [855, 235, 537], [880, 232, 535],
+  [905, 228, 534], [930, 225, 533], [955, 220, 533], [980, 217, 533],
+  [1005, 213, 528], [1030, 210, 531], [1055, 206, 529], [1080, 203, 528],
+  [1105, 202, 522], [1130, 203, 521], [1155, 208, 516], [1180, 216, 496],
+  [1205, 228, 498], [1230, 246, 478], [1255, 279, 447],
+];
+
+const rounded = (value: number) => Math.round(value * 10) / 10;
+const viewX = (x: number) => rounded((x - 94.5) * 0.8);
+const viewY = (y: number) => rounded(16 + (y - 27) * 964 / 1252);
+const PROFILE = PHOTO_PROFILE.map(([y, left, right]) => ({ y: viewY(y), left: viewX(left), right: viewX(right) }));
+
+type Point = { x: number; y: number };
+
+function curveThrough(points: Point[]) {
+  return points.slice(1).map((point, index) => {
+    const p0 = points[Math.max(0, index - 1)];
+    const p1 = points[index];
+    const p2 = point;
+    const p3 = points[Math.min(points.length - 1, index + 2)];
+    const c1x = rounded(p1.x + (p2.x - p0.x) / 6);
+    const c1y = rounded(p1.y + (p2.y - p0.y) / 6);
+    const c2x = rounded(p2.x - (p3.x - p1.x) / 6);
+    const c2y = rounded(p2.y - (p3.y - p1.y) / 6);
+    return `C ${c1x} ${c1y} ${c2x} ${c2y} ${p2.x} ${p2.y}`;
+  }).join(" ");
+}
+
+function traceOutline() {
+  const left = PROFILE.map(({ left: x, y }) => ({ x, y }));
+  const right = PROFILE.map(({ right: x, y }) => ({ x, y })).reverse();
+  const bottomLeft = left[left.length - 1];
+  const bottomRight = right[0];
+  const bottomCenter = rounded((bottomLeft.x + bottomRight.x) / 2);
+  const topRight = right[right.length - 1];
+  const topLeft = left[0];
+  return `M ${topLeft.x} ${topLeft.y} ${curveThrough(left)}
+    C ${rounded(bottomLeft.x + 12)} 984 ${rounded(bottomCenter - 31)} 996 ${bottomCenter} 996
+    C ${rounded(bottomCenter + 31)} 996 ${rounded(bottomRight.x - 12)} 984 ${bottomRight.x} ${bottomRight.y}
+    ${curveThrough(right)} C ${rounded(topRight.x - 6)} 14 ${rounded(topLeft.x + 6)} 14 ${topLeft.x} ${topLeft.y} Z`;
+}
+
+// White is recessed rubber, black is raised contact; the photo itself is never rendered.
+export const SOLE_OUTLINE = traceOutline();
 
 export type SoleFamily = "trail" | "chevron" | "waffle" | "segmented";
 export type SoleMark = {
@@ -17,30 +70,17 @@ export const SOLE_FAMILIES: { value: SoleFamily; label: string }[] = [
   { value: "segmented", label: "Segmented road" },
 ];
 
-const BOUNDS = [
-  { y: 18, left: 207, right: 211 },
-  { y: 80, left: 91, right: 340 },
-  { y: 170, left: 51, right: 385 },
-  { y: 300, left: 38, right: 397 },
-  { y: 430, left: 56, right: 386 },
-  { y: 530, left: 88, right: 351 },
-  { y: 630, left: 100, right: 342 },
-  { y: 750, left: 86, right: 348 },
-  { y: 870, left: 76, right: 344 },
-  { y: 950, left: 111, right: 311 },
-  { y: 996, left: 210, right: 212 },
-];
-
 function boundsAt(y: number) {
-  for (let index = 1; index < BOUNDS.length; index++) {
-    const next = BOUNDS[index];
+  for (let index = 1; index < PROFILE.length; index++) {
+    const next = PROFILE[index];
     if (y <= next.y) {
-      const previous = BOUNDS[index - 1];
+      const previous = PROFILE[index - 1];
       const t = (y - previous.y) / (next.y - previous.y);
       return { left: previous.left + (next.left - previous.left) * t, right: previous.right + (next.right - previous.right) * t };
     }
   }
-  return { left: 210, right: 212 };
+  const last = PROFILE[PROFILE.length - 1];
+  return { left: last.left, right: last.right };
 }
 
 function randomSource(seed: number) {
@@ -53,8 +93,6 @@ function randomSource(seed: number) {
     return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
   };
 }
-
-const rounded = (value: number) => Math.round(value * 10) / 10;
 
 function roundedRect(x: number, y: number, width: number, height: number, radius: number) {
   const r = Math.min(radius, width / 2, height / 2);
@@ -116,7 +154,7 @@ export function generateSole(seed: number, family: SoleFamily): SoleMark[] {
     }
     stroke("M 112 116 Q 210 11 310 113", 18);
     stroke("M 115 934 Q 210 1017 306 932", 19);
-    for (const y of [68, 117, 935, 970]) {
+    for (const y of [68, 117, 919, 953]) {
       const { left, right } = boundsAt(y);
       const count = y < 200 ? 2 : 3;
       for (let index = 0; index < count; index++) {
