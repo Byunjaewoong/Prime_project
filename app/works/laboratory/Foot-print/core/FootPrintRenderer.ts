@@ -5,7 +5,8 @@ export type FootPrintShape = "circle" | "square" | "triangle";
 
 type Stamp = { x: number; y: number; shape: FootPrintShape; size: number; depth: number };
 const MAX_STAMPS = 120;
-export const DEFAULT_INSIDE_NOISE: NoiseParams = { ...DEFAULT_NOISE, scale: 10 };
+export const DEFAULT_INSIDE_NOISE: NoiseParams = { ...DEFAULT_NOISE, scale: 28, roughness: 0.6 };
+export const DEFAULT_INSIDE_SHADOW_DEPTH = 0.8;
 
 const VERTEX_SHADER = `#version 300 es
 layout(location = 0) in vec2 aPosition;
@@ -170,7 +171,7 @@ export class FootPrintRenderer {
   private readonly stamps: Stamp[] = [];
   private noise: NoiseParams = { ...DEFAULT_INSIDE_NOISE };
   private color = DEFAULT_COLOR;
-  private shadowDepth = 1;
+  private shadowDepth = DEFAULT_INSIDE_SHADOW_DEPTH;
   private lightDirection: LightDirection = [...DEFAULT_LIGHT_DIRECTION];
   private readonly onResize = () => this.renderAll();
 

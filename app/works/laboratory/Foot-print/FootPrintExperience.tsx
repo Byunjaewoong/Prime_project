@@ -7,7 +7,7 @@ import DragOnlyRange from "../Painted/DragOnlyRange";
 import LightDirectionSphere from "../Painted/LightDirectionSphere";
 import { DEFAULT_COLOR, DEFAULT_LIGHT_DIRECTION, DEFAULT_NOISE, DEFAULT_SHADOW_DEPTH, PaintedRenderer, type LightDirection, type NoiseParams } from "../Painted/core/PaintedRenderer";
 import { PAINTED_NOISE_CONTROLS } from "../Painted/noiseControls";
-import { DEFAULT_INSIDE_NOISE, FootPrintRenderer, type FootPrintShape } from "./core/FootPrintRenderer";
+import { DEFAULT_INSIDE_NOISE, DEFAULT_INSIDE_SHADOW_DEPTH, FootPrintRenderer, type FootPrintShape } from "./core/FootPrintRenderer";
 import paintedStyles from "../Painted/painted.module.css";
 import styles from "./footprint.module.css";
 
@@ -27,14 +27,14 @@ export default function FootPrintExperience() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [shape, setShape] = useState<FootPrintShape>("circle");
   const [size, setSize] = useState(36);
-  const [depth, setDepth] = useState(11);
-  const [surfaceTab, setSurfaceTab] = useState<SurfaceTab>("outside");
+  const [depth, setDepth] = useState(4);
+  const [surfaceTab, setSurfaceTab] = useState<SurfaceTab>("inside");
   const [outsideNoise, setOutsideNoise] = useState<NoiseParams>(DEFAULT_NOISE);
   const [insideNoise, setInsideNoise] = useState<NoiseParams>(DEFAULT_INSIDE_NOISE);
   const [outsideColor, setOutsideColor] = useState(DEFAULT_COLOR);
   const [insideColor, setInsideColor] = useState(DEFAULT_COLOR);
   const [outsideShadow, setOutsideShadow] = useState(DEFAULT_SHADOW_DEPTH);
-  const [insideShadow, setInsideShadow] = useState(1);
+  const [insideShadow, setInsideShadow] = useState(DEFAULT_INSIDE_SHADOW_DEPTH);
   const [lightDirection, setLightDirection] = useState<LightDirection>(DEFAULT_LIGHT_DIRECTION);
 
   useEffect(() => {
