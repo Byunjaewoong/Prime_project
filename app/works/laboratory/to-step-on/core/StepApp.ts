@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { disposeObject } from "@/app/lib/disposeObject";
-import { ANKLE, createForegroundCloth, SHOE_LENGTH, SHOE_WIDTH, StepModel } from "./StepModel";
+import { SHOE_LENGTH, SHOE_WIDTH, StepModel } from "./StepModel";
 import { StepPrints, type StepContact } from "./StepPrints";
 
 export type StepDirection = "random" | "right" | "left" | "down" | "up";
@@ -10,7 +10,8 @@ const DIRECTIONS = ["right", "down", "left", "up"] as const;
 const DURATION = 2.8;
 const CAMERA_HEIGHT = 0.5;
 const CAMERA_GROUND_OFFSET = 0.065;
-const SHORT_EDGE_FOV = 44;
+const SHORT_EDGE_FOV = 16;
+const OFFSCREEN_NDC = 4.5;
 const clamp = THREE.MathUtils.clamp;
 const smooth = (value: number) => { const t = clamp(value, 0, 1); return t * t * (3 - 2 * t); };
 const screenDirection = (direction: Exclude<StepDirection, "random">) => new THREE.Vector2(
@@ -23,8 +24,6 @@ type Step = {
   contact: THREE.Vector3;
   start: THREE.Vector3;
   end: THREE.Vector3;
-  forward: THREE.Vector3;
-  screenDirection: THREE.Vector2;
   heading: number;
   stamped: boolean;
 };
@@ -32,10 +31,9 @@ type Step = {
 export class StepApp {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
-  private readonly camera = new THREE.PerspectiveCamera(44, 1, 0.015, 30);
+  private readonly camera = new THREE.PerspectiveCamera(SHORT_EDGE_FOV, 1, 0.015, 30);
   private readonly model: StepModel;
   private readonly prints: StepPrints;
-  private readonly foreground: THREE.Mesh;
   private readonly floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private readonly raycaster = new THREE.Raycaster();
   private readonly observer: ResizeObserver;
@@ -60,23 +58,16 @@ export class StepApp {
     this.scene.add(new THREE.HemisphereLight(0xf0f3ff, 0x9b9891, 2.15));
     const light = new THREE.DirectionalLight(0xfff8ed, 3.1);
     light.position.set(-1.8, 4, 2.5); light.castShadow = true;
-    light.shadow.mapSize.set(1024, 1024); light.shadow.camera.left = light.shadow.camera.bottom = -3;
-    light.shadow.camera.right = light.shadow.camera.top = 3; light.shadow.camera.near = 0.1; light.shadow.camera.far = 10;
+    light.shadow.mapSize.set(1024, 1024); light.shadow.camera.left = light.shadow.camera.bottom = -0.75;
+    light.shadow.camera.right = light.shadow.camera.top = 0.75; light.shadow.camera.near = 0.1; light.shadow.camera.far = 10;
     light.shadow.normalBias = 0.006; light.shadow.bias = -0.0002; light.shadow.radius = 3;
     this.scene.add(light);
     const fill = new THREE.DirectionalLight(0xbac8df, 0.8); fill.position.set(3, 2, -2); this.scene.add(fill);
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.ShadowMaterial({ color: 0x3e4149, opacity: 0.19 }));
     ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; this.scene.add(ground);
-    this.model = new StepModel(); this.scene.add(this.model.shoe, this.model.trouser);
-    this.model.shoe.visible = this.model.trouser.visible = false;
+    this.model = new StepModel(); this.scene.add(this.model.shoe);
+    this.model.shoe.visible = false;
     this.prints = new StepPrints(); this.scene.add(this.prints.group);
-    const nearFabric = this.model.fabric.clone(); nearFabric.color.set("#020203");
-    // Composite the lens-close cloth after scene geometry: at knee height a
-    // lifted shoe can otherwise intersect and render through this staged pass.
-    nearFabric.transparent = true; nearFabric.depthTest = false; nearFabric.depthWrite = false;
-    this.foreground = createForegroundCloth(nearFabric); this.foreground.visible = false;
-    this.foreground.renderOrder = 100;
-    this.camera.add(this.foreground);
     this.observer = new ResizeObserver(() => this.resize()); this.observer.observe(canvas);
     document.addEventListener("visibilitychange", this.onVisibility);
     canvas.addEventListener("webglcontextlost", this.onContextLost);
@@ -113,12 +104,13 @@ export class StepApp {
     if (!next) return;
     const forward = next.sub(contact).normalize();
     const startNdc = ndc.clone(), endNdc = ndc.clone();
-    if (direction.x) { startNdc.x = -direction.x * 1.65; endNdc.x = direction.x * 1.65; }
-    else { startNdc.y = -direction.y * 1.65; endNdc.y = direction.y * 1.65; }
+    // The close crop needs extra travel before the entire shoe clears the frame.
+    if (direction.x) { startNdc.x = -direction.x * OFFSCREEN_NDC; endNdc.x = direction.x * OFFSCREEN_NDC; }
+    else { startNdc.y = -direction.y * OFFSCREEN_NDC; endNdc.y = direction.y * OFFSCREEN_NDC; }
     const start = this.worldAt(startNdc) ?? contact.clone().addScaledVector(forward, -1.7);
     const end = this.worldAt(endNdc) ?? contact.clone().addScaledVector(forward, 1.7);
-    this.step = { time: 0, contact, start, end, forward, screenDirection: direction, heading: Math.atan2(forward.x, forward.z), stamped: false };
-    this.model.shoe.visible = this.model.trouser.visible = true;
+    this.step = { time: 0, contact, start, end, heading: Math.atan2(forward.x, forward.z), stamped: false };
+    this.model.shoe.visible = true;
     this.lastTime = 0;
   }
 
@@ -128,8 +120,8 @@ export class StepApp {
   resize() {
     const width = Math.max(1, this.canvas.clientWidth), height = Math.max(1, this.canvas.clientHeight);
     this.camera.aspect = width / height;
-    // Frame a roughly 0.41 m patch along the shorter viewport edge. Both the
-    // real shoe and its ground contact become large, with the same world scale.
+    // Frame roughly 0.14 m of ground along the short edge: only a portion of
+    // the 0.32 m shoe remains visible, including on tall phone viewports.
     this.camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(SHORT_EDGE_FOV / 2)) / Math.min(1, this.camera.aspect)));
     this.camera.updateProjectionMatrix();
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, width < 760 ? 1.5 : 1.75));
@@ -164,32 +156,8 @@ export class StepApp {
       const contact: StepContact = { position: step.contact.clone(), heading: step.heading, length: SHOE_LENGTH, width: SHOE_WIDTH, pressure: 1 };
       this.prints.stamp(contact); this.onContact?.(contact);
     }
-    shoe.updateMatrixWorld(true);
-    const ankle = shoe.localToWorld(ANKLE.clone());
-    // With the lens at knee height, keep the knee/hip on the entrance side
-    // until the sole settles. Weight transfer then brings the body past it.
-    const stride = THREE.MathUtils.lerp(-0.52, 0.42, smooth((t - 0.39) / 0.31));
-    const hip = ankle.clone().addScaledVector(step.forward, stride); hip.y += 0.73 - Math.sin(clamp(t / 0.7, 0, 1) * Math.PI) * 0.045;
-    const knee = ankle.clone().lerp(hip, 0.5).addScaledVector(step.forward, 0.045 + Math.abs(stride) * 0.06);
-    this.model.poseLeg(ankle, knee, hip, step.forward, t > plantAt && t < liftAt ? 1 : 0.5);
-    shoe.visible = this.model.trouser.visible = t < 0.84;
-
-    const crossing = (t - 0.38) / 0.58;
-    this.foreground.visible = crossing >= 0 && crossing <= 1;
-    if (this.foreground.visible) {
-      const distance = 0.29;
-      const halfHeight = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * distance;
-      const halfWidth = halfHeight * this.camera.aspect;
-      const d = step.screenDirection;
-      const along = Math.abs(d.x) * halfWidth + Math.abs(d.y) * halfHeight;
-      const across = Math.abs(d.y) * halfWidth + Math.abs(d.x) * halfHeight;
-      const travel = (smooth(crossing) * 2 - 1) * along * 3.9;
-      this.foreground.position.set(d.x * travel, d.y * travel, -distance);
-      this.foreground.rotation.z = Math.atan2(d.y, d.x);
-      this.foreground.scale.set(along * 1.65, across * 1.95, 1);
-    }
     if (t >= 1) {
-      this.step = null; this.foreground.visible = shoe.visible = this.model.trouser.visible = false;
+      this.step = null; shoe.visible = false;
       if (this.queued) { const next = this.queued; this.queued = null; this.beginStep(next); }
     }
   }

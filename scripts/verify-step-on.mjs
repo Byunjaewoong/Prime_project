@@ -50,7 +50,7 @@ try {
     };
     const tap = (x, y) => mobile ? page.touchscreen.tap(x, y) : page.mouse.click(x, y);
     const directions = ['Left → Right', 'Right → Left', 'Top → Bottom', 'Bottom → Top'];
-    const coverages = [];
+    const closeups = [];
     for (const [index, direction] of directions.entries()) {
       await menu();
       await page.getByRole('button', { name: 'Clear footprints', exact: true }).click();
@@ -61,15 +61,16 @@ try {
       await tap(viewport.width * 0.52, viewport.height * 0.54);
       await page.clock.runFor(1100);
       const planted = await pixels(page, `${name}-${index}-plant`, viewport);
-      assert(planted.ink > 0.01 && planted.ink < 0.8, 'One visible leg must land before occlusion');
+      assert(planted.ink > 0.08 && planted.dark < 0.98, 'A close-cropped shoe must land');
+      assert(planted.span > Math.min(viewport.width, viewport.height - 96) * 0.85, 'The shoe must extend beyond the close crop');
       await page.clock.runFor(750);
-      const covered = await pixels(page, `${name}-${index}-cover`, viewport);
-      assert(covered.dark > 0.999, `Foreground must fully hide the shoe and prints for ${direction}`);
-      coverages.push(covered.dark);
+      const moving = await pixels(page, `${name}-${index}-moving`, viewport);
+      assert(moving.dark < 0.98, `No foreground cloth may cover the view for ${direction}`);
+      closeups.push(planted.ink);
       await page.clock.runFor(1250);
       const print = await pixels(page, `${name}-${index}-trace`, viewport);
-      assert(print.ink > 0.0005 && print.ink < 0.09 && print.dark < 0.001, 'Only the footprint should remain');
-      assert(print.span > Math.min(viewport.width, viewport.height) * 0.65, 'Knee-height view must leave a large footprint');
+      assert(print.ink > 0.005 && print.ink < 0.9 && print.dark < 0.001, 'Only the close-up footprint should remain');
+      assert(print.span > Math.min(viewport.width, viewport.height) * 0.65, 'The close crop must leave a large footprint');
       await page.clock.runFor(2000);
       const retained = await pixels(page, `${name}-${index}-retained`, viewport);
       assert(Math.abs(retained.ink - print.ink) < 0.00001, 'Footprint must persist without an active animation');
@@ -98,7 +99,7 @@ try {
     await menu(); await page.getByRole('link', { name: 'Laboratory', exact: true }).click();
     await page.getByRole('link', { name: /16\. To step on/ }).waitFor();
     assert.deepEqual(errors, []);
-    reports.push({ viewport: name, coverages, errors, passed: true });
+    reports.push({ viewport: name, closeups, errors, passed: true });
     await context.close();
   }
 } finally { await browser.close(); }

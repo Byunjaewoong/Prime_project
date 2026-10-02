@@ -3,7 +3,7 @@ import * as THREE from "three";
 // All dimensions are in metres; the toe points along local +Z.
 export const SHOE_LENGTH = 0.32;
 export const SHOE_WIDTH = 0.135;
-export const ANKLE = new THREE.Vector3(0, 0.155, -0.073);
+const ANKLE = new THREE.Vector3(0, 0.155, -0.073);
 
 type Section = [z: number, width: number, height: number];
 const UPPER: Section[] = [
@@ -76,13 +76,6 @@ function fabricTexture() {
 
 export class StepModel {
   readonly shoe = new THREE.Group();
-  readonly trouser: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
-  readonly fabric: THREE.MeshStandardMaterial;
-  private readonly rings = 42;
-  private readonly segments = 32;
-  private readonly center = new THREE.Vector3();
-  private readonly tangent = new THREE.Vector3();
-  private readonly radial = new THREE.Vector3();
 
   constructor() {
     const weave = fabricTexture();
@@ -92,7 +85,6 @@ export class StepModel {
     const midsole = new THREE.MeshStandardMaterial({ color: "#555650", roughness: 0.94, side: THREE.DoubleSide });
     const lace = new THREE.MeshStandardMaterial({ color: "#5a5b56", roughness: 0.94 });
     const seam = new THREE.MeshStandardMaterial({ color: "#55575a", roughness: 0.9 });
-    this.fabric = new THREE.MeshStandardMaterial({ color: "#101114", roughness: 1, bumpMap: weave, bumpScale: 0.001, side: THREE.DoubleSide });
 
     const add = (geometry: THREE.BufferGeometry, material: THREE.Material) => {
       const mesh = new THREE.Mesh(geometry, material); mesh.castShadow = true; mesh.receiveShadow = true;
@@ -149,46 +141,5 @@ export class StepModel {
     pullTab.position.set(0, 0.124, -0.132); pullTab.rotation.x = -0.15;
     const tag = add(new THREE.BoxGeometry(0.012, 0.008, 0.001), new THREE.MeshStandardMaterial({ color: "#75504d", roughness: 0.8 }));
     tag.position.set(0, 0.133, -0.1355);
-
-    const geometry = sheet(this.rings, this.segments, () => new THREE.Vector3());
-    (geometry.getAttribute("position") as THREE.BufferAttribute).setUsage(THREE.DynamicDrawUsage);
-    this.trouser = new THREE.Mesh(geometry, this.fabric);
-    this.trouser.frustumCulled = false; this.trouser.castShadow = true; this.trouser.receiveShadow = true;
   }
-
-  poseLeg(ankle: THREE.Vector3, knee: THREE.Vector3, hip: THREE.Vector3, forward: THREE.Vector3, load: number) {
-    const curve = new THREE.CatmullRomCurve3([ankle, knee, hip]);
-    const side = new THREE.Vector3(forward.z, 0, -forward.x);
-    const positions = this.trouser.geometry.getAttribute("position");
-    for (let row = 0; row <= this.rings; row++) {
-      const t = row / this.rings;
-      curve.getPoint(t, this.center); curve.getTangent(t, this.tangent);
-      this.radial.crossVectors(side, this.tangent).normalize();
-      const radius = THREE.MathUtils.lerp(0.042, 0.112, Math.pow(t, 0.76));
-      const cuff = Math.exp(-t * 18), kneeFold = Math.exp(-Math.pow((t - 0.47) * 7, 2));
-      for (let col = 0; col <= this.segments; col++) {
-        const a = col / this.segments * Math.PI * 2;
-        const fold = Math.sin(t * 47 + Math.sin(a * 1.5 + t * 8) * 3.4) * (0.0006 + cuff * 0.0035 + kneeFold * 0.0025 * load)
-          + Math.cos(a * 7 + t * 5) * 0.001 + Math.cos(a * 3 - t * 6) * 0.0015;
-        const r = radius + fold;
-        const p = this.center.clone().addScaledVector(side, Math.cos(a) * r).addScaledVector(this.radial, Math.sin(a) * r * 0.9);
-        positions.setXYZ(row * (this.segments + 1) + col, p.x, p.y, p.z);
-      }
-    }
-    positions.needsUpdate = true; this.trouser.geometry.computeVertexNormals();
-  }
-}
-
-// A close, curved trouser surface crosses the lens. It lives in camera space so
-// its projected coverage is consistent in portrait and landscape viewports.
-export function createForegroundCloth(material: THREE.Material) {
-  const geometry = sheet(72, 44, (u, v) => {
-    const x = (u - 0.5) * 2, y = (v - 0.5) * 2;
-    const edge = 0.92 + 0.065 * Math.cos(y * 2.8) + 0.018 * Math.sin(y * 6);
-    const bulge = Math.sqrt(Math.max(0, 1 - x * x)) * 0.075;
-    const crease = Math.sin(x * 33 + y * 4) * 0.0025 + Math.sin(y * 16 - x * 3) * 0.0015;
-    return new THREE.Vector3(x * edge, y, bulge + crease);
-  });
-  const mesh = new THREE.Mesh(geometry, material); mesh.frustumCulled = false;
-  return mesh;
 }
