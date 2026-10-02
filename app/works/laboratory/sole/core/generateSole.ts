@@ -145,20 +145,14 @@ export function generateSole(seed: number, family: SoleFamily): SoleMark[] {
     if (hollow) cut(circle(x + random(-1.2, 1.2), y + random(-1.2, 1.2), radius * random(0.23, 0.34)));
   };
 
-  // A flexible midfoot plate follows the narrow, off-center photo silhouette.
-  // Its span, slanted shoulders, and recessed flex cuts change with each seed.
+  // Let the outline clip the midfoot plate so gray reaches both outer edges.
+  // Its slanted shoulders and recessed flex cuts still change with each seed.
   const top = archRandom(502, 530);
   const bottom = archRandom(695, 730);
   const middle = (top + bottom) / 2;
-  const topBounds = boundsAt(top);
   const middleBounds = boundsAt(middle);
-  const bottomBounds = boundsAt(bottom);
-  const topLeft = topBounds.left + archRandom(5, 13);
-  const topRight = topBounds.right - archRandom(5, 15);
   const middleLeft = middleBounds.left + archRandom(4, 11);
   const middleRight = middleBounds.right - archRandom(4, 12);
-  const bottomLeft = bottomBounds.left + archRandom(6, 16);
-  const bottomRight = bottomBounds.right - archRandom(6, 14);
   const center = archRandom(225, 244);
   const topSlope = archRandom(18, 46) * (archNext() < 0.5 ? -1 : 1);
   const bottomSlope = archRandom(18, 44) * (archNext() < 0.5 ? -1 : 1);
@@ -168,13 +162,10 @@ export function generateSole(seed: number, family: SoleFamily): SoleMark[] {
   const bottomRightY = bottom + bottomSlope / 2 + archRandom(-6, 6);
   gray.push({
     tone: "gray",
-    d: `M ${rounded(topLeft)} ${rounded(topLeftY)}
-      Q ${rounded(center + archRandom(-18, 18))} ${rounded(top + archRandom(-13, 15))} ${rounded(topRight)} ${rounded(topRightY)}
-      C ${rounded(middleRight + 18)} ${rounded(top + 57)} ${rounded(middleRight)} ${rounded(middle - 30)} ${rounded(middleRight)} ${rounded(middle)}
-      Q ${rounded(bottomRight + 2)} ${rounded(bottom - 41)} ${rounded(bottomRight)} ${rounded(bottomRightY)}
-      Q ${rounded(center + archRandom(-17, 17))} ${rounded(bottom + archRandom(-19, 13))} ${rounded(bottomLeft)} ${rounded(bottomLeftY)}
-      C ${rounded(middleLeft - 12)} ${rounded(bottom - 43)} ${rounded(middleLeft)} ${rounded(middle + 24)} ${rounded(middleLeft)} ${rounded(middle)}
-      Q ${rounded(topLeft - 7)} ${rounded(top + 42)} ${rounded(topLeft)} ${rounded(topLeftY)} Z`,
+    d: `M -20 ${rounded(topLeftY)}
+      Q ${rounded(center + archRandom(-18, 18))} ${rounded(top + archRandom(-13, 15))} 440 ${rounded(topRightY)}
+      L 440 ${rounded(bottomRightY)}
+      Q ${rounded(center + archRandom(-17, 17))} ${rounded(bottom + archRandom(-19, 13))} -20 ${rounded(bottomLeftY)} Z`,
   });
   const archVariant = Math.floor(archNext() * 3);
   if (archVariant === 0) {
