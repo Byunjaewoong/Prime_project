@@ -17,12 +17,18 @@ async function pixels(page, name, viewport) {
   // Exclude floating controls and the development badge from visual assertions.
   const { data, info } = await sharp(png).extract({ left: 8, top: 8, width: viewport.width - 16, height: viewport.height - 96 }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
   let dark = 0, ink = 0;
+  let minX = info.width, minY = info.height, maxX = -1, maxY = -1;
   for (let i = 0; i < data.length; i += info.channels) {
     const value = (data[i] + data[i + 1] + data[i + 2]) / 3;
     if (value < 30) dark++;
-    if (value < 245) ink++;
+    if (value < 245) {
+      ink++;
+      const pixel = i / info.channels, x = pixel % info.width, y = Math.floor(pixel / info.width);
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    }
   }
-  return { dark: dark / (info.width * info.height), ink: ink / (info.width * info.height) };
+  return { dark: dark / (info.width * info.height), ink: ink / (info.width * info.height), span: Math.max(0, maxX - minX + 1, maxY - minY + 1) };
 }
 
 try {
@@ -58,11 +64,12 @@ try {
       assert(planted.ink > 0.01 && planted.ink < 0.8, 'One visible leg must land before occlusion');
       await page.clock.runFor(750);
       const covered = await pixels(page, `${name}-${index}-cover`, viewport);
-      assert(covered.dark > 0.98, `Foreground must cover the viewport for ${direction}`);
+      assert(covered.dark > 0.999, `Foreground must fully hide the shoe and prints for ${direction}`);
       coverages.push(covered.dark);
       await page.clock.runFor(1250);
       const print = await pixels(page, `${name}-${index}-trace`, viewport);
       assert(print.ink > 0.0005 && print.ink < 0.09 && print.dark < 0.001, 'Only the footprint should remain');
+      assert(print.span > Math.min(viewport.width, viewport.height) * 0.65, 'Knee-height view must leave a large footprint');
       await page.clock.runFor(2000);
       const retained = await pixels(page, `${name}-${index}-retained`, viewport);
       assert(Math.abs(retained.ink - print.ink) < 0.00001, 'Footprint must persist without an active animation');

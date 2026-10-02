@@ -8,6 +8,9 @@ export type StepSettings = { direction: StepDirection; speed: number };
 export const DEFAULT_STEP_SETTINGS: StepSettings = { direction: "random", speed: 1 };
 const DIRECTIONS = ["right", "down", "left", "up"] as const;
 const DURATION = 2.8;
+const CAMERA_HEIGHT = 0.5;
+const CAMERA_GROUND_OFFSET = 0.065;
+const SHORT_EDGE_FOV = 44;
 const clamp = THREE.MathUtils.clamp;
 const smooth = (value: number) => { const t = clamp(value, 0, 1); return t * t * (3 - 2 * t); };
 const screenDirection = (direction: Exclude<StepDirection, "random">) => new THREE.Vector2(
@@ -51,7 +54,8 @@ export class StepApp {
     this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.12;
-    this.camera.position.set(0, 1.08, 0.78); this.camera.lookAt(0, 0, -0.12);
+    // Knee height, looking almost straight down (about 7 degrees off vertical).
+    this.camera.position.set(0, CAMERA_HEIGHT, CAMERA_GROUND_OFFSET); this.camera.lookAt(0, 0, 0);
     this.scene.add(this.camera);
     this.scene.add(new THREE.HemisphereLight(0xf0f3ff, 0x9b9891, 2.15));
     const light = new THREE.DirectionalLight(0xfff8ed, 3.1);
@@ -67,7 +71,11 @@ export class StepApp {
     this.model.shoe.visible = this.model.trouser.visible = false;
     this.prints = new StepPrints(); this.scene.add(this.prints.group);
     const nearFabric = this.model.fabric.clone(); nearFabric.color.set("#020203");
+    // Composite the lens-close cloth after scene geometry: at knee height a
+    // lifted shoe can otherwise intersect and render through this staged pass.
+    nearFabric.transparent = true; nearFabric.depthTest = false; nearFabric.depthWrite = false;
     this.foreground = createForegroundCloth(nearFabric); this.foreground.visible = false;
+    this.foreground.renderOrder = 100;
     this.camera.add(this.foreground);
     this.observer = new ResizeObserver(() => this.resize()); this.observer.observe(canvas);
     document.addEventListener("visibilitychange", this.onVisibility);
@@ -120,9 +128,9 @@ export class StepApp {
   resize() {
     const width = Math.max(1, this.canvas.clientWidth), height = Math.max(1, this.canvas.clientHeight);
     this.camera.aspect = width / height;
-    // Keep a useful horizontal field of view on a phone without moving the
-    // waist-height camera or rescaling the existing contacts.
-    this.camera.fov = Math.max(44, Math.min(80, THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(16)) / this.camera.aspect))));
+    // Frame a roughly 0.41 m patch along the shorter viewport edge. Both the
+    // real shoe and its ground contact become large, with the same world scale.
+    this.camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(SHORT_EDGE_FOV / 2)) / Math.min(1, this.camera.aspect)));
     this.camera.updateProjectionMatrix();
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, width < 760 ? 1.5 : 1.75));
     this.renderer.setSize(width, height, false);
@@ -158,9 +166,11 @@ export class StepApp {
     }
     shoe.updateMatrixWorld(true);
     const ankle = shoe.localToWorld(ANKLE.clone());
-    const stride = THREE.MathUtils.lerp(-0.27, 0.37, smooth((t - 0.14) / 0.58));
+    // With the lens at knee height, keep the knee/hip on the entrance side
+    // until the sole settles. Weight transfer then brings the body past it.
+    const stride = THREE.MathUtils.lerp(-0.52, 0.42, smooth((t - 0.39) / 0.31));
     const hip = ankle.clone().addScaledVector(step.forward, stride); hip.y += 0.73 - Math.sin(clamp(t / 0.7, 0, 1) * Math.PI) * 0.045;
-    const knee = ankle.clone().lerp(hip, 0.5).addScaledVector(step.forward, 0.085 + Math.abs(stride) * 0.12);
+    const knee = ankle.clone().lerp(hip, 0.5).addScaledVector(step.forward, 0.045 + Math.abs(stride) * 0.06);
     this.model.poseLeg(ankle, knee, hip, step.forward, t > plantAt && t < liftAt ? 1 : 0.5);
     shoe.visible = this.model.trouser.visible = t < 0.84;
 

@@ -1,6 +1,6 @@
 # To step on
 
-`/works/laboratory/to-step-on` is a single-foot, waist-height camera study.
+`/works/laboratory/to-step-on` is a single-foot, knee-height camera study.
 Click/tap the floor (or press Enter with the canvas focused) to take a step.
 The menu offers four fixed directions or non-repeating random directions,
 0.5–1.5× speed, pause/resume, and clearing retained footprints.
@@ -8,6 +8,9 @@ The menu offers four fixed directions or non-repeating random directions,
 ## Motion and coordinates
 
 - Three.js world units are metres, Y is up, and the shoe's local +Z is its toe.
+- The camera sits 0.5 m above the ground, about 7 degrees from a vertical
+  downward view. A 44-degree field of view along the shorter viewport edge
+  gives the shoe and its footprint a large, consistent scale across devices.
 - A ray/ground-plane intersection determines the sole's landing position.
 - One 2.8-second cycle approaches, plants, transfers weight, and lifts away.
 - The sole remains fixed during stance; the knee and hip continue moving.
