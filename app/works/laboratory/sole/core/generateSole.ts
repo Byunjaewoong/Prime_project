@@ -149,22 +149,23 @@ function generateImprint(seed: number): SoleMark[] {
   const heel = integer(0, 2);
   const center = random(196, 224);
   const lean = random(-18, 18);
-  const toeWidth = random(174, 254);
-  const heelWidth = random(145, 220);
+  const toeWidth = random(145, 186);
+  const heelWidth = random(145, 205);
 
   if (toe === 0) {
-    const cap = crescent(center + lean * 0.35, random(38, 57), toeWidth, random(78, 111));
+    const cap = crescent(center + lean * 0.35, random(75, 88), toeWidth, random(60, 74));
     solid(cap.d);
   } else if (toe === 1) {
     for (const side of [-1, 1]) {
       const x = center + side * toeWidth * 0.29;
-      solid(softPod(x, 87, toeWidth * 0.38, random(65, 88), side * 0.12), rotated(side * random(8, 17), x, 87));
+      solid(softPod(x, 120, toeWidth * 0.38, random(47, 59), side * 0.12), rotated(side * random(8, 17), x, 120));
     }
   } else {
     for (let index = 0; index < 3; index++) {
       const x = center + (index - 1) * toeWidth * 0.32;
-      solid(softPod(x, 85 + (index === 1 ? -10 : 14), toeWidth * 0.25, random(58, 80), 0.12),
-        rotated((index - 1) * random(8, 15), x, 85));
+      const y = 116 + (index === 1 ? -8 : 9);
+      solid(softPod(x, y, toeWidth * 0.25, random(43, 55), 0.12),
+        rotated((index - 1) * random(8, 15), x, y));
     }
   }
 
@@ -176,8 +177,10 @@ function generateImprint(seed: number): SoleMark[] {
   for (let row = 0; row < forefootRows; row++) {
     const progress = row / Math.max(1, forefootRows - 1);
     const y = forefootStart + (forefootEnd - forefootStart) * progress;
-    const rowCenter = center + lean * (progress - 0.3) + random(-6, 6);
-    const width = forefootWidth * (0.94 + Math.sin(progress * Math.PI) * 0.08);
+    const bounds = boundsAt(y);
+    const width = Math.min(forefootWidth * (0.94 + Math.sin(progress * Math.PI) * 0.08), bounds.right - bounds.left - 28);
+    const desiredCenter = center + lean * (progress - 0.3) + random(-6, 6);
+    const rowCenter = Math.max(bounds.left + width / 2 + 14, Math.min(bounds.right - width / 2 - 14, desiredCenter));
     if (motif === 1) {
       // Two long diagonal blades form a V-shaped, herringbone contact zone.
       for (const side of [-1, 1]) {
@@ -234,9 +237,9 @@ function generateImprint(seed: number): SoleMark[] {
   }
 
   const heelRows = integer(2, 4);
-  const heelPitch = 116 / Math.max(1, heelRows - 1);
+  const heelPitch = 100 / Math.max(1, heelRows - 1);
   for (let row = 0; row < heelRows; row++) {
-    const y = 764 + row * heelPitch + random(-5, 5);
+    const y = 742 + row * heelPitch + random(-5, 5);
     const rowCenter = center - lean * 0.5 + random(-7, 7);
     const width = heelWidth * random(0.78, 0.98);
     for (const side of [-1, 1]) {
@@ -256,21 +259,20 @@ function generateImprint(seed: number): SoleMark[] {
     }
   }
   if (heel === 0) {
-    const cap = crescent(center - lean * 0.5, 908, heelWidth, random(70, 91), true);
+    const cap = crescent(center - lean * 0.5, 870, heelWidth, random(59, 72), true);
     solid(cap.d, cap.transform);
   } else if (heel === 1) {
-    solid(softPod(center - lean * 0.5, 958, heelWidth * 0.86, random(43, 57), 0.04));
+    solid(softPod(center - lean * 0.5, 917, heelWidth * 0.86, random(35, 46), 0.04));
   } else {
     for (const side of [-1, 1]) {
       const x = center - lean * 0.5 + side * heelWidth * 0.23;
-      solid(softPod(x, 960, heelWidth * 0.44, random(39, 55), side * 0.11), rotated(side * 9, x, 960));
+      solid(softPod(x, 918, heelWidth * 0.44, random(34, 45), side * 0.11), rotated(side * 9, x, 918));
     }
   }
   return marks;
 }
 
 export function generateSole(seed: number, family: SoleFamily): SoleMark[] {
-  if (family === "imprint") return generateImprint(seed);
   const next = randomSource(seed);
   const random = (min: number, max: number) => min + (max - min) * next();
   const archNext = randomSource(seed ^ 0x9e3779b9);
@@ -342,6 +344,8 @@ export function generateSole(seed: number, family: SoleFamily): SoleMark[] {
       cut(roundedRect(x - archRandom(13, 19), y - 8, archRandom(26, 40), archRandom(14, 22), 8));
     }
   }
+
+  if (family === "imprint") return [...gray, ...ink, ...cuts, ...generateImprint(seed)];
 
   if (family === "trail") {
     // Longitudinal edge lugs, staggered contact pods, and isolated traction studs.

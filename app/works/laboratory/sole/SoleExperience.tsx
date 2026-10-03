@@ -99,14 +99,13 @@ export default function SoleExperience() {
         <defs>
           <clipPath id="sole-outline-clip"><path d={SOLE_OUTLINE} /></clipPath>
         </defs>
-        <g clipPath={design.family === "imprint" ? undefined : "url(#sole-outline-clip)"}
-          transform={design.family === "imprint" ? "translate(-21 0) scale(1.1 1)" : undefined}>
+        <g clipPath="url(#sole-outline-clip)">
           {marks.map((mark, index) => <path key={index} d={mark.d} transform={mark.transform}
             fill={mark.strokeWidth ? "none" : mark.tone === "ink" ? "#111111" : mark.tone === "gray" ? "#b9b9b9" : "#ffffff"}
             stroke={mark.strokeWidth ? mark.tone === "ink" ? "#111111" : mark.tone === "gray" ? "#b9b9b9" : "#ffffff" : undefined}
             strokeWidth={mark.strokeWidth} strokeLinecap="round" strokeLinejoin="round" />)}
         </g>
-        {design.family !== "imprint" && <path d={SOLE_OUTLINE} fill="none" stroke="#111111" strokeWidth="1.1" vectorEffect="non-scaling-stroke" />}
+        <path d={SOLE_OUTLINE} fill="none" stroke="#111111" strokeWidth="1.1" vectorEffect="non-scaling-stroke" />
         </>}
       </svg></div>
       {mode === "extracted" && (imageError || (imageData && !extracted?.path)) && <p className={styles.error} role="status">

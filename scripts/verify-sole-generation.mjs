@@ -17,12 +17,15 @@ try {
   await page.goto(`${base}/works/laboratory/sole`, { waitUntil: 'networkidle' });
   const style = page.getByRole('combobox', { name: 'Style' });
   assert.equal(await style.inputValue(), 'imprint');
+  const outline = await page.locator('section svg > path').getAttribute('d');
+  assert(outline?.length > 500, 'The original shoe outline must remain visible');
   const patterns = new Set();
   const tiles = [];
   for (let index = 0; index < 12; index++) {
     if (index) await page.getByRole('button', { name: 'new pattern' }).click();
     const paths = await page.locator('section svg g path').evaluateAll(nodes => nodes.map(node => node.getAttribute('d')));
     assert(paths.length >= 10, 'Imprint should have forefoot and heel pieces');
+    assert.equal(await page.locator('section svg > path').getAttribute('d'), outline, 'Regeneration must not change the outline');
     patterns.add(paths.join('|'));
     const screenshot = await page.locator('section svg').screenshot();
     const tile = await sharp(screenshot).extract({ left: 454, top: 0, width: 340, height: 624 }).png().toBuffer();
