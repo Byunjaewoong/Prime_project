@@ -93,7 +93,9 @@ export class StepPrints {
         for (let vertex = 0; vertex < 3; vertex++) {
           const positionIndex = index ? index.getX(i + vertex) : i + vertex;
           point.fromBufferAttribute(positions, positionIndex).applyMatrix4(mesh.matrixWorld);
-          const x = (point.x - center.x) / size.x * TEXTURE_WIDTH + TEXTURE_WIDTH / 2;
+          // The decal is rotated 180 degrees in its plane, so texture X runs
+          // opposite to the shoe's local X. Account for that before stamping.
+          const x = TEXTURE_WIDTH / 2 - (point.x - center.x) / size.x * TEXTURE_WIDTH;
           const y = TEXTURE_HEIGHT / 2 - (point.z - center.z) / size.z * TEXTURE_HEIGHT;
           if (vertex === 0) context.moveTo(x, y); else context.lineTo(x, y);
         }
