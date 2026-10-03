@@ -55,7 +55,7 @@ function traceOutline() {
 // White is recessed rubber, black is raised contact, gray is the low-load waist.
 export const SOLE_OUTLINE = traceOutline();
 
-export type SoleFamily = "trail" | "chevron" | "waffle" | "segmented";
+export type SoleFamily = "imprint" | "trail" | "chevron" | "waffle" | "segmented";
 export type SoleMark = {
   d: string;
   tone: "ink" | "paper" | "gray";
@@ -64,6 +64,7 @@ export type SoleMark = {
 };
 
 export const SOLE_FAMILIES: { value: SoleFamily; label: string }[] = [
+  { value: "imprint", label: "Imprint shapes" },
   { value: "trail", label: "Trail lugs" },
   { value: "chevron", label: "Chevron grip" },
   { value: "waffle", label: "Waffle grid" },
@@ -113,7 +114,163 @@ function rotated(angle: number, x: number, y: number) {
   return `rotate(${rounded(angle)} ${rounded(x)} ${rounded(y)})`;
 }
 
+function softPod(cx: number, cy: number, width: number, height: number, taper: number) {
+  const left = cx - width / 2;
+  const right = cx + width / 2;
+  const top = cy - height / 2;
+  const bottom = cy + height / 2;
+  return `M ${rounded(left + width * 0.14)} ${rounded(top)}
+    C ${rounded(cx - width * 0.17)} ${rounded(top - height * 0.12)} ${rounded(right - width * 0.12)} ${rounded(top + height * 0.08)} ${rounded(right)} ${rounded(cy - height * taper)}
+    Q ${rounded(right + width * 0.08)} ${rounded(bottom - height * 0.06)} ${rounded(right - width * 0.22)} ${rounded(bottom)}
+    C ${rounded(cx - width * 0.09)} ${rounded(bottom + height * 0.08)} ${rounded(left - width * 0.11)} ${rounded(bottom - height * 0.1)} ${rounded(left)} ${rounded(cy + height * 0.04)}
+    Q ${rounded(left - width * 0.03)} ${rounded(top + height * 0.2)} ${rounded(left + width * 0.14)} ${rounded(top)} Z`;
+}
+
+function crescent(cx: number, y: number, width: number, height: number, upsideDown = false) {
+  const transform = upsideDown ? `translate(0 ${rounded(2 * y + height)}) scale(1 -1)` : undefined;
+  const d = `M ${rounded(cx - width / 2)} ${rounded(y + height * 0.66)}
+    C ${rounded(cx - width * 0.43)} ${rounded(y + height * 0.17)} ${rounded(cx - width * 0.21)} ${rounded(y)} ${rounded(cx)} ${rounded(y)}
+    C ${rounded(cx + width * 0.21)} ${rounded(y)} ${rounded(cx + width * 0.43)} ${rounded(y + height * 0.17)} ${rounded(cx + width / 2)} ${rounded(y + height * 0.66)}
+    Q ${rounded(cx + width * 0.47)} ${rounded(y + height * 0.91)} ${rounded(cx + width * 0.28)} ${rounded(y + height * 0.78)}
+    Q ${rounded(cx + width * 0.12)} ${rounded(y + height * 0.53)} ${rounded(cx)} ${rounded(y + height * 0.7)}
+    Q ${rounded(cx - width * 0.12)} ${rounded(y + height * 0.53)} ${rounded(cx - width * 0.28)} ${rounded(y + height * 0.78)}
+    Q ${rounded(cx - width * 0.47)} ${rounded(y + height * 0.91)} ${rounded(cx - width / 2)} ${rounded(y + height * 0.66)} Z`;
+  return { d, transform };
+}
+
+function generateImprint(seed: number): SoleMark[] {
+  const next = randomSource(seed);
+  const random = (min: number, max: number) => min + (max - min) * next();
+  const integer = (min: number, max: number) => Math.floor(random(min, max + 1));
+  const marks: SoleMark[] = [];
+  const solid = (d: string, transform?: string) => marks.push({ d, transform, tone: "ink" });
+  const motif = integer(0, 3);
+  const toe = integer(0, 2);
+  const heel = integer(0, 2);
+  const center = random(196, 224);
+  const lean = random(-18, 18);
+  const toeWidth = random(174, 254);
+  const heelWidth = random(145, 220);
+
+  if (toe === 0) {
+    const cap = crescent(center + lean * 0.35, random(38, 57), toeWidth, random(78, 111));
+    solid(cap.d);
+  } else if (toe === 1) {
+    for (const side of [-1, 1]) {
+      const x = center + side * toeWidth * 0.29;
+      solid(softPod(x, 87, toeWidth * 0.38, random(65, 88), side * 0.12), rotated(side * random(8, 17), x, 87));
+    }
+  } else {
+    for (let index = 0; index < 3; index++) {
+      const x = center + (index - 1) * toeWidth * 0.32;
+      solid(softPod(x, 85 + (index === 1 ? -10 : 14), toeWidth * 0.25, random(58, 80), 0.12),
+        rotated((index - 1) * random(8, 15), x, 85));
+    }
+  }
+
+  const forefootRows = motif === 1 ? integer(4, 5) : integer(4, 7);
+  const forefootStart = random(173, 203);
+  const forefootEnd = random(458, 492);
+  const forefootPitch = (forefootEnd - forefootStart) / (forefootRows - 1);
+  const forefootWidth = random(255, 300);
+  for (let row = 0; row < forefootRows; row++) {
+    const progress = row / Math.max(1, forefootRows - 1);
+    const y = forefootStart + (forefootEnd - forefootStart) * progress;
+    const rowCenter = center + lean * (progress - 0.3) + random(-6, 6);
+    const width = forefootWidth * (0.94 + Math.sin(progress * Math.PI) * 0.08);
+    if (motif === 1) {
+      // Two long diagonal blades form a V-shaped, herringbone contact zone.
+      for (const side of [-1, 1]) {
+        const x = rowCenter + side * random(53, 69);
+        solid(softPod(x, y + random(-5, 5), random(78, 96), random(22, 31), side * 0.12),
+          rotated(side * random(22, 36), x, y));
+      }
+      if (row % 2 === 0) solid(circle(rowCenter, y + random(-5, 5), random(7, 12)));
+      continue;
+    }
+    if (motif === 2) {
+      // Staggered, separated pebble pads change both the column count and offset.
+      const columns = row % 2 ? 4 : 3;
+      for (let column = 0; column < columns; column++) {
+        const x = rowCenter + (column - (columns - 1) / 2) * (width / (columns + 0.25));
+        const cy = y + random(-4, 4);
+        const size = random(43, 64);
+        solid(softPod(x, cy, size, random(28, Math.min(43, forefootPitch * 0.72)), random(-0.15, 0.2)), rotated(random(-16, 16), x, cy));
+      }
+      continue;
+    }
+    if (motif === 3) {
+      // Repeating broad arcs make a distinct segmented wave tread.
+      const band = crescent(rowCenter, y - 19, width * random(0.59, 0.75), random(35, 43));
+      solid(band.d);
+      continue;
+    }
+    const sideWidth = random(48, 66);
+    for (const side of [-1, 1]) {
+      const x = rowCenter + side * (width / 2 - sideWidth / 2);
+      const sy = y + random(-5, 5);
+      const height = random(29, Math.min(52, forefootPitch * 0.72));
+      const angle = side * random(4, 20);
+      solid(softPod(x, sy, sideWidth, height, side * random(-0.08, 0.19)), rotated(angle, x, sy));
+    }
+    const innerCount = row % 3 === 1 ? 1 : 2;
+    for (let index = 0; index < innerCount; index++) {
+      const side = innerCount === 1 ? 0 : index ? 1 : -1;
+      const x = rowCenter + side * random(26, 35);
+      const iy = y + random(-6, 6);
+      const size = random(26, 39);
+      solid(softPod(x, iy, size, random(20, Math.min(33, forefootPitch * 0.65)), side * 0.16), rotated(side * random(34, 56), x, iy));
+    }
+  }
+
+  // The open waist is deliberate: a small number of marks can vary without filling the arch.
+  if (next() < 0.45) {
+    const waistCount = integer(1, 3);
+    for (let index = 0; index < waistCount; index++) {
+      const y = 565 + index * 47 + random(-13, 13);
+      const x = center + random(-64, 64);
+      solid(softPod(x, y, random(24, 49), random(12, 23), 0.1), rotated(random(-35, 35), x, y));
+    }
+  }
+
+  const heelRows = integer(2, 4);
+  const heelPitch = 116 / Math.max(1, heelRows - 1);
+  for (let row = 0; row < heelRows; row++) {
+    const y = 764 + row * heelPitch + random(-5, 5);
+    const rowCenter = center - lean * 0.5 + random(-7, 7);
+    const width = heelWidth * random(0.78, 0.98);
+    for (const side of [-1, 1]) {
+      const x = rowCenter + side * width * 0.3;
+      const padWidth = width * random(0.33, 0.39);
+      const padHeight = random(23, Math.min(42, heelPitch * 0.75));
+      if (heel === 1) solid(roundedRect(x - padWidth / 2, y - padHeight / 2, padWidth, padHeight, padHeight * 0.36),
+        rotated(side * random(1, 12), x, y));
+      else solid(softPod(x, y, padWidth, padHeight, side * 0.12), rotated(side * random(3, 18), x, y));
+    }
+    if (heel !== 2 || row % 2 === 0) {
+      const dotCount = integer(1, 2);
+      for (let index = 0; index < dotCount; index++) {
+        const x = rowCenter + (index - (dotCount - 1) / 2) * 12;
+        solid(circle(x, y + random(-4, 4), random(3, 6)));
+      }
+    }
+  }
+  if (heel === 0) {
+    const cap = crescent(center - lean * 0.5, 908, heelWidth, random(70, 91), true);
+    solid(cap.d, cap.transform);
+  } else if (heel === 1) {
+    solid(softPod(center - lean * 0.5, 958, heelWidth * 0.86, random(43, 57), 0.04));
+  } else {
+    for (const side of [-1, 1]) {
+      const x = center - lean * 0.5 + side * heelWidth * 0.23;
+      solid(softPod(x, 960, heelWidth * 0.44, random(39, 55), side * 0.11), rotated(side * 9, x, 960));
+    }
+  }
+  return marks;
+}
+
 export function generateSole(seed: number, family: SoleFamily): SoleMark[] {
+  if (family === "imprint") return generateImprint(seed);
   const next = randomSource(seed);
   const random = (min: number, max: number) => min + (max - min) * next();
   const archNext = randomSource(seed ^ 0x9e3779b9);

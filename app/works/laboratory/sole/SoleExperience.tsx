@@ -8,7 +8,7 @@ import { extractSoleShape } from "./core/extractSoleShape";
 import styles from "./sole.module.css";
 
 type Design = { seed: number; family: SoleFamily };
-const INITIAL_DESIGN: Design = { seed: 24637, family: "trail" };
+const INITIAL_DESIGN: Design = { seed: 394, family: "imprint" };
 // Cropped from Rens ten Hagen's CC0 image: https://commons.wikimedia.org/wiki/File:Schoenafdruk.png
 const SAMPLE_IMAGE = "/sole-reference.png";
 
@@ -45,14 +45,7 @@ export default function SoleExperience() {
 
   const regenerate = () => {
     const nextSeed = Math.floor(Math.random() * 0xffffffff);
-    const familyAdvance = 1 + Math.floor(Math.random() * (SOLE_FAMILIES.length - 1));
-    setDesign(previous => {
-      const index = SOLE_FAMILIES.findIndex(option => option.value === previous.family);
-      return {
-        seed: nextSeed,
-        family: SOLE_FAMILIES[(index + familyAdvance) % SOLE_FAMILIES.length].value,
-      };
-    });
+    setDesign(previous => ({ ...previous, seed: nextSeed }));
   };
 
   const downloadShape = () => {
@@ -81,6 +74,11 @@ export default function SoleExperience() {
           <button type="button" aria-pressed={mode === "generated"} onClick={() => setMode("generated")}>Generated</button>
           <button type="button" aria-pressed={mode === "extracted"} onClick={() => setMode("extracted")}>Image shape</button>
         </div>
+        {mode === "generated" && <label className={styles.familySelect}>Style
+          <select value={design.family} onChange={event => setDesign(previous => ({ ...previous, family: event.target.value as SoleFamily }))}>
+            {SOLE_FAMILIES.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>}
         {mode === "extracted" && <div className={styles.imageControls}>
           <label className={styles.upload}>Choose image<input type="file" accept="image/png,image/jpeg,image/webp" onChange={event => {
             const file = event.currentTarget.files?.[0];
@@ -101,13 +99,14 @@ export default function SoleExperience() {
         <defs>
           <clipPath id="sole-outline-clip"><path d={SOLE_OUTLINE} /></clipPath>
         </defs>
-        <g clipPath="url(#sole-outline-clip)">
+        <g clipPath={design.family === "imprint" ? undefined : "url(#sole-outline-clip)"}
+          transform={design.family === "imprint" ? "translate(-21 0) scale(1.1 1)" : undefined}>
           {marks.map((mark, index) => <path key={index} d={mark.d} transform={mark.transform}
             fill={mark.strokeWidth ? "none" : mark.tone === "ink" ? "#111111" : mark.tone === "gray" ? "#b9b9b9" : "#ffffff"}
             stroke={mark.strokeWidth ? mark.tone === "ink" ? "#111111" : mark.tone === "gray" ? "#b9b9b9" : "#ffffff" : undefined}
             strokeWidth={mark.strokeWidth} strokeLinecap="round" strokeLinejoin="round" />)}
         </g>
-        <path d={SOLE_OUTLINE} fill="none" stroke="#111111" strokeWidth="1.1" vectorEffect="non-scaling-stroke" />
+        {design.family !== "imprint" && <path d={SOLE_OUTLINE} fill="none" stroke="#111111" strokeWidth="1.1" vectorEffect="non-scaling-stroke" />}
         </>}
       </svg></div>
       {mode === "extracted" && (imageError || (imageData && !extracted?.path)) && <p className={styles.error} role="status">

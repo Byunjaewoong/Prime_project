@@ -10,6 +10,8 @@
 .modeChoices { display: flex; gap: 4px; }
 .modeChoices button, .sample, .upload { min-height: 32px; padding: 6px 10px; border: 1px solid #bbb; border-radius: 4px; background: #fff; color: #111; cursor: pointer; font: 11px var(--font-courier), monospace; }
 .modeChoices button[aria-pressed="true"] { background: #111; border-color: #111; color: #fff; }
+.familySelect { display: flex; align-items: center; gap: 7px; color: #555; font-size: 11px; }
+.familySelect select { min-height: 32px; border: 1px solid #bbb; border-radius: 4px; background: #fff; color: #111; padding: 4px 8px; font: 11px var(--font-courier), monospace; }
 .imageControls { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; }
 .upload { position: relative; overflow: hidden; }
 .upload input { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; }
@@ -21,7 +23,7 @@
 .error { margin: 0; color: #9a2424; font-size: 11px; text-align: center; }
 .footer { min-height: 46px; display: flex; justify-content: space-between; align-items: center; padding: 0 clamp(18px, 4vw, 54px); color: #777; font-size: 10px; letter-spacing: .05em; }
 .footer a { color: inherit; }
-.modeChoices button:focus-visible, .sample:focus-visible, .upload:focus-within, .threshold input:focus-visible { outline: 2px solid #111; outline-offset: 3px; }
+.modeChoices button:focus-visible, .familySelect select:focus-visible, .sample:focus-visible, .upload:focus-within, .threshold input:focus-visible { outline: 2px solid #111; outline-offset: 3px; }
 @media (max-width: 520px) {
   .header { min-height: 58px; gap: 6px; }
   .back, .regenerate { font-size: 10px; }
