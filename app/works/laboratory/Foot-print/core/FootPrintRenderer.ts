@@ -2,14 +2,17 @@ import { DEFAULT_COLOR, DEFAULT_LIGHT_DIRECTION, DEFAULT_NOISE, type LightDirect
 import { PAINTED_PERLIN_GLSL } from "../../Painted/core/paintedNoise";
 
 export type FootPrintShape = "circle" | "square" | "triangle";
-export type ImpressionLayer = "layer1" | "layer2";
+export type ImpressionLayer = "layer1" | "layer2" | "layer3";
+export const IMPRESSION_LAYERS: ImpressionLayer[] = ["layer1", "layer2", "layer3"];
+export const DEFAULT_LAYER_DEPTH: Record<ImpressionLayer, number> = { layer1: 4, layer2: 10, layer3: 20 };
+export const DEFAULT_LAYER_SHADOW: Record<ImpressionLayer, number> = { layer1: 0.25, layer2: 0.5, layer3: 0.8 };
 
 type Stamp = { x: number; y: number; shape: FootPrintShape; size: number; depth: number; layer: ImpressionLayer };
 type SurfaceSettings = { noise: NoiseParams; color: string; shadowDepth: number };
 const MAX_STAMPS = 120;
 export const DEFAULT_INSIDE_NOISE: NoiseParams = { ...DEFAULT_NOISE, scale: 28, roughness: 0.6 };
-export const DEFAULT_LAYER2_NOISE: NoiseParams = { ...DEFAULT_INSIDE_NOISE, scale: 10, seed: 73 };
-export const DEFAULT_INSIDE_SHADOW_DEPTH = 0.8;
+export const DEFAULT_LAYER2_NOISE: NoiseParams = { ...DEFAULT_INSIDE_NOISE, scale: 20, seed: 73 };
+export const DEFAULT_LAYER3_NOISE: NoiseParams = { ...DEFAULT_INSIDE_NOISE, scale: 40, seed: 19 };
 
 const VERTEX_SHADER = `#version 300 es
 layout(location = 0) in vec2 aPosition;
@@ -25,18 +28,25 @@ uniform int uCount;
 uniform vec3 uLight;
 uniform vec3 uColor1;
 uniform vec3 uColor2;
+uniform vec3 uColor3;
 uniform float uShadowDepth1;
 uniform float uShadowDepth2;
+uniform float uShadowDepth3;
 uniform float uScale1;
 uniform float uScale2;
+uniform float uScale3;
 uniform int uOctaves1;
 uniform int uOctaves2;
+uniform int uOctaves3;
 uniform float uRoughness1;
 uniform float uRoughness2;
+uniform float uRoughness3;
 uniform float uRelief1;
 uniform float uRelief2;
+uniform float uRelief3;
 uniform float uSeed1;
 uniform float uSeed2;
+uniform float uSeed3;
 uniform float uSeed;
 out vec4 outColor;
 
@@ -72,7 +82,15 @@ float smoothMin(float a, float b, float softness) {
   return min(a, b) - blend * blend * softness * 0.25;
 }
 
-vec4 unionField(vec2 pixel) {
+struct ImpressionField {
+  float distanceToEdge;
+  float depth;
+  float wallWidth;
+  float layer2Mix;
+  float layer3Mix;
+};
+
+ImpressionField unionField(vec2 pixel) {
   vec2 world = (pixel - uViewport * 0.5) * 2.0 + uViewport * 0.5;
   float fineEdge = perlin(world / 6.0 + vec2(41.3));
   float broadEdge = perlin(world / 17.0 + vec2(7.1));
@@ -82,6 +100,7 @@ vec4 unionField(vec2 pixel) {
   float wallSum = 0.0;
   float weightSum = 0.0;
   float layer2Sum = 0.0;
+  float layer3Sum = 0.0;
   for (int index = 0; index < ${MAX_STAMPS}; index++) {
     if (index >= uCount) break;
     vec4 stamp = texelFetch(uStampData, ivec2(index, 0), 0);
@@ -92,18 +111,19 @@ vec4 unionField(vec2 pixel) {
     depthSum += (stamp.w - float(code) * 32.0) * weight;
     wallSum += clamp(stamp.z * 0.22, 5.0, 12.0) * weight;
     weightSum += weight;
-    layer2Sum += float(code / 3) * weight;
+    layer2Sum += float(code >= 3 && code < 6) * weight;
+    layer3Sum += float(code >= 6) * weight;
   }
   float wallWidth = wallSum / max(weightSum, 0.0001);
   wallWidth *= clamp(1.0 + fineEdge * 0.32 + broadEdge * 0.42, 0.7, 1.3);
-  return vec4(distanceToEdge, depthSum / max(weightSum, 0.0001), wallWidth,
-    layer2Sum / max(weightSum, 0.0001));
+  return ImpressionField(distanceToEdge, depthSum / max(weightSum, 0.0001), wallWidth,
+    layer2Sum / max(weightSum, 0.0001), layer3Sum / max(weightSum, 0.0001));
 }
 
 float wallHeight(vec2 pixel) {
-  vec4 field = unionField(pixel);
-  float wallWidth = max(field.z, 5.0);
-  return -field.y * (1.0 - smoothstep(-wallWidth, 2.0, field.x));
+  ImpressionField field = unionField(pixel);
+  float wallWidth = max(field.wallWidth, 5.0);
+  return -field.depth * (1.0 - smoothstep(-wallWidth, 2.0, field.distanceToEdge));
 }
 
 float interiorNoise(vec2 pixel, float scale, int octaves, float roughness, float seed) {
@@ -125,24 +145,26 @@ float interiorNoise(vec2 pixel, float scale, int octaves, float roughness, float
 
 void main() {
   vec2 pixel = vec2(gl_FragCoord.x / uRatio, uViewport.y - gl_FragCoord.y / uRatio);
-  vec4 field = unionField(pixel);
-  float distanceToEdge = field.x;
-  float layer2Mix = clamp(field.w, 0.0, 1.0);
-  float wallWidth = max(field.z, 5.0);
+  ImpressionField field = unionField(pixel);
+  float distanceToEdge = field.distanceToEdge;
+  float layer2Mix = clamp(field.layer2Mix, 0.0, 1.0);
+  float layer3Mix = clamp(field.layer3Mix, 0.0, 1.0);
+  float layer1Mix = max(0.0, 1.0 - layer2Mix - layer3Mix);
+  vec3 layerWeights = vec3(layer1Mix, layer2Mix, layer3Mix);
+  layerWeights /= max(dot(layerWeights, vec3(1.0)), 0.0001);
+  layer1Mix = layerWeights.x;
+  layer2Mix = layerWeights.y;
+  layer3Mix = layerWeights.z;
+  float wallWidth = max(field.wallWidth, 5.0);
   float bottom = 1.0 - smoothstep(-wallWidth * 1.5, -wallWidth * 0.45, distanceToEdge);
   float texturedSurface = 1.0 - smoothstep(-wallWidth * 2.0, 2.0, distanceToEdge);
-  float grain;
-  if (layer2Mix >= 0.999) {
-    grain = interiorNoise(pixel, uScale2, uOctaves2, uRoughness2, uSeed2);
-  } else {
-    grain = interiorNoise(pixel, uScale1, uOctaves1, uRoughness1, uSeed1);
-    if (layer2Mix > 0.001) {
-      grain = mix(grain, interiorNoise(pixel, uScale2, uOctaves2, uRoughness2, uSeed2), layer2Mix);
-    }
-  }
-  float relief = mix(uRelief1, uRelief2, layer2Mix);
-  float shadowDepth = mix(uShadowDepth1, uShadowDepth2, layer2Mix);
-  float height = -field.y * (1.0 - smoothstep(-wallWidth, 2.0, distanceToEdge))
+  float grain = 0.0;
+  if (layer1Mix > 0.001) grain += layer1Mix * interiorNoise(pixel, uScale1, uOctaves1, uRoughness1, uSeed1);
+  if (layer2Mix > 0.001) grain += layer2Mix * interiorNoise(pixel, uScale2, uOctaves2, uRoughness2, uSeed2);
+  if (layer3Mix > 0.001) grain += layer3Mix * interiorNoise(pixel, uScale3, uOctaves3, uRoughness3, uSeed3);
+  float relief = dot(layerWeights, vec3(uRelief1, uRelief2, uRelief3));
+  float shadowDepth = dot(layerWeights, vec3(uShadowDepth1, uShadowDepth2, uShadowDepth3));
+  float height = -field.depth * (1.0 - smoothstep(-wallWidth, 2.0, distanceToEdge))
     + grain * relief * 0.5 * texturedSurface;
   vec3 normal = normalize(vec3(-dFdx(height) * uRatio, -dFdy(height) * uRatio, 1.0));
   if (distanceToEdge > 4.0) discard;
@@ -159,7 +181,8 @@ void main() {
   }
 
   float wall = smoothstep(-wallWidth, 2.0, distanceToEdge);
-  vec3 snow = mix(uColor1, uColor2, layer2Mix) * mix(0.82 + grain * 0.18, 0.98, wall * 0.72);
+  vec3 snow = (uColor1 * layer1Mix + uColor2 * layer2Mix + uColor3 * layer3Mix)
+    * mix(0.82 + grain * 0.18, 0.98, wall * 0.72);
   float diffuse = mix(1.0, 0.28 + 0.72 * max(dot(normal, light), 0.0), shadowDepth);
   vec3 color = snow * diffuse * (1.0 - 0.72 * min(shadowDepth, 1.0) * wallShadow * bottom);
   float alpha = 1.0 - smoothstep(-3.0, 4.5, distanceToEdge);
@@ -195,8 +218,9 @@ export class FootPrintRenderer {
   private readonly stampTexture: WebGLTexture | null = null;
   private readonly stamps: Stamp[] = [];
   private readonly surfaces: Record<ImpressionLayer, SurfaceSettings> = {
-    layer1: { noise: { ...DEFAULT_INSIDE_NOISE }, color: DEFAULT_COLOR, shadowDepth: DEFAULT_INSIDE_SHADOW_DEPTH },
-    layer2: { noise: { ...DEFAULT_LAYER2_NOISE }, color: DEFAULT_COLOR, shadowDepth: DEFAULT_INSIDE_SHADOW_DEPTH },
+    layer1: { noise: { ...DEFAULT_INSIDE_NOISE }, color: DEFAULT_COLOR, shadowDepth: DEFAULT_LAYER_SHADOW.layer1 },
+    layer2: { noise: { ...DEFAULT_LAYER2_NOISE }, color: DEFAULT_COLOR, shadowDepth: DEFAULT_LAYER_SHADOW.layer2 },
+    layer3: { noise: { ...DEFAULT_LAYER3_NOISE }, color: DEFAULT_COLOR, shadowDepth: DEFAULT_LAYER_SHADOW.layer3 },
   };
   private lightDirection: LightDirection = [...DEFAULT_LIGHT_DIRECTION];
   private readonly onResize = () => this.renderAll();
@@ -307,7 +331,7 @@ export class FootPrintRenderer {
       gl.uniform3f(gl.getUniformLocation(program, "uLight"), ...this.lightDirection);
       // Keep the impression edge stable while each interior layer varies independently.
       gl.uniform1f(gl.getUniformLocation(program, "uSeed"), DEFAULT_INSIDE_NOISE.seed);
-      for (const [layer, suffix] of [["layer1", "1"], ["layer2", "2"]] as const) {
+      for (const [layer, suffix] of [["layer1", "1"], ["layer2", "2"], ["layer3", "3"]] as const) {
         const { noise, color, shadowDepth } = this.surfaces[layer];
         gl.uniform3f(gl.getUniformLocation(program, `uColor${suffix}`), ...colorChannels(color));
         gl.uniform1f(gl.getUniformLocation(program, `uShadowDepth${suffix}`), shadowDepth);
@@ -359,7 +383,7 @@ export class FootPrintRenderer {
       const y = stamp.y * cssHeight;
       const bound = stamp.size + 18;
       const shapeIndex = stamp.shape === "circle" ? 0 : stamp.shape === "square" ? 1 : 2;
-      const layerIndex = stamp.layer === "layer1" ? 0 : 1;
+      const layerIndex = IMPRESSION_LAYERS.indexOf(stamp.layer);
       // Depth stays below 32; the remaining bands retain shape and texture per stamp.
       data.set([x, y, stamp.size, stamp.depth + (shapeIndex + layerIndex * 3) * 32], index * 4);
       minX = Math.min(minX, x - bound);
@@ -386,7 +410,7 @@ export class FootPrintRenderer {
     const ratio = this.canvas.width / this.canvas.clientWidth;
     context.clearRect(0, 0, this.canvas.width, this.canvas.height);
     for (const group of this.overlappingGroups(this.canvas.clientWidth, this.canvas.clientHeight)) {
-      for (const layer of ["layer1", "layer2"] as const) {
+      for (const layer of IMPRESSION_LAYERS) {
         const layerStamps = group.filter(stamp => stamp.layer === layer);
         if (!layerStamps.length) continue;
         const { color, shadowDepth } = this.surfaces[layer];

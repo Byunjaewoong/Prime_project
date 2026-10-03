@@ -7,7 +7,7 @@ import DragOnlyRange from "../Painted/DragOnlyRange";
 import LightDirectionSphere from "../Painted/LightDirectionSphere";
 import { DEFAULT_COLOR, DEFAULT_LIGHT_DIRECTION, DEFAULT_NOISE, DEFAULT_SHADOW_DEPTH, PaintedRenderer, type LightDirection, type NoiseParams } from "../Painted/core/PaintedRenderer";
 import { PAINTED_NOISE_CONTROLS } from "../Painted/noiseControls";
-import { DEFAULT_INSIDE_NOISE, DEFAULT_INSIDE_SHADOW_DEPTH, DEFAULT_LAYER2_NOISE, FootPrintRenderer, type FootPrintShape, type ImpressionLayer } from "./core/FootPrintRenderer";
+import { DEFAULT_INSIDE_NOISE, DEFAULT_LAYER2_NOISE, DEFAULT_LAYER3_NOISE, DEFAULT_LAYER_DEPTH, DEFAULT_LAYER_SHADOW, IMPRESSION_LAYERS, FootPrintRenderer, type FootPrintShape, type ImpressionLayer } from "./core/FootPrintRenderer";
 import paintedStyles from "../Painted/painted.module.css";
 import styles from "./footprint.module.css";
 
@@ -22,6 +22,7 @@ const SURFACE_TABS: { value: SurfaceTab; label: string }[] = [
   { value: "outside", label: "Outside" },
   { value: "layer1", label: "Layer 1" },
   { value: "layer2", label: "Layer 2" },
+  { value: "layer3", label: "Layer 3" },
 ];
 
 export default function FootPrintExperience() {
@@ -32,21 +33,19 @@ export default function FootPrintExperience() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [shape, setShape] = useState<FootPrintShape>("circle");
   const [size, setSize] = useState(36);
-  const [depth, setDepth] = useState(4);
+  const [layerDepth, setLayerDepth] = useState<Record<ImpressionLayer, number>>({ ...DEFAULT_LAYER_DEPTH });
   const [impressionLayer, setImpressionLayer] = useState<ImpressionLayer>("layer1");
   const [surfaceTab, setSurfaceTab] = useState<SurfaceTab>("layer1");
   const [outsideNoise, setOutsideNoise] = useState<NoiseParams>(DEFAULT_NOISE);
   const [layerNoise, setLayerNoise] = useState<Record<ImpressionLayer, NoiseParams>>({
     layer1: DEFAULT_INSIDE_NOISE,
     layer2: DEFAULT_LAYER2_NOISE,
+    layer3: DEFAULT_LAYER3_NOISE,
   });
   const [outsideColor, setOutsideColor] = useState(DEFAULT_COLOR);
-  const [layerColor, setLayerColor] = useState<Record<ImpressionLayer, string>>({ layer1: DEFAULT_COLOR, layer2: DEFAULT_COLOR });
+  const [layerColor, setLayerColor] = useState<Record<ImpressionLayer, string>>({ layer1: DEFAULT_COLOR, layer2: DEFAULT_COLOR, layer3: DEFAULT_COLOR });
   const [outsideShadow, setOutsideShadow] = useState(DEFAULT_SHADOW_DEPTH);
-  const [layerShadow, setLayerShadow] = useState<Record<ImpressionLayer, number>>({
-    layer1: DEFAULT_INSIDE_SHADOW_DEPTH,
-    layer2: DEFAULT_INSIDE_SHADOW_DEPTH,
-  });
+  const [layerShadow, setLayerShadow] = useState<Record<ImpressionLayer, number>>({ ...DEFAULT_LAYER_SHADOW });
   const [lightDirection, setLightDirection] = useState<LightDirection>(DEFAULT_LIGHT_DIRECTION);
 
   useEffect(() => {
@@ -68,7 +67,7 @@ export default function FootPrintExperience() {
   const pressSnow = (event: PointerEvent<HTMLCanvasElement>) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     const rect = event.currentTarget.getBoundingClientRect();
-    printsRef.current?.stamp(event.clientX - rect.left, event.clientY - rect.top, shape, size, depth, impressionLayer);
+    printsRef.current?.stamp(event.clientX - rect.left, event.clientY - rect.top, shape, size, layerDepth[impressionLayer], impressionLayer);
   };
 
   const updateLightDirection = (direction: LightDirection) => {
@@ -134,19 +133,20 @@ export default function FootPrintExperience() {
           <div className={paintedStyles.control}>
             <span className={paintedStyles.controlLabel}>Interior texture</span>
             <div className={styles.layerChoices} role="group" aria-label="Impression interior texture">
-              {(["layer1", "layer2"] as const).map(layer => <button key={layer} type="button"
+              {IMPRESSION_LAYERS.map(layer => <button key={layer} type="button"
                 className={styles.shapeChoice} aria-pressed={impressionLayer === layer}
-                onClick={() => setImpressionLayer(layer)}>{layer === "layer1" ? "Layer 1" : "Layer 2"}</button>)}
+                onClick={() => { setImpressionLayer(layer); setSurfaceTab(layer); }}>Layer {IMPRESSION_LAYERS.indexOf(layer) + 1}</button>)}
             </div>
           </div>
           <div className={paintedStyles.control}>
             <span className={paintedStyles.controlLabel}><span>Size</span><output>{size}</output></span>
             <DragOnlyRange label="Impression size" min={18} max={80} step={1} value={size} onChange={setSize} />
           </div>
-          <div className={paintedStyles.control}>
-            <span className={paintedStyles.controlLabel}><span>Depth</span><output>{depth}</output></span>
-            <DragOnlyRange label="Impression depth" min={2} max={25} step={1} value={depth} onChange={setDepth} />
-          </div>
+          {IMPRESSION_LAYERS.map((layer, index) => <div className={paintedStyles.control} key={layer}>
+            <span className={paintedStyles.controlLabel}><span>Layer {index + 1} depth</span><output>{layerDepth[layer]}</output></span>
+            <DragOnlyRange label={`Layer ${index + 1} impression depth`} min={2} max={25} step={1}
+              value={layerDepth[layer]} onChange={value => setLayerDepth(current => ({ ...current, [layer]: value }))} />
+          </div>)}
           <button className={paintedStyles.playButton} type="button" onClick={() => printsRef.current?.clear()}>Clear prints</button>
           <span className={paintedStyles.sectionTitle}>Surface texture</span>
           <div className={styles.surfaceTabs} role="tablist" aria-label="Surface texture area">
