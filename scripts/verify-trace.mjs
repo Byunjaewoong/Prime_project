@@ -30,8 +30,9 @@ try {
     await page.waitForTimeout(1900);
     await page.screenshot({ path: path.join(output, `${mobile ? 'mobile' : 'desktop'}-print.png`) });
     const printPixels = await page.locator('canvas[data-print-count]').evaluate(canvas => {
-      const context = canvas.getContext('2d');
-      const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      const context = canvas.getContext('webgl2');
+      const data = new Uint8Array(canvas.width * canvas.height * 4);
+      context.readPixels(0, 0, canvas.width, canvas.height, context.RGBA, context.UNSIGNED_BYTE, data);
       let count = 0, edge = 0, darkest = 255, lightest = 0;
       for (let index = 0; index < data.length; index += 4) {
         const alpha = data[index + 3];
