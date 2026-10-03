@@ -42,9 +42,9 @@ try {
   const mobile = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   mobile.on('pageerror', error => errors.push(String(error)));
   await mobile.goto(`${base}/works/laboratory/sole`, { waitUntil: 'networkidle' });
-  const before = await mobile.locator('section svg g path').first().getAttribute('d');
+  const before = await mobile.locator('section svg g path').evaluateAll(nodes => nodes.map(node => node.getAttribute('d')).join('|'));
   await mobile.getByRole('button', { name: 'new pattern' }).click();
-  assert.notEqual(await mobile.locator('section svg g path').first().getAttribute('d'), before);
+  assert.notEqual(await mobile.locator('section svg g path').evaluateAll(nodes => nodes.map(node => node.getAttribute('d')).join('|')), before);
   assert(await mobile.evaluate(() => document.documentElement.scrollHeight <= innerHeight));
   assert.deepEqual(errors, []);
   console.log('12 distinct product treads, fixed outline, randomized product, and mobile regeneration OK');

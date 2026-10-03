@@ -10,6 +10,11 @@ export type StepContact = {
   length: number;
   width: number;
   pressure: number;
+  screen?: {
+    x: number; y: number;
+    sideX: number; sideY: number;
+    heelX: number; heelY: number;
+  };
 };
 
 const TEXTURE_WIDTH = 420;
@@ -60,6 +65,7 @@ export class StepPrints {
   private length = SHOE_LENGTH;
 
   get dimensions() { return { width: this.width, length: this.length }; }
+  get centerOffset() { return this.offset; }
 
   matchShoeSole(shoe: THREE.Group) {
     shoe.updateMatrixWorld(true);

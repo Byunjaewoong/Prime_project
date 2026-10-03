@@ -53,9 +53,10 @@ export class StepApp {
   private destroyed = false;
   private paused = false;
 
-  constructor(private readonly canvas: HTMLCanvasElement, private readonly onContact?: (contact: StepContact) => void) {
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
-    this.renderer.setClearColor(0xffffff);
+  constructor(private readonly canvas: HTMLCanvasElement, private readonly onContact?: (contact: StepContact) => void,
+    private readonly options: { transparentBackground?: boolean; renderPrints?: boolean } = {}) {
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: !!options.transparentBackground, powerPreference: "high-performance" });
+    this.renderer.setClearColor(0xffffff, options.transparentBackground ? 0 : 1);
     this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.12;
@@ -76,7 +77,8 @@ export class StepApp {
     this.model = new StepModel(); this.scene.add(this.model.shoe);
     this.model.shoe.visible = false;
     void this.loadShoe();
-    this.prints = new StepPrints(); this.scene.add(this.prints.group);
+    this.prints = new StepPrints();
+    if (options.renderPrints !== false) this.scene.add(this.prints.group);
     this.observer = new ResizeObserver(() => this.resize()); this.observer.observe(canvas);
     document.addEventListener("visibilitychange", this.onVisibility);
     canvas.addEventListener("webglcontextlost", this.onContextLost);
@@ -186,7 +188,25 @@ export class StepApp {
       step.stamped = true;
       const { length, width } = this.prints.dimensions;
       const contact: StepContact = { position: step.contact.clone(), heading: step.heading, length, width, pressure: 1 };
-      this.prints.stamp(contact); this.onContact?.(contact);
+      if (this.options.renderPrints !== false) this.prints.stamp(contact);
+      if (this.onContact) {
+        const side = new THREE.Vector3(-Math.cos(step.heading) * width, 0, Math.sin(step.heading) * width);
+        const heel = new THREE.Vector3(-Math.sin(step.heading) * length, 0, -Math.cos(step.heading) * length);
+        const center = step.contact.clone().addScaledVector(heel, -this.prints.centerOffset / length);
+        const project = (point: THREE.Vector3) => {
+          const ndc = point.project(this.camera);
+          return { x: (ndc.x + 1) * this.canvas.clientWidth / 2, y: (1 - ndc.y) * this.canvas.clientHeight / 2 };
+        };
+        const screenCenter = project(center.clone());
+        const screenSide = project(center.clone().add(side));
+        const screenHeel = project(center.clone().add(heel));
+        contact.screen = {
+          x: screenCenter.x, y: screenCenter.y,
+          sideX: screenSide.x - screenCenter.x, sideY: screenSide.y - screenCenter.y,
+          heelX: screenHeel.x - screenCenter.x, heelY: screenHeel.y - screenCenter.y,
+        };
+        this.onContact(contact);
+      }
     }
     if (t >= 1) {
       this.step = null; shoe.visible = false; this.passage.end();
