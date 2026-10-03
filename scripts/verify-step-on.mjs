@@ -59,15 +59,15 @@ try {
       const clean = await pixels(page, `${name}-${index}-clean`, viewport);
       assert(clean.ink < 0.001, 'Changing controls must not trigger a step');
       await tap(viewport.width * 0.52, viewport.height * 0.54);
-      await page.clock.runFor(1100);
+      await page.clock.runFor(550);
       const planted = await pixels(page, `${name}-${index}-plant`, viewport);
       assert(planted.ink > 0.08 && planted.dark < 0.98, 'A close-cropped shoe must land');
       assert(planted.span > Math.min(viewport.width, viewport.height - 96) * 0.85, 'The shoe must extend beyond the close crop');
-      await page.clock.runFor(750);
+      await page.clock.runFor(470);
       const moving = await pixels(page, `${name}-${index}-moving`, viewport);
       assert(moving.dark < 0.98, `No foreground cloth may cover the view for ${direction}`);
       closeups.push(planted.ink);
-      await page.clock.runFor(1250);
+      await page.clock.runFor(650);
       const print = await pixels(page, `${name}-${index}-trace`, viewport);
       assert(print.ink > 0.005 && print.ink < 0.9 && print.dark < 0.001, 'Only the close-up footprint should remain');
       assert(print.span > Math.min(viewport.width, viewport.height) * 0.65, 'The close crop must leave a large footprint');
@@ -77,7 +77,7 @@ try {
     }
     // One pending click replaces earlier pending clicks; it must not interrupt a plant.
     await tap(viewport.width * 0.3, viewport.height * 0.6);
-    await page.clock.runFor(600);
+    await page.clock.runFor(300);
     await tap(viewport.width * 0.7, viewport.height * 0.4);
     await page.clock.runFor(300);
     await menu();
@@ -88,7 +88,7 @@ try {
     const still = await pixels(page, `${name}-paused-later`, viewport);
     assert.equal(still.ink, paused.ink, 'Pause must retain the pose');
     await menu(); await page.getByRole('button', { name: 'Resume motion', exact: true }).click(); await close();
-    await page.clock.runFor(6100);
+    await page.clock.runFor(3600);
     await pixels(page, `${name}-queued-complete`, viewport);
     await menu(); await page.getByRole('button', { name: 'Clear footprints', exact: true }).click(); await close();
     const cleared = await pixels(page, `${name}-cleared`, viewport);

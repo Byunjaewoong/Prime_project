@@ -24,6 +24,7 @@ export async function loadShoeAsset(): Promise<THREE.Group> {
       let material = assigned.get(key);
       if (!material) {
         material = new THREE.MeshStandardMaterial({ ...style, side: THREE.DoubleSide });
+        material.name = key;
         assigned.set(key, material);
       }
       return material;

@@ -13,7 +13,7 @@ The menu offers four fixed directions or non-repeating random directions,
   frames roughly 0.14 m of ground, so only part of the 0.32 m shoe fits in
   view even on a tall phone screen.
 - A ray/ground-plane intersection determines the sole's landing position.
-- One 2.8-second cycle approaches, plants, transfers weight, and lifts away.
+- One 1.55-second cycle approaches quickly, plants briefly, then accelerates away.
 - The sole remains fixed during stance. The shoe enters and exits beyond the
   close crop, without a trouser leg or foreground-cloth occlusion.
 - A busy cycle retains only the latest pending click, without interrupting the
@@ -21,9 +21,11 @@ The menu offers four fixed directions or non-repeating random directions,
 
 ## Models and future snow integration
 
-`StepModel` generates the shoe upper, sole layers, panels, stitching, eyelets,
-and laces. No external GLB or bitmap download is needed.
-`StepPrints` reuses the existing SOLE outline and seeded tread generator.
+The supplied `/shoes.obj` is normalized to a 0.32 m length. `StepModel` provides
+a procedural fallback while the OBJ loads or if loading fails. The OBJ's outsole
+is projected onto the ground to size and mask `StepPrints`; the existing seeded
+SOLE tread is retained inside that measured outline. The source MTL references
+no external bitmap, and the OBJ uses portable in-app material colours.
 
 `StepApp` emits one `StepContact` on full sole contact. The callback includes
 world position, heading, width, length and pressure. A later snow-impression

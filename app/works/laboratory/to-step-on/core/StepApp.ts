@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { disposeObject } from "@/app/lib/disposeObject";
-import { SHOE_LENGTH, SHOE_WIDTH, StepModel } from "./StepModel";
+import { StepModel } from "./StepModel";
 import { loadShoeAsset } from "./ShoeAsset";
 import { StepPrints, type StepContact } from "./StepPrints";
 
@@ -8,7 +8,7 @@ export type StepDirection = "random" | "right" | "left" | "down" | "up";
 export type StepSettings = { direction: StepDirection; speed: number };
 export const DEFAULT_STEP_SETTINGS: StepSettings = { direction: "random", speed: 1 };
 const DIRECTIONS = ["right", "down", "left", "up"] as const;
-const DURATION = 2.8;
+const DURATION = 1.55;
 const CAMERA_HEIGHT = 0.5;
 const CAMERA_GROUND_OFFSET = 0.065;
 const SHORT_EDGE_FOV = 16;
@@ -87,6 +87,7 @@ export class StepApp {
       const asset = await loadShoeAsset();
       if (this.destroyed) { disposeObject(asset); return; }
       // Preserve the animated parent transform while swapping its fallback geometry.
+      this.prints.matchShoeSole(asset);
       disposeObject(this.model.shoe);
       this.model.shoe.add(asset);
     } catch (error) {
@@ -147,11 +148,11 @@ export class StepApp {
     const step = this.step; if (!step) return;
     step.time += dt * this.settings.speed;
     const t = step.time / DURATION;
-    const plantAt = 0.32, liftAt = 0.58;
+    const plantAt = 0.3, liftAt = 0.48;
     const shoe = this.model.shoe;
     shoe.rotation.set(0, step.heading, 0);
     if (t < plantAt) {
-      const u = clamp(t / plantAt, 0, 1), ease = 1 - Math.pow(1 - u, 2.2);
+      const u = clamp(t / plantAt, 0, 1), ease = 1 - Math.pow(1 - u, 1.55);
       shoe.position.lerpVectors(step.start, step.contact, ease);
       shoe.position.y = Math.sin(Math.PI * u) * 0.19 + (1 - u) * 0.1;
       shoe.rotateX(-0.17 * (1 - u) + Math.sin(u * Math.PI) * 0.16);
@@ -160,14 +161,16 @@ export class StepApp {
       // Heel settles first; the entire sole is planted before the body crosses.
       shoe.rotateX(-0.075 * (1 - smooth((t - plantAt) / 0.055)));
     } else {
-      const u = smooth((t - liftAt) / 0.3);
-      shoe.position.lerpVectors(step.contact, step.end, u);
+      const u = clamp((t - liftAt) / (1 - liftAt), 0, 1);
+      const travel = Math.pow(u, 1.7);
+      shoe.position.lerpVectors(step.contact, step.end, travel);
       shoe.position.y = Math.sin(Math.PI * u) * 0.2 + u * 0.08;
       shoe.rotateX(u * 0.52);
     }
-    if (!step.stamped && t >= plantAt + 0.055) {
+    if (!step.stamped && t >= plantAt + 0.03) {
       step.stamped = true;
-      const contact: StepContact = { position: step.contact.clone(), heading: step.heading, length: SHOE_LENGTH, width: SHOE_WIDTH, pressure: 1 };
+      const { length, width } = this.prints.dimensions;
+      const contact: StepContact = { position: step.contact.clone(), heading: step.heading, length, width, pressure: 1 };
       this.prints.stamp(contact); this.onContact?.(contact);
     }
     if (t >= 1) {

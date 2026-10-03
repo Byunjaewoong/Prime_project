@@ -12,10 +12,18 @@ export type StepContact = {
   pressure: number;
 };
 
-function createPrintTexture() {
-  const canvas = document.createElement("canvas"); canvas.width = 420; canvas.height = 1000;
+const TEXTURE_WIDTH = 420;
+const TEXTURE_HEIGHT = 1000;
+
+function createPrintTexture(silhouette?: HTMLCanvasElement) {
+  const canvas = document.createElement("canvas"); canvas.width = TEXTURE_WIDTH; canvas.height = TEXTURE_HEIGHT;
   const context = canvas.getContext("2d")!;
-  context.clip(new Path2D(SOLE_OUTLINE));
+  if (silhouette) {
+    context.globalAlpha = 0.15;
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, TEXTURE_WIDTH, TEXTURE_HEIGHT);
+    context.globalAlpha = 1;
+  } else context.clip(new Path2D(SOLE_OUTLINE));
   for (const mark of generateSole(24637, "trail")) {
     context.save();
     if (mark.transform) {
@@ -33,6 +41,10 @@ function createPrintTexture() {
     } else context.fill(path);
     context.restore();
   }
+  if (silhouette) {
+    context.globalCompositeOperation = "destination-in";
+    context.drawImage(silhouette, 0, 0);
+  }
   const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
   return texture;
@@ -40,15 +52,68 @@ function createPrintTexture() {
 
 export class StepPrints {
   readonly group = new THREE.Group();
-  private readonly texture = createPrintTexture();
-  private readonly geometry = new THREE.PlaneGeometry(SHOE_WIDTH / 0.85, SHOE_LENGTH);
+  private texture = createPrintTexture();
+  private geometry = new THREE.PlaneGeometry(SHOE_WIDTH / 0.85, SHOE_LENGTH);
   private readonly material = new THREE.MeshBasicMaterial({ color: "#585855", map: this.texture, transparent: true, opacity: 0.28, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+  private offset = 0.017;
+  private width = SHOE_WIDTH;
+  private length = SHOE_LENGTH;
+
+  get dimensions() { return { width: this.width, length: this.length }; }
+
+  matchShoeSole(shoe: THREE.Group) {
+    shoe.updateMatrixWorld(true);
+    const sole: THREE.Mesh[] = [];
+    shoe.traverse(object => {
+      if (object instanceof THREE.Mesh && (
+        Array.isArray(object.material) ? object.material.some(material => material.name === "insole") : object.material.name === "insole"
+      )) sole.push(object);
+    });
+    if (!sole.length) return;
+
+    const bounds = new THREE.Box3();
+    for (const mesh of sole) bounds.expandByObject(mesh);
+    const size = bounds.getSize(new THREE.Vector3());
+    const center = bounds.getCenter(new THREE.Vector3());
+    if (size.x <= 0 || size.z <= 0) return;
+    const mask = document.createElement("canvas");
+    mask.width = TEXTURE_WIDTH; mask.height = TEXTURE_HEIGHT;
+    const context = mask.getContext("2d")!;
+    context.fillStyle = "#fff";
+    context.strokeStyle = "#fff";
+    context.lineWidth = 1.5;
+    context.lineJoin = "round";
+    const point = new THREE.Vector3();
+    for (const mesh of sole) {
+      const positions = mesh.geometry.getAttribute("position");
+      const index = mesh.geometry.getIndex();
+      const count = index?.count ?? positions.count;
+      for (let i = 0; i + 2 < count; i += 3) {
+        context.beginPath();
+        for (let vertex = 0; vertex < 3; vertex++) {
+          const positionIndex = index ? index.getX(i + vertex) : i + vertex;
+          point.fromBufferAttribute(positions, positionIndex).applyMatrix4(mesh.matrixWorld);
+          const x = (point.x - center.x) / size.x * TEXTURE_WIDTH + TEXTURE_WIDTH / 2;
+          const y = TEXTURE_HEIGHT / 2 - (point.z - center.z) / size.z * TEXTURE_HEIGHT;
+          if (vertex === 0) context.moveTo(x, y); else context.lineTo(x, y);
+        }
+        context.closePath(); context.fill(); context.stroke();
+      }
+    }
+
+    const texture = createPrintTexture(mask);
+    const geometry = new THREE.PlaneGeometry(size.x, size.z);
+    this.group.traverse(object => { if (object instanceof THREE.Mesh) object.geometry = geometry; });
+    this.geometry.dispose(); this.texture.dispose();
+    this.texture = texture; this.geometry = geometry; this.material.map = texture; this.material.needsUpdate = true;
+    this.width = size.x; this.length = size.z; this.offset = center.z;
+  }
 
   stamp(contact: StepContact) {
     const pivot = new THREE.Group(); pivot.position.copy(contact.position); pivot.position.y = 0.0015;
     pivot.rotation.y = contact.heading;
     const print = new THREE.Mesh(this.geometry, this.material);
-    print.rotation.set(-Math.PI / 2, 0, Math.PI); print.position.z = 0.017;
+    print.rotation.set(-Math.PI / 2, 0, Math.PI); print.position.z = this.offset;
     pivot.add(print); this.group.add(pivot);
     // Shared geometries/materials make retained prints inexpensive and bounded.
     if (this.group.children.length > 64) this.group.remove(this.group.children[0]);
