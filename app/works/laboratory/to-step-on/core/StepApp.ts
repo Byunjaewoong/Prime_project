@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { disposeObject } from "@/app/lib/disposeObject";
 import { StepModel } from "./StepModel";
 import { loadShoeAsset } from "./ShoeAsset";
+import { PassingSilhouette } from "./PassingSilhouette";
 import { StepPrints, type StepContact } from "./StepPrints";
 
 export type StepDirection = "random" | "right" | "left" | "down" | "up";
@@ -34,6 +35,7 @@ export class StepApp {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(SHORT_EDGE_FOV, 1, 0.015, 30);
   private readonly model: StepModel;
+  private readonly passage: PassingSilhouette;
   private readonly prints: StepPrints;
   private readonly floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private readonly raycaster = new THREE.Raycaster();
@@ -56,6 +58,7 @@ export class StepApp {
     // Knee height, looking almost straight down (about 7 degrees off vertical).
     this.camera.position.set(0, CAMERA_HEIGHT, CAMERA_GROUND_OFFSET); this.camera.lookAt(0, 0, 0);
     this.scene.add(this.camera);
+    this.passage = new PassingSilhouette(this.camera);
     this.scene.add(new THREE.HemisphereLight(0xf0f3ff, 0x9b9891, 2.15));
     const light = new THREE.DirectionalLight(0xfff8ed, 3.1);
     light.position.set(-1.8, 4, 2.5); light.castShadow = true;
@@ -126,6 +129,7 @@ export class StepApp {
     const end = this.worldAt(endNdc) ?? contact.clone().addScaledVector(forward, 1.7);
     this.step = { time: 0, contact, start, end, heading: Math.atan2(forward.x, forward.z), stamped: false };
     this.model.shoe.visible = true;
+    this.passage.begin(direction);
     this.lastTime = 0;
   }
 
@@ -139,6 +143,7 @@ export class StepApp {
     // the 0.32 m shoe remains visible, including on tall phone viewports.
     this.camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(SHORT_EDGE_FOV / 2)) / Math.min(1, this.camera.aspect)));
     this.camera.updateProjectionMatrix();
+    this.passage.resize();
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, width < 760 ? 1.5 : 1.75));
     this.renderer.setSize(width, height, false);
     this.render();
@@ -148,6 +153,7 @@ export class StepApp {
     const step = this.step; if (!step) return;
     step.time += dt * this.settings.speed;
     const t = step.time / DURATION;
+    this.passage.update(t);
     const plantAt = 0.3, liftAt = 0.48;
     const shoe = this.model.shoe;
     shoe.rotation.set(0, step.heading, 0);
@@ -174,7 +180,7 @@ export class StepApp {
       this.prints.stamp(contact); this.onContact?.(contact);
     }
     if (t >= 1) {
-      this.step = null; shoe.visible = false;
+      this.step = null; shoe.visible = false; this.passage.end();
       if (this.queued) { const next = this.queued; this.queued = null; this.beginStep(next); }
     }
   }

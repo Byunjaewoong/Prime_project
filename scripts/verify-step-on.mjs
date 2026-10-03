@@ -17,10 +17,16 @@ async function pixels(page, name, viewport) {
   // Exclude floating controls and the development badge from visual assertions.
   const { data, info } = await sharp(png).extract({ left: 8, top: 8, width: viewport.width - 16, height: viewport.height - 96 }).removeAlpha().raw().toBuffer({ resolveWithObject: true });
   let dark = 0, ink = 0;
+  const sides = { left: 0, right: 0, top: 0, bottom: 0 };
   let minX = info.width, minY = info.height, maxX = -1, maxY = -1;
   for (let i = 0; i < data.length; i += info.channels) {
     const value = (data[i] + data[i + 1] + data[i + 2]) / 3;
-    if (value < 30) dark++;
+    if (value < 30) {
+      dark++;
+      const pixel = i / info.channels, x = pixel % info.width, y = Math.floor(pixel / info.width);
+      sides[x < info.width / 2 ? 'left' : 'right']++;
+      sides[y < info.height / 2 ? 'top' : 'bottom']++;
+    }
     if (value < 245) {
       ink++;
       const pixel = i / info.channels, x = pixel % info.width, y = Math.floor(pixel / info.width);
@@ -28,7 +34,9 @@ async function pixels(page, name, viewport) {
       minY = Math.min(minY, y); maxY = Math.max(maxY, y);
     }
   }
-  return { dark: dark / (info.width * info.height), ink: ink / (info.width * info.height), span: Math.max(0, maxX - minX + 1, maxY - minY + 1) };
+  const half = info.width * info.height / 2;
+  for (const side of Object.keys(sides)) sides[side] /= half;
+  return { dark: dark / (info.width * info.height), sides, ink: ink / (info.width * info.height), span: Math.max(0, maxX - minX + 1, maxY - minY + 1) };
 }
 
 try {
@@ -63,11 +71,17 @@ try {
       const planted = await pixels(page, `${name}-${index}-plant`, viewport);
       assert(planted.ink > 0.08 && planted.dark < 0.98, 'A close-cropped shoe must land');
       assert(planted.span > Math.min(viewport.width, viewport.height - 96) * 0.85, 'The shoe must extend beyond the close crop');
-      await page.clock.runFor(470);
+      await page.clock.runFor(370);
       const moving = await pixels(page, `${name}-${index}-moving`, viewport);
-      assert(moving.dark < 0.98, `No foreground cloth may cover the view for ${direction}`);
+      const entering = ['left', 'right', 'top', 'bottom'][index];
+      const opposite = { left: 'right', right: 'left', top: 'bottom', bottom: 'top' }[entering];
+      assert(moving.sides[entering] > moving.sides[opposite] + 0.15,
+        `The black silhouette must enter from the ${entering} for ${direction}`);
+      await page.clock.runFor(240);
+      const blackout = await pixels(page, `${name}-${index}-blackout`, viewport);
+      assert(blackout.dark > 0.8, `The passing silhouette must cover the frame for ${direction}`);
       closeups.push(planted.ink);
-      await page.clock.runFor(650);
+      await page.clock.runFor(540);
       const print = await pixels(page, `${name}-${index}-trace`, viewport);
       assert(print.ink > 0.005 && print.ink < 0.9 && print.dark < 0.001, 'Only the close-up footprint should remain');
       assert(print.span > Math.min(viewport.width, viewport.height) * 0.65, 'The close crop must leave a large footprint');

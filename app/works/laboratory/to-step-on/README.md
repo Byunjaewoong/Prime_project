@@ -14,6 +14,8 @@ The menu offers four fixed directions or non-repeating random directions,
   view even on a tall phone screen.
 - A ray/ground-plane intersection determines the sole's landing position.
 - One 1.55-second cycle approaches quickly, plants briefly, then accelerates away.
+- A black camera-space silhouette sweeps in the step direction after contact,
+  briefly covers the view, and clears to reveal the retained footprint.
 - The sole remains fixed during stance. The shoe enters and exits beyond the
   close crop, without a trouser leg or foreground-cloth occlusion.
 - A busy cycle retains only the latest pending click, without interrupting the
