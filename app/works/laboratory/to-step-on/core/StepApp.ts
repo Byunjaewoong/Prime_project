@@ -14,6 +14,8 @@ const CAMERA_HEIGHT = 0.5;
 const CAMERA_GROUND_OFFSET = 0.065;
 const SHORT_EDGE_FOV = 16;
 const OFFSCREEN_NDC = 4.5;
+// Measured at the OBJ's raised collar after its 0.32 m normalization.
+const SHOE_ANKLE = new THREE.Vector3(-0.01, 0.12, -0.05);
 const clamp = THREE.MathUtils.clamp;
 const smooth = (value: number) => { const t = clamp(value, 0, 1); return t * t * (3 - 2 * t); };
 const screenDirection = (direction: Exclude<StepDirection, "random">) => new THREE.Vector2(
@@ -39,6 +41,8 @@ export class StepApp {
   private readonly prints: StepPrints;
   private readonly floor = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private readonly raycaster = new THREE.Raycaster();
+  private readonly projectedAnkle = new THREE.Vector3();
+  private readonly projectedAnkleScreen = new THREE.Vector2();
   private readonly observer: ResizeObserver;
   private settings = { ...DEFAULT_STEP_SETTINGS };
   private step: Step | null = null;
@@ -153,7 +157,6 @@ export class StepApp {
     const step = this.step; if (!step) return;
     step.time += dt * this.settings.speed;
     const t = step.time / DURATION;
-    this.passage.update(t);
     const plantAt = 0.3, liftAt = 0.48;
     const shoe = this.model.shoe;
     shoe.rotation.set(0, step.heading, 0);
@@ -173,6 +176,12 @@ export class StepApp {
       shoe.position.y = Math.sin(Math.PI * u) * 0.2 + u * 0.08;
       shoe.rotateX(u * 0.52);
     }
+    this.camera.updateMatrixWorld();
+    this.projectedAnkle.copy(SHOE_ANKLE);
+    shoe.localToWorld(this.projectedAnkle);
+    this.projectedAnkle.project(this.camera);
+    this.projectedAnkleScreen.set(this.projectedAnkle.x, this.projectedAnkle.y);
+    this.passage.update(t, this.projectedAnkleScreen);
     if (!step.stamped && t >= plantAt + 0.03) {
       step.stamped = true;
       const { length, width } = this.prints.dimensions;

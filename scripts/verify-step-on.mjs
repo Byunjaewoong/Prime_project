@@ -68,13 +68,16 @@ try {
       assert(clean.ink < 0.001, 'Changing controls must not trigger a step');
       await tap(viewport.width * 0.52, viewport.height * 0.54);
       await page.clock.runFor(550);
+      const entrance = await pixels(page, `${name}-${index}-entrance`, viewport);
+      const entering = ['left', 'right', 'top', 'bottom'][index];
+      const opposite = { left: 'right', right: 'left', top: 'bottom', bottom: 'top' }[entering];
+      assert(entrance.sides[entering] > entrance.sides[opposite] + 0.05,
+        `The trouser silhouette must arrive with the shoe from the ${entering}`);
       const planted = await pixels(page, `${name}-${index}-plant`, viewport);
       assert(planted.ink > 0.08 && planted.dark < 0.98, 'A close-cropped shoe must land');
       assert(planted.span > Math.min(viewport.width, viewport.height - 96) * 0.85, 'The shoe must extend beyond the close crop');
       await page.clock.runFor(370);
       const moving = await pixels(page, `${name}-${index}-moving`, viewport);
-      const entering = ['left', 'right', 'top', 'bottom'][index];
-      const opposite = { left: 'right', right: 'left', top: 'bottom', bottom: 'top' }[entering];
       assert(moving.sides[entering] > moving.sides[opposite] + 0.15,
         `The black silhouette must enter from the ${entering} for ${direction}`);
       await page.clock.runFor(240);
