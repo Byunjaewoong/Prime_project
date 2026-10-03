@@ -19,9 +19,11 @@ try {
     await page.getByRole('button', { name: /Trace\. Click or tap/ }).waitFor();
     assert.equal(await page.locator('canvas[data-print-count]').getAttribute('data-print-count'), '0');
     await page.screenshot({ path: path.join(output, `${mobile ? 'mobile' : 'desktop'}-initial.png`) });
+    const contactStart = Date.now();
     if (mobile) await page.touchscreen.tap(195, 350);
     else await page.mouse.click(640, 390);
     await page.waitForFunction(() => document.querySelector('canvas[data-print-count]')?.getAttribute('data-print-count') === '1', null, { timeout: 8000 });
+    const contactMs = Date.now() - contactStart;
     const firstProduct = await page.locator('canvas[data-product]').getAttribute('data-product');
     assert(firstProduct);
     await page.screenshot({ path: path.join(output, `${mobile ? 'mobile' : 'desktop'}-contact.png`) });
@@ -30,11 +32,18 @@ try {
     const printPixels = await page.locator('canvas[data-print-count]').evaluate(canvas => {
       const context = canvas.getContext('2d');
       const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
-      let count = 0;
-      for (let index = 3; index < data.length; index += 4) if (data[index] > 0) count++;
-      return count;
+      let count = 0, edge = 0, darkest = 255, lightest = 0;
+      for (let index = 0; index < data.length; index += 4) {
+        const alpha = data[index + 3];
+        if (alpha > 0) count++;
+        if (alpha > 15 && alpha < 245) edge++;
+        if (alpha > 245) { darkest = Math.min(darkest, data[index]); lightest = Math.max(lightest, data[index]); }
+      }
+      return { count, edge, contrast: lightest - darkest };
     });
-    assert(printPixels > 1000, `Expected a visible footprint; got ${printPixels} pixels`);
+    assert(printPixels.count > 1000, `Expected a visible footprint; got ${printPixels.count} pixels`);
+    assert(printPixels.edge > 100, 'The impression needs a softened boundary wall');
+    assert(printPixels.contrast > 25, 'The two impression depths need visible contrast');
     if (mobile) await page.touchscreen.tap(250, 470);
     else await page.mouse.click(870, 470);
     await page.waitForFunction(() => document.querySelector('canvas[data-print-count]')?.getAttribute('data-print-count') === '2', null, { timeout: 8000 });
@@ -50,7 +59,7 @@ try {
     assert.equal(await page.locator('canvas[data-print-count]').getAttribute('data-print-count'), '0');
     assert.deepEqual(errors, []);
     assert(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight));
-    console.log(`${mobile ? 'mobile' : 'desktop'}: step, stamped sole, layers, clear, and layout OK`);
+    console.log(`${mobile ? 'mobile' : 'desktop'}: step, stamped sole, layers, clear, and layout OK (${contactMs} ms to contact)`);
     await page.close();
   }
 } finally { await browser.close(); }
