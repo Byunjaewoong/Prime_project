@@ -55,12 +55,43 @@ try {
     await page.getByRole('button', { name: 'Open menu' }).click();
     assert(await page.getByRole('slider', { name: /Layer 1 depth/ }).isVisible());
     assert(await page.getByRole('slider', { name: /Layer 2 depth/ }).isVisible());
+    assert(await page.getByRole('slider', { name: /Layer 3 depth/ }).isVisible());
+    assert.equal(await page.getByRole('button', { name: 'Shoe', exact: true }).getAttribute('aria-pressed'), 'true');
+    assert.equal(await page.getByRole('slider', { name: 'Impression size' }).inputValue(), '36');
     await page.getByRole('slider', { name: /Layer 2 depth/ }).fill('14');
+    for (const tab of ['Outside', 'Layer 1', 'Layer 2', 'Layer 3']) {
+      await page.getByRole('tab', { name: tab }).click();
+      assert(await page.getByRole('slider', { name: /Noise scale/ }).isVisible());
+      assert(await page.getByRole('slider', { name: /Detail layers/ }).isVisible());
+      assert(await page.getByRole('slider', { name: /Detail strength/ }).isVisible());
+      assert(await page.getByRole('slider', { name: /Height \/ relief/ }).isVisible());
+      assert(await page.getByRole('slider', { name: /Pattern seed/ }).isVisible());
+      assert(await page.getByLabel(/base color/).isVisible());
+      assert(await page.getByRole('slider', { name: /shadow depth/ }).isVisible());
+    }
+    await page.getByRole('tab', { name: 'Layer 1' }).click();
+    await page.getByRole('slider', { name: 'layer1 Noise scale' }).fill('12');
+    await page.getByLabel('layer1 base color').fill('#d06050');
+    await page.getByRole('tab', { name: 'Outside' }).click();
+    await page.getByRole('slider', { name: 'outside Noise scale' }).fill('34');
+    await page.getByRole('slider', { name: /Light direction sphere/ }).press('ArrowRight');
+    assert.equal(await page.locator('canvas[data-print-count]').getAttribute('data-print-count'), '2',
+      'Surface changes should retain both impressions');
+    await page.screenshot({ path: path.join(output, `${mobile ? 'mobile' : 'desktop'}-controls.png`) });
     await page.getByRole('button', { name: 'Clear footprints' }).click();
     assert.equal(await page.locator('canvas[data-print-count]').getAttribute('data-print-count'), '0');
+    await page.getByRole('button', { name: 'Circle', exact: true }).click();
+    await page.getByRole('slider', { name: 'Impression size' }).fill('60');
+    await page.getByRole('button', { name: /Layer 3 on outer edge/ }).click();
+    await page.getByRole('button', { name: 'Close menu' }).click();
+    if (mobile) await page.touchscreen.tap(195, 350);
+    else await page.mouse.click(640, 390);
+    await page.waitForFunction(() => document.querySelector('canvas[data-print-count]')?.getAttribute('data-print-count') === '1', null, { timeout: 8000 });
+    await page.waitForTimeout(1700);
+    await page.screenshot({ path: path.join(output, `${mobile ? 'mobile' : 'desktop'}-circle.png`) });
     assert.deepEqual(errors, []);
     assert(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight));
-    console.log(`${mobile ? 'mobile' : 'desktop'}: step, stamped sole, layers, clear, and layout OK (${contactMs} ms to contact)`);
+    console.log(`${mobile ? 'mobile' : 'desktop'}: step, three layers, surface tabs, light, shape, clear, and layout OK (${contactMs} ms to contact)`);
     await page.close();
   }
 } finally { await browser.close(); }

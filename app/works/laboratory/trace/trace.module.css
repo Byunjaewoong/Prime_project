@@ -8,3 +8,18 @@
 .layerControl label { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 7px; font-size: 10px; color: #555; }
 .layerControl output { color: #222; }
 .layerControl input { grid-column: 1 / -1; width: calc(100% - 18px); margin: 0 9px; accent-color: #555; touch-action: pan-y; }
+.controlTitle { display: block; margin: 10px 0 8px; color: #555; font-size: 10px; }
+.choices, .surfaceTabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.choices button, .surfaceTabs button, .edgeButton { min-height: 36px; padding: 5px; border: 1px solid #dedede; border-radius: 6px; background: #fff; color: #555; font: 10px var(--font-courier), monospace; cursor: pointer; }
+.choices button[aria-pressed="true"], .surfaceTabs button[aria-selected="true"], .edgeButton[aria-pressed="true"] { border-color: #202020; background: #202020; color: #fff; }
+.edgeButton { width: 100%; margin-top: 10px; }
+.rangeControl { display: grid; gap: 8px; margin: 14px 0; color: #555; font-size: 10px; }
+.rangeControl span { display: flex; justify-content: space-between; gap: 8px; }
+.rangeControl output { color: #222; font-variant-numeric: tabular-nums; }
+.rangeControl input { width: calc(100% - 24px); margin: 0 12px; accent-color: #555; touch-action: pan-y; }
+.surfaceControls { margin-top: 12px; padding: 2px 0; }
+.colorPicker { display: flex; min-height: 38px; align-items: center; justify-content: space-between; padding: 0 8px; border: 1px solid #dedede; border-radius: 6px; color: #555; font-size: 10px; }
+.colorPicker input { width: 44px; height: 28px; border: 0; background: transparent; }
+.lightControl { display: grid; justify-items: center; gap: 4px; }
+.lightCoordinates { display: flex; justify-content: space-between; width: 100%; color: #666; font-size: 10px; }
+.choices button:focus-visible, .surfaceTabs button:focus-visible, .edgeButton:focus-visible, .rangeControl input:focus-visible, .colorPicker input:focus-visible { outline: 2px solid #555; outline-offset: 2px; }

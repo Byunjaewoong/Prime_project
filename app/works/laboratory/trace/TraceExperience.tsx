@@ -3,12 +3,20 @@
 import Link from "next/link";
 import { FlaskConical, Home, Pause, Play, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
-import { DEFAULT_LAYER_DEPTH, DEFAULT_LAYER_SHADOW } from "../Foot-print/core/FootPrintRenderer";
-import { PaintedRenderer } from "../Painted/core/PaintedRenderer";
+import {
+  DEFAULT_INSIDE_NOISE, DEFAULT_LAYER2_NOISE, DEFAULT_LAYER3_NOISE,
+  DEFAULT_LAYER_DEPTH, DEFAULT_LAYER_SHADOW, type ImpressionLayer,
+} from "../Foot-print/core/FootPrintRenderer";
+import LightDirectionSphere from "../Painted/LightDirectionSphere";
+import {
+  DEFAULT_COLOR, DEFAULT_LIGHT_DIRECTION, DEFAULT_NOISE, DEFAULT_SHADOW_DEPTH,
+  PaintedRenderer, type LightDirection, type NoiseParams,
+} from "../Painted/core/PaintedRenderer";
+import { PAINTED_NOISE_CONTROLS } from "../Painted/noiseControls";
 import { SOLE_FAMILIES } from "../sole/core/generateSole";
 import type { ProductTread } from "../sole/core/productTreads";
 import { DEFAULT_STEP_SETTINGS, StepApp, type StepDirection } from "../to-step-on/core/StepApp";
-import { TracePrintRenderer } from "./core/TracePrintRenderer";
+import { TracePrintRenderer, type TraceShape } from "./core/TracePrintRenderer";
 import stepStyles from "../to-step-on/step.module.css";
 import styles from "./trace.module.css";
 
@@ -17,7 +25,16 @@ const DIRECTIONS: { value: StepDirection; label: string }[] = [
   { value: "left", label: "Right → Left" }, { value: "down", label: "Top → Bottom" },
   { value: "up", label: "Bottom → Top" },
 ];
-const LAYERS = ["layer1", "layer2"] as const;
+const LAYERS = ["layer1", "layer2", "layer3"] as const;
+type SurfaceTab = "outside" | ImpressionLayer;
+const SURFACE_TABS: { value: SurfaceTab; label: string }[] = [
+  { value: "outside", label: "Outside" }, { value: "layer1", label: "Layer 1" },
+  { value: "layer2", label: "Layer 2" }, { value: "layer3", label: "Layer 3" },
+];
+const SHAPES: { value: TraceShape; label: string }[] = [
+  { value: "shoe", label: "Shoe" }, { value: "circle", label: "Circle" },
+  { value: "square", label: "Square" }, { value: "triangle", label: "Triangle" },
+];
 
 export default function TraceExperience() {
   const snowCanvas = useRef<HTMLCanvasElement>(null);
@@ -27,14 +44,31 @@ export default function TraceExperience() {
   const printsRef = useRef<TracePrintRenderer | null>(null);
   const stepRef = useRef<StepApp | null>(null);
   const lastProduct = useRef<ProductTread | null>(null);
+  const stampOptions = useRef<{ shape: TraceShape; size: number; edgeLayer3: boolean }>({
+    shape: "shoe", size: 36, edgeLayer3: false,
+  });
   const [menuOpen, setMenuOpen] = useState(false);
   const [direction, setDirection] = useState<StepDirection>("random");
   const [speed, setSpeed] = useState(DEFAULT_STEP_SETTINGS.speed);
   const [paused, setPaused] = useState(false);
   const [count, setCount] = useState(0);
   const [currentProduct, setCurrentProduct] = useState<ProductTread | null>(null);
-  const [depth, setDepth] = useState({ layer1: DEFAULT_LAYER_DEPTH.layer1, layer2: DEFAULT_LAYER_DEPTH.layer2 });
-  const [shadow, setShadow] = useState({ layer1: DEFAULT_LAYER_SHADOW.layer1, layer2: DEFAULT_LAYER_SHADOW.layer2 });
+  const [shape, setShape] = useState<TraceShape>("shoe");
+  const [size, setSize] = useState(36);
+  const [edgeLayer3, setEdgeLayer3] = useState(false);
+  const [surfaceTab, setSurfaceTab] = useState<SurfaceTab>("layer1");
+  const [depth, setDepth] = useState({ ...DEFAULT_LAYER_DEPTH });
+  const [layerShadow, setLayerShadow] = useState({ ...DEFAULT_LAYER_SHADOW });
+  const [layerNoise, setLayerNoise] = useState<Record<ImpressionLayer, NoiseParams>>({
+    layer1: { ...DEFAULT_INSIDE_NOISE }, layer2: { ...DEFAULT_LAYER2_NOISE }, layer3: { ...DEFAULT_LAYER3_NOISE },
+  });
+  const [layerColor, setLayerColor] = useState<Record<ImpressionLayer, string>>({
+    layer1: DEFAULT_COLOR, layer2: DEFAULT_COLOR, layer3: DEFAULT_COLOR,
+  });
+  const [outsideNoise, setOutsideNoise] = useState<NoiseParams>({ ...DEFAULT_NOISE });
+  const [outsideColor, setOutsideColor] = useState(DEFAULT_COLOR);
+  const [outsideShadow, setOutsideShadow] = useState(DEFAULT_SHADOW_DEPTH);
+  const [lightDirection, setLightDirection] = useState<LightDirection>([...DEFAULT_LIGHT_DIRECTION]);
   const [unavailable, setUnavailable] = useState(false);
 
   useEffect(() => {
@@ -52,7 +86,7 @@ export default function TraceExperience() {
         const product = options[Math.floor(Math.random() * options.length)].value;
         lastProduct.current = product;
         setCurrentProduct(product);
-        printsRef.current?.stamp(contact, product, 394);
+        printsRef.current?.stamp(contact, product, 394, stampOptions.current);
         setCount(printsRef.current?.count ?? 0);
       }, { transparentBackground: true, renderPrints: false });
       stepRef.current = step;
@@ -72,6 +106,43 @@ export default function TraceExperience() {
     if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
     stepRef.current?.stepAt(event.clientX, event.clientY);
   };
+
+  const updateNoise = (key: keyof NoiseParams, value: number) => {
+    if (surfaceTab === "outside") {
+      setOutsideNoise(current => ({ ...current, [key]: value }));
+      snowRef.current?.setNoise({ [key]: value });
+    } else {
+      const layer = surfaceTab;
+      setLayerNoise(current => ({ ...current, [layer]: { ...current[layer], [key]: value } }));
+      printsRef.current?.setNoise(layer, { [key]: value });
+    }
+  };
+  const updateColor = (value: string) => {
+    if (surfaceTab === "outside") {
+      setOutsideColor(value); snowRef.current?.setColor(value);
+    } else {
+      const layer = surfaceTab;
+      setLayerColor(current => ({ ...current, [layer]: value }));
+      printsRef.current?.setColor(layer, value);
+    }
+  };
+  const updateShadow = (value: number) => {
+    if (surfaceTab === "outside") {
+      setOutsideShadow(value); snowRef.current?.setShadowDepth(value);
+    } else {
+      const layer = surfaceTab;
+      setLayerShadow(current => ({ ...current, [layer]: value }));
+      printsRef.current?.setShadow(layer, value);
+    }
+  };
+  const updateLight = (direction: LightDirection) => {
+    setLightDirection(direction);
+    snowRef.current?.setLightDirection(direction);
+    printsRef.current?.setLightDirection(direction);
+  };
+  const selectedNoise = surfaceTab === "outside" ? outsideNoise : layerNoise[surfaceTab];
+  const selectedColor = surfaceTab === "outside" ? outsideColor : layerColor[surfaceTab];
+  const selectedShadow = surfaceTab === "outside" ? outsideShadow : layerShadow[surfaceTab];
 
   return <main className={styles.page}>
     <canvas ref={snowCanvas} className={styles.snow} aria-hidden="true" />
@@ -118,22 +189,75 @@ export default function TraceExperience() {
         </section>
         <section className={stepStyles.section}>
           <h2>Snow impression</h2>
+          <span className={styles.controlTitle}>Impression shape</span>
+          <div className={styles.choices} role="group" aria-label="Impression shape">
+            {SHAPES.map(choice => <button key={choice.value} type="button" aria-pressed={shape === choice.value}
+              onClick={() => {
+                stampOptions.current.shape = choice.value; setShape(choice.value);
+              }}>{choice.label}</button>)}
+          </div>
+          <p className={stepStyles.note}>Shape and size apply to the next step. Shoe preserves the sole outline.</p>
+          <label className={styles.rangeControl}>
+            <span>Size <output>{size}</output></span>
+            <input type="range" aria-label="Impression size" min="18" max="80" step="1" value={size}
+              onChange={event => {
+                const value = Number(event.target.value);
+                stampOptions.current.size = value; setSize(value);
+              }} />
+          </label>
+          <button className={styles.edgeButton} type="button" aria-pressed={edgeLayer3}
+            onClick={() => {
+              stampOptions.current.edgeLayer3 = !edgeLayer3;
+              setEdgeLayer3(!edgeLayer3);
+            }}>Layer 3 on outer edge · {edgeLayer3 ? "On" : "Off"}</button>
           {LAYERS.map((layer, index) => <div className={styles.layerControl} key={layer}>
             <label>Layer {index + 1} depth <output>{depth[layer]}</output>
-              <input type="range" aria-label={`Layer ${index + 1} depth`} min="0" max="25" step="1" value={depth[layer]}
+              <input type="range" aria-label={`Layer ${index + 1} depth`} min="2" max="25" step="1" value={depth[layer]}
                 onChange={event => {
                   const value = Number(event.target.value);
                   setDepth(current => ({ ...current, [layer]: value })); printsRef.current?.setDepth(layer, value);
                 }} />
             </label>
-            <label>Shadow depth <output>{shadow[layer].toFixed(2)}</output>
-              <input type="range" aria-label={`Layer ${index + 1} shadow depth`} min="0" max="2" step="0.05" value={shadow[layer]}
-                onChange={event => {
-                  const value = Number(event.target.value);
-                  setShadow(current => ({ ...current, [layer]: value })); printsRef.current?.setShadow(layer, value);
-                }} />
-            </label>
           </div>)}
+        </section>
+        <section className={stepStyles.section}>
+          <h2>Surface texture</h2>
+          <div className={styles.surfaceTabs} role="tablist" aria-label="Surface texture area">
+            {SURFACE_TABS.map(tab => <button key={tab.value} type="button" role="tab"
+              aria-selected={surfaceTab === tab.value} aria-controls="trace-surface-controls"
+              onClick={() => setSurfaceTab(tab.value)}>{tab.label}</button>)}
+          </div>
+          <div id="trace-surface-controls" className={styles.surfaceControls} role="tabpanel"
+            aria-label={`${SURFACE_TABS.find(tab => tab.value === surfaceTab)?.label} texture controls`}>
+            <label className={styles.colorPicker}>Base color
+              <input type="color" aria-label={`${surfaceTab} base color`} value={selectedColor}
+                onChange={event => updateColor(event.target.value)} />
+            </label>
+            <label className={styles.rangeControl}>
+              <span>Shadow depth <output>{selectedShadow.toFixed(2)}</output></span>
+              <input type="range" aria-label={`${surfaceTab} shadow depth`} min="0" max="2" step="0.05"
+                value={selectedShadow} onChange={event => updateShadow(Number(event.target.value))} />
+            </label>
+            {PAINTED_NOISE_CONTROLS.map(control => <label className={styles.rangeControl} key={control.key}>
+              <span>{control.label}
+                <output>{selectedNoise[control.key].toFixed(control.step >= 1 ? 0 : 2)}</output></span>
+              <input type="range" aria-label={`${surfaceTab} ${control.label}`} min={control.min}
+                max={control.max} step={control.step} value={selectedNoise[control.key]}
+                onChange={event => updateNoise(control.key, Number(event.target.value))} />
+            </label>)}
+          </div>
+        </section>
+        <section className={stepStyles.section}>
+          <h2>Light</h2>
+          <p className={stepStyles.note}>Drag to rotate the light on snow and impressions.</p>
+          <div className={styles.lightControl}>
+            <LightDirectionSphere direction={lightDirection} onChange={updateLight} />
+            <div className={styles.lightCoordinates}>
+              <span>X {lightDirection[0].toFixed(2)}</span>
+              <span>Y {lightDirection[1].toFixed(2)}</span>
+              <span>Z {lightDirection[2].toFixed(2)}</span>
+            </div>
+          </div>
         </section>
         <section className={stepStyles.section}>
           <h2>Traces · {count}</h2>

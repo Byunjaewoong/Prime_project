@@ -1,12 +1,19 @@
-import { DEFAULT_INSIDE_NOISE, DEFAULT_LAYER2_NOISE, DEFAULT_LAYER_DEPTH, DEFAULT_LAYER_SHADOW } from "../../Foot-print/core/FootPrintRenderer";
-import { DEFAULT_COLOR, DEFAULT_LIGHT_DIRECTION } from "../../Painted/core/PaintedRenderer";
+import {
+  DEFAULT_INSIDE_NOISE, DEFAULT_LAYER2_NOISE, DEFAULT_LAYER3_NOISE,
+  DEFAULT_LAYER_DEPTH, DEFAULT_LAYER_SHADOW, type FootPrintShape, type ImpressionLayer,
+} from "../../Foot-print/core/FootPrintRenderer";
+import { DEFAULT_COLOR, DEFAULT_LIGHT_DIRECTION, type LightDirection, type NoiseParams } from "../../Painted/core/PaintedRenderer";
 import { PAINTED_PERLIN_GLSL } from "../../Painted/core/paintedNoise";
 import { generateSole, SOLE_OUTLINE } from "../../sole/core/generateSole";
 import type { ProductTread } from "../../sole/core/productTreads";
 import type { StepContact } from "../../to-step-on/core/StepPrints";
 
 type ScreenPrint = NonNullable<StepContact["screen"]>;
-type Print = { screen: ScreenPrint; product: ProductTread; seed: number; width: number; height: number };
+export type TraceShape = "shoe" | FootPrintShape;
+type Print = {
+  screen: ScreenPrint; product: ProductTread; seed: number; width: number; height: number;
+  shape: TraceShape; size: number; edgeLayer3: boolean;
+};
 const SOLE_WIDTH = 420, SOLE_HEIGHT = 1000, SCALE = 2, PAD = 56;
 const FIELD_WIDTH = SOLE_WIDTH * SCALE + PAD * 2;
 const FIELD_HEIGHT = SOLE_HEIGHT * SCALE + PAD * 2;
@@ -16,8 +23,12 @@ void main() { gl_Position = vec4(aPosition, 0.0, 1.0); }`;
 const FRAGMENT = `#version 300 es
 precision highp float;
 uniform float uRatio, uDistanceScale, uSeed;
-uniform vec2 uViewport, uCenter, uSide, uHeel, uDepth, uShadow;
-uniform vec3 uLight, uColor;
+uniform vec2 uViewport, uCenter, uSide, uHeel;
+uniform vec3 uDepth, uShadow, uScale, uRoughness, uRelief, uSeeds;
+uniform ivec3 uOctaves;
+uniform vec3 uLight, uColor1, uColor2, uColor3;
+uniform int uShape;
+uniform float uEdgeLayer3;
 uniform sampler2D uOutline, uTread;
 out vec4 outColor;
 ${PAINTED_PERLIN_GLSL}
@@ -36,12 +47,37 @@ Field impressionField(vec2 pixel) {
   vec2 world = (pixel - uViewport * 0.5) * 2.0 + uViewport * 0.5;
   float fine = perlin(world / 6.0 + vec2(41.3));
   float broad = perlin(world / 17.0 + vec2(7.1));
-  float d = base + fine * 2.2 + broad * 3.8;
+  float shapeDistance = base;
+  if (uShape != 0) {
+    vec2 p = pixel - uCenter;
+    float radius = min(length(uSide), length(uHeel)) * 0.48;
+    if (uShape == 1) shapeDistance = length(p) - radius;
+    else if (uShape == 2) {
+      vec2 q = abs(p) - vec2(radius * 0.86);
+      shapeDistance = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
+    } else {
+      vec2 a = vec2(0.0, -radius);
+      vec2 b = vec2(-0.8660254 * radius, 0.5 * radius);
+      vec2 c = vec2(0.8660254 * radius, 0.5 * radius);
+      vec2 ab = b - a, bc = c - b, ca = a - c;
+      float da = length(p - a - ab * clamp(dot(p - a, ab) / dot(ab, ab), 0.0, 1.0));
+      float db = length(p - b - bc * clamp(dot(p - b, bc) / dot(bc, bc), 0.0, 1.0));
+      float dc = length(p - c - ca * clamp(dot(p - c, ca) / dot(ca, ca), 0.0, 1.0));
+      float s1 = ab.x * (p.y - a.y) - ab.y * (p.x - a.x);
+      float s2 = bc.x * (p.y - b.y) - bc.y * (p.x - b.x);
+      float s3 = ca.x * (p.y - c.y) - ca.y * (p.x - c.x);
+      bool inside = (s1 >= 0.0 && s2 >= 0.0 && s3 >= 0.0)
+        || (s1 <= 0.0 && s2 <= 0.0 && s3 <= 0.0);
+      shapeDistance = (inside ? -1.0 : 1.0) * min(da, min(db, dc));
+    }
+  }
+  float d = shapeDistance + fine * 2.2 + broad * 3.8;
   float wall = clamp(min(length(uSide), length(uHeel)) * 0.11, 5.0, 12.0)
     * clamp(1.0 + fine * 0.32 + broad * 0.42, 0.7, 1.3);
   vec4 tread = texture(uTread, uv);
   float black = clamp((1.0 - tread.r) * tread.a, 0.0, 1.0);
-  return Field(d, wall, black, mix(uDepth.x, uDepth.y, black));
+  float edge3 = uEdgeLayer3 * smoothstep(-wall * 1.25, -wall * 0.25, d);
+  return Field(d, wall, black, mix(mix(uDepth.x, uDepth.y, black), uDepth.z, edge3));
 }
 float interiorNoise(vec2 pixel, float scale, int octaves, float roughness, float seed) {
   vec2 world = (pixel - uViewport * 0.5) * 2.0 + uViewport * 0.5;
@@ -64,14 +100,15 @@ void main() {
   Field f = impressionField(pixel);
   float d = f.distanceToEdge, wallWidth = f.wallWidth;
   if (d > 4.0) discard;
-  float grain1 = interiorNoise(pixel, ${DEFAULT_INSIDE_NOISE.scale}.0, ${DEFAULT_INSIDE_NOISE.octaves},
-    ${DEFAULT_INSIDE_NOISE.roughness}, ${DEFAULT_INSIDE_NOISE.seed}.0);
-  float grain2 = interiorNoise(pixel, ${DEFAULT_LAYER2_NOISE.scale}.0, ${DEFAULT_LAYER2_NOISE.octaves},
-    ${DEFAULT_LAYER2_NOISE.roughness}, ${DEFAULT_LAYER2_NOISE.seed}.0);
-  float grain = mix(grain1, grain2, f.black);
+  float edge3 = uEdgeLayer3 * smoothstep(-wallWidth * 1.25, -wallWidth * 0.25, d);
+  vec3 weights = vec3((1.0 - f.black) * (1.0 - edge3), f.black * (1.0 - edge3), edge3);
+  float grain = 0.0;
+  if (weights.x > 0.001) grain += weights.x * interiorNoise(pixel, uScale.x, uOctaves.x, uRoughness.x, uSeeds.x);
+  if (weights.y > 0.001) grain += weights.y * interiorNoise(pixel, uScale.y, uOctaves.y, uRoughness.y, uSeeds.y);
+  if (weights.z > 0.001) grain += weights.z * interiorNoise(pixel, uScale.z, uOctaves.z, uRoughness.z, uSeeds.z);
   float texturedSurface = 1.0 - smoothstep(-wallWidth * 2.0, 2.0, d);
   float height = -f.depth * (1.0 - smoothstep(-wallWidth, 2.0, d))
-    + grain * ${DEFAULT_INSIDE_NOISE.relief}.0 * 0.5 * texturedSurface;
+    + grain * dot(weights, uRelief) * 0.5 * texturedSurface;
   vec3 normal = normalize(vec3(-dFdx(height) * uRatio, -dFdy(height) * uRatio, 1.0));
   vec3 light = normalize(uLight);
   vec2 travelDirection = normalize(vec2(light.x, -light.y) + vec2(0.00001));
@@ -82,10 +119,11 @@ void main() {
     float obstruction = wallHeight(pixel + travelDirection * travel) - (height + travel * lightRise);
     wallShadow = max(wallShadow, smoothstep(0.2, 2.0, obstruction) * (1.0 - travel / 70.0));
   }
-  float shadowDepth = mix(uShadow.x, uShadow.y, f.black);
+  float shadowDepth = dot(weights, uShadow);
   float bottom = 1.0 - smoothstep(-wallWidth * 1.5, -wallWidth * 0.45, d);
   float wall = smoothstep(-wallWidth, 2.0, d);
-  vec3 snow = uColor * mix(0.82 + grain * 0.18, 0.98, wall * 0.72);
+  vec3 snow = (uColor1 * weights.x + uColor2 * weights.y + uColor3 * weights.z)
+    * mix(0.82 + grain * 0.18, 0.98, wall * 0.72);
   float diffuse = mix(1.0, 0.28 + 0.72 * max(dot(normal, light), 0.0), shadowDepth);
   vec3 color = snow * diffuse * (1.0 - 0.72 * min(shadowDepth, 1.0) * wallShadow * bottom);
   float alpha = 1.0 - smoothstep(-3.0, 4.5, d);
@@ -173,8 +211,17 @@ export class TracePrintRenderer {
   private readonly outline: WebGLTexture;
   private readonly products = new Map<string, WebGLTexture>();
   private readonly prints: Print[] = [];
-  private readonly depth = { layer1: DEFAULT_LAYER_DEPTH.layer1, layer2: DEFAULT_LAYER_DEPTH.layer2 };
-  private readonly shadow = { layer1: DEFAULT_LAYER_SHADOW.layer1, layer2: DEFAULT_LAYER_SHADOW.layer2 };
+  private readonly depth = { ...DEFAULT_LAYER_DEPTH };
+  private readonly shadow = { ...DEFAULT_LAYER_SHADOW };
+  private readonly noise: Record<ImpressionLayer, NoiseParams> = {
+    layer1: { ...DEFAULT_INSIDE_NOISE },
+    layer2: { ...DEFAULT_LAYER2_NOISE },
+    layer3: { ...DEFAULT_LAYER3_NOISE },
+  };
+  private readonly colors: Record<ImpressionLayer, string> = {
+    layer1: DEFAULT_COLOR, layer2: DEFAULT_COLOR, layer3: DEFAULT_COLOR,
+  };
+  private lightDirection: LightDirection = [...DEFAULT_LIGHT_DIRECTION];
   private readonly observer: ResizeObserver;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
@@ -210,17 +257,34 @@ export class TracePrintRenderer {
     this.render();
   }
 
-  stamp(contact: StepContact, product: ProductTread, seed: number) {
+  stamp(contact: StepContact, product: ProductTread, seed: number,
+    options: { shape?: TraceShape; size?: number; edgeLayer3?: boolean } = {}) {
     if (!contact.screen) return;
-    this.prints.push({ screen: contact.screen, product, seed, width: this.canvas.clientWidth, height: this.canvas.clientHeight });
+    this.prints.push({
+      screen: contact.screen, product, seed, width: this.canvas.clientWidth, height: this.canvas.clientHeight,
+      shape: options.shape ?? "shoe", size: options.size ?? 36, edgeLayer3: options.edgeLayer3 ?? false,
+    });
     if (this.prints.length > 48) this.prints.shift();
     this.render();
   }
-  setDepth(layer: "layer1" | "layer2", value: number) {
+  setDepth(layer: ImpressionLayer, value: number) {
     this.depth[layer] = Math.max(0, Math.min(25, value)); this.render();
   }
-  setShadow(layer: "layer1" | "layer2", value: number) {
+  setShadow(layer: ImpressionLayer, value: number) {
     this.shadow[layer] = Math.max(0, Math.min(2, value)); this.render();
+  }
+  setNoise(layer: ImpressionLayer, next: Partial<NoiseParams>) {
+    this.noise[layer] = { ...this.noise[layer], ...next }; this.render();
+  }
+  setColor(layer: ImpressionLayer, color: string) {
+    if (!/^#[0-9a-f]{6}$/i.test(color)) return;
+    this.colors[layer] = color; this.render();
+  }
+  setLightDirection(direction: LightDirection) {
+    const length = Math.hypot(...direction);
+    if (!Number.isFinite(length) || length < 0.001) return;
+    this.lightDirection = direction.map(value => value / length) as LightDirection;
+    this.render();
   }
   clear() { this.prints.length = 0; this.render(); }
   get count() { return this.prints.length; }
@@ -260,11 +324,19 @@ export class TracePrintRenderer {
     gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     gl.uniform1f(gl.getUniformLocation(program, "uRatio"), ratio);
     gl.uniform2f(gl.getUniformLocation(program, "uViewport"), width, height);
-    gl.uniform2f(gl.getUniformLocation(program, "uDepth"), this.depth.layer1, this.depth.layer2);
-    gl.uniform2f(gl.getUniformLocation(program, "uShadow"), this.shadow.layer1, this.shadow.layer2);
-    gl.uniform3f(gl.getUniformLocation(program, "uLight"), ...DEFAULT_LIGHT_DIRECTION);
-    const color = [1, 3, 5].map(index => parseInt(DEFAULT_COLOR.slice(index, index + 2), 16) / 255);
-    gl.uniform3f(gl.getUniformLocation(program, "uColor"), color[0], color[1], color[2]);
+    gl.uniform3f(gl.getUniformLocation(program, "uDepth"), this.depth.layer1, this.depth.layer2, this.depth.layer3);
+    gl.uniform3f(gl.getUniformLocation(program, "uShadow"), this.shadow.layer1, this.shadow.layer2, this.shadow.layer3);
+    gl.uniform3f(gl.getUniformLocation(program, "uLight"), ...this.lightDirection);
+    for (const [layer, suffix] of [["layer1", "1"], ["layer2", "2"], ["layer3", "3"]] as const) {
+      const channels = [1, 3, 5].map(index => parseInt(this.colors[layer].slice(index, index + 2), 16) / 255);
+      gl.uniform3f(gl.getUniformLocation(program, `uColor${suffix}`), channels[0], channels[1], channels[2]);
+    }
+    const a = this.noise.layer1, b = this.noise.layer2, c = this.noise.layer3;
+    gl.uniform3f(gl.getUniformLocation(program, "uScale"), a.scale, b.scale, c.scale);
+    gl.uniform3i(gl.getUniformLocation(program, "uOctaves"), a.octaves, b.octaves, c.octaves);
+    gl.uniform3f(gl.getUniformLocation(program, "uRoughness"), a.roughness, b.roughness, c.roughness);
+    gl.uniform3f(gl.getUniformLocation(program, "uRelief"), a.relief, b.relief, c.relief);
+    gl.uniform3f(gl.getUniformLocation(program, "uSeeds"), a.seed, b.seed, c.seed);
     gl.uniform1f(gl.getUniformLocation(program, "uSeed"), DEFAULT_INSIDE_NOISE.seed);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.outline);
     gl.uniform1i(gl.getUniformLocation(program, "uOutline"), 0);
@@ -272,8 +344,9 @@ export class TracePrintRenderer {
       const sx = width / print.width, sy = height / print.height, s = print.screen;
       const x = s.x * sx, y = s.y * sy;
       // Trace's texture orientation is opposite the shoe decal's lateral axis.
-      const sideX = -s.sideX * sx, sideY = -s.sideY * sy;
-      const heelX = s.heelX * sx, heelY = s.heelY * sy;
+      const sizeScale = print.size / 36;
+      const sideX = -s.sideX * sx * sizeScale, sideY = -s.sideY * sy * sizeScale;
+      const heelX = s.heelX * sx * sizeScale, heelY = s.heelY * sy * sizeScale;
       const det = sideX * heelY - sideY * heelX;
       if (Math.abs(det) < 1) continue;
       gl.uniform2f(gl.getUniformLocation(program, "uCenter"), x, y);
@@ -282,6 +355,8 @@ export class TracePrintRenderer {
       const widthScale = Math.abs(det) / Math.hypot(heelX, heelY) / (SOLE_WIDTH * SCALE);
       const heightScale = Math.abs(det) / Math.hypot(sideX, sideY) / (SOLE_HEIGHT * SCALE);
       gl.uniform1f(gl.getUniformLocation(program, "uDistanceScale"), Math.min(widthScale, heightScale));
+      gl.uniform1i(gl.getUniformLocation(program, "uShape"), ["shoe", "circle", "square", "triangle"].indexOf(print.shape));
+      gl.uniform1f(gl.getUniformLocation(program, "uEdgeLayer3"), print.edgeLayer3 ? 1 : 0);
       gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.productTexture(print.product, print.seed));
       gl.uniform1i(gl.getUniformLocation(program, "uTread"), 1);
       const corners = [-1, 1].flatMap(a => [-1, 1].map(b => [x + (a * sideX + b * heelX) / 2, y + (a * sideY + b * heelY) / 2]));
