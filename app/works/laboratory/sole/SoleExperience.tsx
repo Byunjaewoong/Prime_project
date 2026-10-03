@@ -8,7 +8,7 @@ import { extractSoleShape } from "./core/extractSoleShape";
 import styles from "./sole.module.css";
 
 type Design = { seed: number; family: SoleFamily };
-const INITIAL_DESIGN: Design = { seed: 394, family: "imprint" };
+const INITIAL_DESIGN: Design = { seed: 394, family: "air-force-1" };
 // Cropped from Rens ten Hagen's CC0 image: https://commons.wikimedia.org/wiki/File:Schoenafdruk.png
 const SAMPLE_IMAGE = "/sole-reference.png";
 
@@ -22,6 +22,7 @@ export default function SoleExperience() {
   const marks = useMemo(() => generateSole(design.seed, design.family), [design]);
   const extracted = useMemo(() => imageData ? extractSoleShape(imageData, threshold) : null, [imageData, threshold]);
   const familyName = SOLE_FAMILIES.find(option => option.value === design.family)?.label ?? "Outsole";
+  const productSource = SOLE_FAMILIES.find(option => option.value === design.family)?.source;
 
   useEffect(() => {
     let cancelled = false;
@@ -45,7 +46,10 @@ export default function SoleExperience() {
 
   const regenerate = () => {
     const nextSeed = Math.floor(Math.random() * 0xffffffff);
-    setDesign(previous => ({ ...previous, seed: nextSeed }));
+    setDesign(previous => {
+      const options = SOLE_FAMILIES.filter(option => option.value !== previous.family);
+      return { seed: nextSeed, family: options[Math.floor(Math.random() * options.length)].value };
+    });
   };
 
   const downloadShape = () => {
@@ -113,7 +117,7 @@ export default function SoleExperience() {
       </p>}
     </section>
     <footer className={styles.footer} aria-live="polite">
-      {mode === "generated" ? <><span>{familyName}</span><span>{design.seed.toString(16).padStart(8, "0")}</span></>
+      {mode === "generated" ? <><span>{familyName}</span>{productSource && <a href={productSource} target="_blank" rel="noopener noreferrer">product reference ↗</a>}</>
         : <><span>{extracted?.pieces ?? 0} extracted shapes</span>{imageUrl === SAMPLE_IMAGE && <a href="https://commons.wikimedia.org/wiki/File:Schoenafdruk.png" target="_blank" rel="noopener noreferrer">Example: Rens ten Hagen · CC0</a>}</>}
     </footer>
   </main>;

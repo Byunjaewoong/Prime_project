@@ -1,6 +1,8 @@
+import { generateProductTread, type ProductTread } from "./productTreads";
+
 // Sampled left/right silhouette bounds from the supplied 691 × 1280 outsole photograph.
 // The forefoot leans left, the narrow waist shifts right, and the heel returns left.
-// Both the vector outline and tread placement use this same traced profile.
+// This outline clips every product-inspired interior pattern.
 const PHOTO_PROFILE: [number, number, number][] = [
   [27, 293, 325], [40, 250, 376], [55, 227, 405], [80, 207, 431],
   [105, 191, 453], [130, 178, 470], [155, 166, 485], [180, 157, 499],
@@ -55,7 +57,7 @@ function traceOutline() {
 // White is recessed rubber, black is raised contact, gray is the low-load waist.
 export const SOLE_OUTLINE = traceOutline();
 
-export type SoleFamily = "imprint" | "trail" | "chevron" | "waffle" | "segmented";
+export type SoleFamily = ProductTread | "imprint" | "trail" | "chevron" | "waffle" | "segmented";
 export type SoleMark = {
   d: string;
   tone: "ink" | "paper" | "gray";
@@ -63,12 +65,19 @@ export type SoleMark = {
   strokeWidth?: number;
 };
 
-export const SOLE_FAMILIES: { value: SoleFamily; label: string }[] = [
-  { value: "imprint", label: "Imprint shapes" },
-  { value: "trail", label: "Trail lugs" },
-  { value: "chevron", label: "Chevron grip" },
-  { value: "waffle", label: "Waffle grid" },
-  { value: "segmented", label: "Segmented road" },
+export const SOLE_FAMILIES: { value: ProductTread; label: string; source: string }[] = [
+  { value: "air-force-1", label: "Nike Air Force 1", source: "https://www.nike.com/t/air-force-1-07-mens-shoes-XVPIszaq" },
+  { value: "vans-authentic", label: "Vans Authentic", source: "https://www.vans.com/en-us/p/shoes/icons/authentic-5310/authentic-shoe-VN000EE3BLK" },
+  { value: "chuck-taylor", label: "Converse Chuck Taylor", source: "https://www.converse.com/shop/p/chuck-taylor-all-star-canvas-unisex-high-top-shoe/M9006MP.html" },
+  { value: "samba-og", label: "adidas Samba OG", source: "https://www.adidas.com/us/samba-og-shoes/JI4218.html" },
+  { value: "superstar", label: "adidas Superstar", source: "https://www.adidas.com/us/girls-back_to_school-superstar" },
+  { value: "speedcross-6", label: "Salomon Speedcross 6", source: "https://www.salomon.com/en-us/product/speedcross-6-lg9212/L47811000" },
+  { value: "moab-3", label: "Merrell Moab 3", source: "https://www.merrell.com/US/en/moab-3/52481M.html" },
+  { value: "timberland-6", label: "Timberland 6-Inch", source: "https://www.timberland.com/en-us/p/men/footwear-10039/mens-timberland-premium-6-inch-waterproof-boot-TB010073001" },
+  { value: "dr-martens-1460", label: "Dr. Martens 1460", source: "https://www.drmartens.com/uk/en_gb/icons/1460" },
+  { value: "gel-kayano-31", label: "ASICS GEL-KAYANO 31", source: "https://me.asics.com/en-ae/gel-kayano-31-1011b867-300.html" },
+  { value: "cloud-6", label: "On Cloud 6", source: "https://www.on.com/en-us/products/cloud-6-wp-3mf1006/mens/black-black-shoes-3MF10061043" },
+  { value: "pegasus-37", label: "Nike Pegasus 37", source: "https://niketeam.nike.com/niketeamsports/content/pdf/catalog_thumbs/NTS_W_Running.pdf" },
 ];
 
 function boundsAt(y: number) {
@@ -273,6 +282,9 @@ function generateImprint(seed: number): SoleMark[] {
 }
 
 export function generateSole(seed: number, family: SoleFamily): SoleMark[] {
+  if (SOLE_FAMILIES.some(option => option.value === family)) {
+    return generateProductTread(seed, family as ProductTread);
+  }
   const next = randomSource(seed);
   const random = (min: number, max: number) => min + (max - min) * next();
   const archNext = randomSource(seed ^ 0x9e3779b9);
