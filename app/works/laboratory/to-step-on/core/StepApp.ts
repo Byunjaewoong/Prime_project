@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { disposeObject } from "@/app/lib/disposeObject";
 import { SHOE_LENGTH, SHOE_WIDTH, StepModel } from "./StepModel";
+import { loadShoeAsset } from "./ShoeAsset";
 import { StepPrints, type StepContact } from "./StepPrints";
 
 export type StepDirection = "random" | "right" | "left" | "down" | "up";
@@ -67,6 +68,7 @@ export class StepApp {
     ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; this.scene.add(ground);
     this.model = new StepModel(); this.scene.add(this.model.shoe);
     this.model.shoe.visible = false;
+    void this.loadShoe();
     this.prints = new StepPrints(); this.scene.add(this.prints.group);
     this.observer = new ResizeObserver(() => this.resize()); this.observer.observe(canvas);
     document.addEventListener("visibilitychange", this.onVisibility);
@@ -78,6 +80,18 @@ export class StepApp {
   setSettings(partial: Partial<StepSettings>) {
     this.settings = { ...this.settings, ...partial };
     this.settings.speed = clamp(this.settings.speed, 0.5, 1.5);
+  }
+
+  private async loadShoe() {
+    try {
+      const asset = await loadShoeAsset();
+      if (this.destroyed) { disposeObject(asset); return; }
+      // Preserve the animated parent transform while swapping its fallback geometry.
+      disposeObject(this.model.shoe);
+      this.model.shoe.add(asset);
+    } catch (error) {
+      console.warn("Shoe OBJ could not load; using the procedural shoe.", error);
+    }
   }
 
   private worldAt(ndc: THREE.Vector2) {
