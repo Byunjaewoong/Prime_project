@@ -88,7 +88,10 @@ export default function TraceExperience() {
         setCurrentProduct(product);
         printsRef.current?.stamp(contact, product, 394, stampOptions.current);
         setCount(printsRef.current?.count ?? 0);
-      }, { transparentBackground: true, renderPrints: false });
+      }, {
+        transparentBackground: true, renderPrints: false,
+        onSoleReady: silhouette => printsRef.current?.setSoleMask(silhouette),
+      });
       stepRef.current = step;
     } catch (error) {
       console.error("Trace could not initialize", error);
@@ -196,10 +199,10 @@ export default function TraceExperience() {
                 stampOptions.current.shape = choice.value; setShape(choice.value);
               }}>{choice.label}</button>)}
           </div>
-          <p className={stepStyles.note}>Shape and size apply to the next step. Shoe preserves the sole outline.</p>
+          <p className={stepStyles.note}>Shoe follows the model&apos;s sole at its actual size. Other shapes use the size control.</p>
           <label className={styles.rangeControl}>
-            <span>Size <output>{size}</output></span>
-            <input type="range" aria-label="Impression size" min="18" max="80" step="1" value={size}
+            <span>Shape size <output>{size}</output></span>
+            <input type="range" aria-label="Impression size" min="18" max="80" step="1" value={size} disabled={shape === "shoe"}
               onChange={event => {
                 const value = Number(event.target.value);
                 stampOptions.current.size = value; setSize(value);

@@ -17,6 +17,7 @@ try {
     await page.goto(`${base}/works/laboratory`, { waitUntil: 'domcontentloaded' });
     await page.getByRole('link', { name: /17\. Trace/ }).click();
     await page.getByRole('button', { name: /Trace\. Click or tap/ }).waitFor();
+    await page.waitForFunction(() => document.querySelector('canvas[data-sole-outline]')?.getAttribute('data-sole-outline') === 'model', null, { timeout: 8000 });
     assert.equal(await page.locator('canvas[data-print-count]').getAttribute('data-print-count'), '0');
     await page.screenshot({ path: path.join(output, `${mobile ? 'mobile' : 'desktop'}-initial.png`) });
     const contactStart = Date.now();
@@ -58,6 +59,8 @@ try {
     assert(await page.getByRole('slider', { name: /Layer 3 depth/ }).isVisible());
     assert.equal(await page.getByRole('button', { name: 'Shoe', exact: true }).getAttribute('aria-pressed'), 'true');
     assert.equal(await page.getByRole('slider', { name: 'Impression size' }).inputValue(), '36');
+    assert(await page.getByRole('slider', { name: 'Impression size' }).isDisabled(),
+      'The real shoe impression must retain the model sole size');
     await page.getByRole('slider', { name: /Layer 2 depth/ }).fill('14');
     for (const tab of ['Outside', 'Layer 1', 'Layer 2', 'Layer 3']) {
       await page.getByRole('tab', { name: tab }).click();
@@ -81,6 +84,7 @@ try {
     await page.getByRole('button', { name: 'Clear footprints' }).click();
     assert.equal(await page.locator('canvas[data-print-count]').getAttribute('data-print-count'), '0');
     await page.getByRole('button', { name: 'Circle', exact: true }).click();
+    assert(await page.getByRole('slider', { name: 'Impression size' }).isEnabled());
     await page.getByRole('slider', { name: 'Impression size' }).fill('60');
     await page.getByRole('button', { name: /Layer 3 on outer edge/ }).click();
     await page.getByRole('button', { name: 'Close menu' }).click();

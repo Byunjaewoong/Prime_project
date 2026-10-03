@@ -54,7 +54,10 @@ export class StepApp {
   private paused = false;
 
   constructor(private readonly canvas: HTMLCanvasElement, private readonly onContact?: (contact: StepContact) => void,
-    private readonly options: { transparentBackground?: boolean; renderPrints?: boolean } = {}) {
+    private readonly options: {
+      transparentBackground?: boolean; renderPrints?: boolean;
+      onSoleReady?: (silhouette: HTMLCanvasElement) => void;
+    } = {}) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: !!options.transparentBackground, powerPreference: "high-performance" });
     this.renderer.setClearColor(0xffffff, options.transparentBackground ? 0 : 1);
     this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -97,6 +100,7 @@ export class StepApp {
       if (this.destroyed) { disposeObject(asset); return; }
       // Preserve the animated parent transform while swapping its fallback geometry.
       this.prints.matchShoeSole(asset);
+      if (this.prints.soleSilhouette) this.options.onSoleReady?.(this.prints.soleSilhouette);
       disposeObject(this.model.shoe);
       this.model.shoe.add(asset);
     } catch (error) {

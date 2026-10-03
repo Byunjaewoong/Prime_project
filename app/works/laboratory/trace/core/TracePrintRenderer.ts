@@ -155,13 +155,19 @@ function distanceTo(inside: Uint8Array, targetInside: boolean) {
   return distance;
 }
 
-function outlinePixels() {
+function outlinePixels(silhouette?: HTMLCanvasElement) {
   const canvas = document.createElement("canvas");
   canvas.width = FIELD_WIDTH; canvas.height = FIELD_HEIGHT;
   const context = canvas.getContext("2d", { willReadFrequently: true })!;
   context.translate(PAD, PAD);
   context.scale(SCALE, SCALE);
-  context.fill(new Path2D(SOLE_OUTLINE));
+  if (silhouette) {
+    // StepPrints maps texture X opposite the shoe's local X. Trace's lateral
+    // screen basis is reversed, so mirror that same OBJ-derived mask once here.
+    context.translate(SOLE_WIDTH, 0);
+    context.scale(-1, 1);
+    context.drawImage(silhouette, 0, 0, SOLE_WIDTH, SOLE_HEIGHT);
+  } else context.fill(new Path2D(SOLE_OUTLINE));
   const image = context.getImageData(0, 0, FIELD_WIDTH, FIELD_HEIGHT);
   const inside = new Uint8Array(FIELD_WIDTH * FIELD_HEIGHT);
   for (let i = 0; i < inside.length; i++) inside[i] = image.data[i * 4 + 3] >= 128 ? 1 : 0;
@@ -178,10 +184,8 @@ function paintProduct(product: ProductTread, seed: number) {
   const canvas = document.createElement("canvas");
   canvas.width = SOLE_WIDTH; canvas.height = SOLE_HEIGHT;
   const ctx = canvas.getContext("2d")!;
-  const outline = new Path2D(SOLE_OUTLINE);
   ctx.fillStyle = "#fff";
-  ctx.fill(outline);
-  ctx.clip(outline);
+  ctx.fillRect(0, 0, SOLE_WIDTH, SOLE_HEIGHT);
   for (const mark of generateSole(seed, product)) {
     ctx.save();
     if (mark.transform) {
@@ -209,6 +213,7 @@ export class TracePrintRenderer {
   private readonly fragment: WebGLShader;
   private readonly buffer: WebGLBuffer;
   private readonly outline: WebGLTexture;
+  private modelOutline: WebGLTexture | null = null;
   private readonly products = new Map<string, WebGLTexture>();
   private readonly prints: Print[] = [];
   private readonly depth = { ...DEFAULT_LAYER_DEPTH };
@@ -245,15 +250,30 @@ export class TracePrintRenderer {
     const outline = gl.createTexture();
     if (!outline) throw new Error("Trace outline allocation failed");
     this.outline = outline;
-    gl.bindTexture(gl.TEXTURE_2D, outline);
+    this.uploadOutline(outline, outlinePixels());
+    this.observer = new ResizeObserver(() => this.render());
+    this.observer.observe(canvas);
+    this.render();
+  }
+
+  private uploadOutline(texture: WebGLTexture, pixels: Uint8Array) {
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, FIELD_WIDTH, FIELD_HEIGHT, 0, gl.RED, gl.UNSIGNED_BYTE, outlinePixels());
-    this.observer = new ResizeObserver(() => this.render());
-    this.observer.observe(canvas);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, FIELD_WIDTH, FIELD_HEIGHT, 0, gl.RED, gl.UNSIGNED_BYTE, pixels);
+  }
+
+  setSoleMask(silhouette: HTMLCanvasElement) {
+    const texture = this.gl.createTexture();
+    if (!texture) return;
+    this.uploadOutline(texture, outlinePixels(silhouette));
+    if (this.modelOutline) this.gl.deleteTexture(this.modelOutline);
+    this.modelOutline = texture;
+    this.canvas.dataset.soleOutline = "model";
     this.render();
   }
 
@@ -338,13 +358,15 @@ export class TracePrintRenderer {
     gl.uniform3f(gl.getUniformLocation(program, "uRelief"), a.relief, b.relief, c.relief);
     gl.uniform3f(gl.getUniformLocation(program, "uSeeds"), a.seed, b.seed, c.seed);
     gl.uniform1f(gl.getUniformLocation(program, "uSeed"), DEFAULT_INSIDE_NOISE.seed);
-    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.outline);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.modelOutline ?? this.outline);
     gl.uniform1i(gl.getUniformLocation(program, "uOutline"), 0);
     for (const print of this.prints) {
       const sx = width / print.width, sy = height / print.height, s = print.screen;
       const x = s.x * sx, y = s.y * sy;
       // Trace's texture orientation is opposite the shoe decal's lateral axis.
-      const sizeScale = print.size / 36;
+      // A shoe impression must stay at the model's measured sole dimensions.
+      // The size control belongs only to the optional geometric studies.
+      const sizeScale = print.shape === "shoe" ? 1 : print.size / 36;
       const sideX = -s.sideX * sx * sizeScale, sideY = -s.sideY * sy * sizeScale;
       const heelX = s.heelX * sx * sizeScale, heelY = s.heelY * sy * sizeScale;
       const det = sideX * heelY - sideY * heelX;
@@ -377,7 +399,9 @@ export class TracePrintRenderer {
     this.observer.disconnect(); this.prints.length = 0;
     for (const texture of this.products.values()) this.gl.deleteTexture(texture);
     this.products.clear();
-    this.gl.deleteTexture(this.outline); this.gl.deleteBuffer(this.buffer);
+    this.gl.deleteTexture(this.outline);
+    if (this.modelOutline) this.gl.deleteTexture(this.modelOutline);
+    this.gl.deleteBuffer(this.buffer);
     this.gl.deleteProgram(this.program); this.gl.deleteShader(this.vertex); this.gl.deleteShader(this.fragment);
   }
 }

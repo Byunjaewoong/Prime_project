@@ -17,6 +17,7 @@
 .rangeControl span { display: flex; justify-content: space-between; gap: 8px; }
 .rangeControl output { color: #222; font-variant-numeric: tabular-nums; }
 .rangeControl input { width: calc(100% - 24px); margin: 0 12px; accent-color: #555; touch-action: pan-y; }
+.rangeControl input:disabled { opacity: .45; cursor: not-allowed; }
 .surfaceControls { margin-top: 12px; padding: 2px 0; }
 .colorPicker { display: flex; min-height: 38px; align-items: center; justify-content: space-between; padding: 0 8px; border: 1px solid #dedede; border-radius: 6px; color: #555; font-size: 10px; }
 .colorPicker input { width: 44px; height: 28px; border: 0; background: transparent; }

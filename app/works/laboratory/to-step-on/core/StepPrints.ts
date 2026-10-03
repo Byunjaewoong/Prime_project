@@ -63,9 +63,11 @@ export class StepPrints {
   private offset = 0.017;
   private width = SHOE_WIDTH;
   private length = SHOE_LENGTH;
+  private silhouette: HTMLCanvasElement | null = null;
 
   get dimensions() { return { width: this.width, length: this.length }; }
   get centerOffset() { return this.offset; }
+  get soleSilhouette() { return this.silhouette; }
 
   matchShoeSole(shoe: THREE.Group) {
     shoe.updateMatrixWorld(true);
@@ -114,6 +116,7 @@ export class StepPrints {
     this.group.traverse(object => { if (object instanceof THREE.Mesh) object.geometry = geometry; });
     this.geometry.dispose(); this.texture.dispose();
     this.texture = texture; this.geometry = geometry; this.material.map = texture; this.material.needsUpdate = true;
+    this.silhouette = mask;
     this.width = size.x; this.length = size.z; this.offset = center.z;
   }
 
@@ -128,5 +131,5 @@ export class StepPrints {
   }
 
   clear() { this.group.clear(); }
-  dispose() { this.clear(); this.geometry.dispose(); this.material.dispose(); this.texture.dispose(); }
+  dispose() { this.clear(); this.silhouette = null; this.geometry.dispose(); this.material.dispose(); this.texture.dispose(); }
 }
