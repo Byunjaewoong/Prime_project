@@ -15,8 +15,9 @@ The menu offers four fixed directions or non-repeating random directions,
 - A ray/ground-plane intersection determines the sole's landing position.
 - One 1.55-second cycle approaches quickly, plants briefly, then accelerates away.
 - A black camera-space trouser silhouette tracks the projected shoe collar as
-  it enters. Its folded edge joins the ankle, then the silhouette sweeps in
-  the step direction, briefly covers the view, and reveals the footprint.
+  it enters. A narrow shoulder and shallow hem meet in a single corner near
+  the ankle, with only slight folds along the edge. It then sweeps in the step
+  direction, briefly covers the view, and reveals the footprint.
 - The sole remains fixed during stance. The shoe enters and exits beyond the
   close crop, without a trouser leg or foreground-cloth occlusion.
 - A busy cycle retains only the latest pending click, without interrupting the

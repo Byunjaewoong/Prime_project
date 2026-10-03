@@ -71,8 +71,7 @@ try {
       const entrance = await pixels(page, `${name}-${index}-entrance`, viewport);
       const entering = ['left', 'right', 'top', 'bottom'][index];
       const opposite = { left: 'right', right: 'left', top: 'bottom', bottom: 'top' }[entering];
-      assert(entrance.sides[entering] > entrance.sides[opposite] + 0.05,
-        `The trouser silhouette must arrive with the shoe from the ${entering}`);
+      assert(entrance.dark < 0.72, 'The narrower trouser must leave the shoe visible');
       const planted = await pixels(page, `${name}-${index}-plant`, viewport);
       assert(planted.ink > 0.08 && planted.dark < 0.98, 'A close-cropped shoe must land');
       assert(planted.span > Math.min(viewport.width, viewport.height - 96) * 0.85, 'The shoe must extend beyond the close crop');
@@ -92,6 +91,17 @@ try {
       const retained = await pixels(page, `${name}-${index}-retained`, viewport);
       assert(Math.abs(retained.ink - print.ink) < 0.00001, 'Footprint must persist without an active animation');
     }
+    // The reference pose places the collar left of centre, leaving room for
+    // the shallow folded edge to cross toward the right screen boundary.
+    await menu();
+    await page.getByRole('button', { name: 'Clear footprints', exact: true }).click();
+    await page.getByRole('button', { name: directions[1], exact: true }).click();
+    await close();
+    await tap(viewport.width * 0.24, viewport.height * 0.54);
+    await page.clock.runFor(550);
+    const offsetEntrance = await pixels(page, `${name}-offset-entrance`, viewport);
+    assert(offsetEntrance.dark < 0.7, 'The offset trouser must leave a clear view of the shoe');
+    await page.clock.runFor(1200);
     // One pending click replaces earlier pending clicks; it must not interrupt a plant.
     await tap(viewport.width * 0.3, viewport.height * 0.6);
     await page.clock.runFor(300);

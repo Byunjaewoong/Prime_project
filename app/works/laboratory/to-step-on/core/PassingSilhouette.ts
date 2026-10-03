@@ -33,15 +33,22 @@ export class PassingSilhouette {
         // On a steep top-down step the collar can stop just outside the crop.
         // Keep the fabric attached to that screen edge instead of dropping it.
         float ankleAlong = max(actualAnkleAlong, -0.97);
-        float relative = across - dot(ankle, vec2(-direction.y, direction.x));
-        // The trouser edge begins at the entry side and terminates exactly
-        // at the shoe collar. Its folded outline changes across the leg.
-        float folds = 0.075 * (sin(relative * 7.0 + 0.7) - sin(0.7))
-          + 0.035 * (sin(relative * 16.0 + 1.8) - sin(1.8))
-          + 0.018 * (sin(relative * 29.0 + 0.3) - sin(0.3));
-        float trouserEdge = ankleAlong - 0.10 * max(relative, 0.0)
-          + 0.90 * max(-relative, 0.0) + folds;
-        float trouser = 1.0 - smoothstep(trouserEdge - 0.012, trouserEdge + 0.012, along);
+        float ankleAcross = dot(ankle, vec2(-direction.y, direction.x));
+        float relative = across - ankleAcross;
+        // Two quieter fabric edges meet at the collar. The near-vertical
+        // shoulder changes to a shallow edge toward the entry side, forming
+        // one deliberate corner rather than a broad wavy curtain.
+        float shoulderFold = 0.014 * sin(relative * 8.0)
+          + 0.006 * sin(relative * 18.0);
+        float shoulder = ankleAlong + 0.35 * max(-relative, 0.0)
+          - 0.06 * max(relative, 0.0) + shoulderFold;
+        float distanceToEntry = max(ankleAlong - along, 0.0);
+        float hemFold = 0.012 * sin(distanceToEntry * 8.0)
+          + 0.006 * sin(distanceToEntry * 19.0);
+        float hem = ankleAcross + 0.22 * distanceToEntry + hemFold;
+        float insideShoulder = 1.0 - smoothstep(shoulder - 0.010, shoulder + 0.010, along);
+        float insideHem = 1.0 - smoothstep(hem - 0.010, hem + 0.010, across);
+        float trouser = insideShoulder * insideHem;
         trouser *= smoothstep(-1.50, -1.08, actualAnkleAlong);
         trouser *= 1.0 - smoothstep(0.58, 0.70, progress);
         // The leading edge belongs to the passing leg; the trailing edge
