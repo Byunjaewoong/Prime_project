@@ -9,3 +9,5 @@ Each contact randomly selects one of Sole's 12 product studies, avoiding an imme
 The Surface texture menu has a separate Wall tab. Its edge irregularity changes the outline and wall-width variation; its Perlin controls add grain only to the sloped wall, without replacing the layer-specific texture on the sole floor. Changes redraw existing impressions immediately. Wall grain and shadow distances follow the projected shoe scale so a viewport resize does not exaggerate them.
 
 Shoe & footprint size scales the StepApp shoe group and the measured contact width, length, and sole-centre offset together. Trace stamps from those scaled projected vectors, retaining the OBJ-derived outline and the same tread aspect ratio. A size change during an active step takes effect on the next step; completed impressions keep their original size.
+
+Random entrance chooses a continuous screen-space heading across the full circle. Both the shoe path and passing silhouette use that direction; the four named cardinal choices remain available.

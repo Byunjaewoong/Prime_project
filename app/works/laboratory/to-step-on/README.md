@@ -2,7 +2,7 @@
 
 `/works/laboratory/to-step-on` is a close-up shoe camera study.
 Click/tap the floor (or press Enter with the canvas focused) to take a step.
-The menu offers four fixed directions or non-repeating random directions,
+The menu offers four fixed directions or a uniformly random 360-degree heading,
 0.5–1.5× speed, pause/resume, and clearing retained footprints.
 
 ## Motion and coordinates

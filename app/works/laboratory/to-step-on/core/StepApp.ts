@@ -8,7 +8,6 @@ import { StepPrints, type StepContact } from "./StepPrints";
 export type StepDirection = "random" | "right" | "left" | "down" | "up";
 export type StepSettings = { direction: StepDirection; speed: number };
 export const DEFAULT_STEP_SETTINGS: StepSettings = { direction: "random", speed: 1 };
-const DIRECTIONS = ["right", "down", "left", "up"] as const;
 const DURATION = 1.55;
 const CAMERA_HEIGHT = 0.5;
 const CAMERA_GROUND_OFFSET = 0.065;
@@ -22,6 +21,11 @@ const screenDirection = (direction: Exclude<StepDirection, "random">) => new THR
   direction === "right" ? 1 : direction === "left" ? -1 : 0,
   direction === "up" ? 1 : direction === "down" ? -1 : 0,
 );
+const randomScreenDirection = (width: number, height: number) => {
+  const angle = Math.random() * Math.PI * 2;
+  // NDC has different X/Y pixel scales on non-square screens.
+  return new THREE.Vector2(Math.cos(angle) / width, Math.sin(angle) / height).normalize();
+};
 
 type Step = {
   time: number;
@@ -49,7 +53,6 @@ export class StepApp {
   private shoeScale = 1;
   private step: Step | null = null;
   private queued: THREE.Vector2 | null = null;
-  private lastDirection = -1;
   private frame = 0;
   private lastTime = 0;
   private destroyed = false;
@@ -129,19 +132,16 @@ export class StepApp {
 
   private beginStep(ndc: THREE.Vector2) {
     const contact = this.worldAt(ndc); if (!contact) return;
-    let index = DIRECTIONS.indexOf(this.settings.direction as typeof DIRECTIONS[number]);
-    if (index < 0) {
-      index = this.lastDirection < 0 ? Math.floor(Math.random() * 4) : (this.lastDirection + 1 + Math.floor(Math.random() * 3)) % 4;
-    }
-    this.lastDirection = index;
-    const direction = screenDirection(DIRECTIONS[index]);
+    const direction = this.settings.direction === "random"
+      ? randomScreenDirection(this.canvas.clientWidth, this.canvas.clientHeight)
+      : screenDirection(this.settings.direction);
     const next = this.worldAt(ndc.clone().addScaledVector(direction, 0.08));
     if (!next) return;
     const forward = next.sub(contact).normalize();
-    const startNdc = ndc.clone(), endNdc = ndc.clone();
-    // The close crop needs extra travel before the entire shoe clears the frame.
-    if (direction.x) { startNdc.x = -direction.x * OFFSCREEN_NDC; endNdc.x = direction.x * OFFSCREEN_NDC; }
-    else { startNdc.y = -direction.y * OFFSCREEN_NDC; endNdc.y = direction.y * OFFSCREEN_NDC; }
+    // Both ends must clear the viewport even for a diagonal on a tall screen.
+    const reach = OFFSCREEN_NDC / Math.max(Math.abs(direction.x), Math.abs(direction.y));
+    const startNdc = ndc.clone().addScaledVector(direction, -reach);
+    const endNdc = ndc.clone().addScaledVector(direction, reach);
     const start = this.worldAt(startNdc) ?? contact.clone().addScaledVector(forward, -1.7);
     const end = this.worldAt(endNdc) ?? contact.clone().addScaledVector(forward, 1.7);
     this.step = { time: 0, shoeScale: this.shoeScale, contact, start, end,
