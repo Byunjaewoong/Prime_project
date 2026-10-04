@@ -22,7 +22,7 @@ layout(location = 0) in vec2 aPosition;
 void main() { gl_Position = vec4(aPosition, 0.0, 1.0); }`;
 const FRAGMENT = `#version 300 es
 precision highp float;
-uniform float uRatio, uDistanceScale, uSeed;
+uniform float uRatio, uDistanceScale, uImpressionScale, uSeed;
 uniform vec2 uViewport, uCenter, uSide, uHeel;
 uniform vec3 uDepth, uShadow, uScale, uRoughness, uRelief, uSeeds;
 uniform ivec3 uOctaves;
@@ -43,14 +43,15 @@ Field impressionField(vec2 pixel) {
   vec2 uv = soleUv(pixel);
   vec2 fieldUv = (uv * vec2(${SOLE_WIDTH * SCALE}.0, ${SOLE_HEIGHT * SCALE}.0)
     + vec2(${PAD}.0)) / vec2(${FIELD_WIDTH}.0, ${FIELD_HEIGHT}.0);
-  float base = (texture(uOutline, fieldUv).r - 0.5) * 128.0 * uDistanceScale;
-  vec2 world = (pixel - uViewport * 0.5) * 2.0 + uViewport * 0.5;
+  // All wall and shadow distances below are in a 400 px reference sole.
+  float base = (texture(uOutline, fieldUv).r - 0.5) * 128.0 * uDistanceScale / uImpressionScale;
+  vec2 world = ((pixel - uViewport * 0.5) * 2.0 + uViewport * 0.5) / uImpressionScale;
   float fine = perlin(world / 6.0 + vec2(41.3));
   float broad = perlin(world / 17.0 + vec2(7.1));
   float shapeDistance = base;
   if (uShape != 0) {
-    vec2 p = pixel - uCenter;
-    float radius = min(length(uSide), length(uHeel)) * 0.48;
+    vec2 p = (pixel - uCenter) / uImpressionScale;
+    float radius = min(length(uSide), length(uHeel)) * 0.48 / uImpressionScale;
     if (uShape == 1) shapeDistance = length(p) - radius;
     else if (uShape == 2) {
       vec2 q = abs(p) - vec2(radius * 0.86);
@@ -72,7 +73,7 @@ Field impressionField(vec2 pixel) {
     }
   }
   float d = shapeDistance + fine * 2.2 + broad * 3.8;
-  float wall = clamp(min(length(uSide), length(uHeel)) * 0.11, 5.0, 12.0)
+  float wall = clamp(min(length(uSide), length(uHeel)) * 0.11 / uImpressionScale, 5.0, 12.0)
     * clamp(1.0 + fine * 0.32 + broad * 0.42, 0.7, 1.3);
   vec4 tread = texture(uTread, uv);
   float black = clamp((1.0 - tread.r) * tread.a, 0.0, 1.0);
@@ -107,16 +108,21 @@ void main() {
   if (weights.y > 0.001) grain += weights.y * interiorNoise(pixel, uScale.y, uOctaves.y, uRoughness.y, uSeeds.y);
   if (weights.z > 0.001) grain += weights.z * interiorNoise(pixel, uScale.z, uOctaves.z, uRoughness.z, uSeeds.z);
   float texturedSurface = 1.0 - smoothstep(-wallWidth * 2.0, 2.0, d);
-  float height = -f.depth * (1.0 - smoothstep(-wallWidth, 2.0, d))
-    + grain * dot(weights, uRelief) * 0.5 * texturedSurface;
-  vec3 normal = normalize(vec3(-dFdx(height) * uRatio, -dFdy(height) * uRatio, 1.0));
+  float wallSurface = -f.depth * (1.0 - smoothstep(-wallWidth, 2.0, d));
+  float grainSurface = grain * dot(weights, uRelief) * 0.5 * texturedSurface;
+  float height = wallSurface + grainSurface;
+  // The indentation is model-sized, while the shared snow grain stays in CSS pixels.
+  vec3 normal = normalize(vec3(
+    -(dFdx(wallSurface) * uImpressionScale + dFdx(grainSurface)) * uRatio,
+    -(dFdy(wallSurface) * uImpressionScale + dFdy(grainSurface)) * uRatio, 1.0));
   vec3 light = normalize(uLight);
   vec2 travelDirection = normalize(vec2(light.x, -light.y) + vec2(0.00001));
   float lightRise = max(light.z, 0.03) / max(length(light.xy), 0.03);
   float wallShadow = 0.0;
   if (d > -40.0) for (int i = 1; i <= 10; i++) {
     float travel = float(i) * 4.0;
-    float obstruction = wallHeight(pixel + travelDirection * travel) - (height + travel * lightRise);
+    float obstruction = wallHeight(pixel + travelDirection * travel * uImpressionScale)
+      - (height + travel * lightRise);
     wallShadow = max(wallShadow, smoothstep(0.2, 2.0, obstruction) * (1.0 - travel / 70.0));
   }
   float shadowDepth = dot(weights, uShadow);
@@ -377,12 +383,14 @@ export class TracePrintRenderer {
       const widthScale = Math.abs(det) / Math.hypot(heelX, heelY) / (SOLE_WIDTH * SCALE);
       const heightScale = Math.abs(det) / Math.hypot(sideX, sideY) / (SOLE_HEIGHT * SCALE);
       gl.uniform1f(gl.getUniformLocation(program, "uDistanceScale"), Math.min(widthScale, heightScale));
+      const impressionScale = Math.max(0.35, Math.hypot(sideX, sideY) / 400);
+      gl.uniform1f(gl.getUniformLocation(program, "uImpressionScale"), impressionScale);
       gl.uniform1i(gl.getUniformLocation(program, "uShape"), ["shoe", "circle", "square", "triangle"].indexOf(print.shape));
       gl.uniform1f(gl.getUniformLocation(program, "uEdgeLayer3"), print.edgeLayer3 ? 1 : 0);
       gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.productTexture(print.product, print.seed));
       gl.uniform1i(gl.getUniformLocation(program, "uTread"), 1);
       const corners = [-1, 1].flatMap(a => [-1, 1].map(b => [x + (a * sideX + b * heelX) / 2, y + (a * sideY + b * heelY) / 2]));
-      const margin = 40;
+      const margin = 40 * impressionScale;
       const left = Math.max(0, Math.floor((Math.min(...corners.map(c => c[0])) - margin) * ratio));
       const right = Math.min(pixelWidth, Math.ceil((Math.max(...corners.map(c => c[0])) + margin) * ratio));
       const bottom = Math.max(0, Math.floor((height - Math.max(...corners.map(c => c[1])) - margin) * ratio));
