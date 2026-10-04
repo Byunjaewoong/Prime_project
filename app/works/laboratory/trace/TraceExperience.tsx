@@ -55,6 +55,7 @@ export default function TraceExperience() {
   const [count, setCount] = useState(0);
   const [currentProduct, setCurrentProduct] = useState<ProductTread | null>(null);
   const [shape, setShape] = useState<TraceShape>("shoe");
+  const [shoeScale, setShoeScale] = useState(1);
   const [size, setSize] = useState(36);
   const [edgeLayer3, setEdgeLayer3] = useState(false);
   const [surfaceTab, setSurfaceTab] = useState<SurfaceTab>("layer1");
@@ -205,9 +206,17 @@ export default function TraceExperience() {
                 stampOptions.current.shape = choice.value; setShape(choice.value);
               }}>{choice.label}</button>)}
           </div>
-          <p className={stepStyles.note}>Shoe follows the model&apos;s sole at its actual size. Other shapes use the size control.</p>
+          <p className={stepStyles.note}>The shoe and its imprint share one scale. Changes during a step apply to the next step.</p>
           <label className={styles.rangeControl}>
-            <span>Shape size <output>{size}</output></span>
+            <span>Shoe &amp; footprint size <output>{shoeScale.toFixed(2)}×</output></span>
+            <input type="range" aria-label="Shoe and footprint size" min="0.4" max="1.5" step="0.05"
+              value={shoeScale} onChange={event => {
+                const value = Number(event.target.value);
+                setShoeScale(value); stepRef.current?.setShoeScale(value);
+              }} />
+          </label>
+          <label className={styles.rangeControl}>
+            <span>Other shape size <output>{size}</output></span>
             <input type="range" aria-label="Impression size" min="18" max="80" step="1" value={size} disabled={shape === "shoe"}
               onChange={event => {
                 const value = Number(event.target.value);

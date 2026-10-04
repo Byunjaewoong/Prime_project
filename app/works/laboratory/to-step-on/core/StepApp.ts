@@ -25,6 +25,7 @@ const screenDirection = (direction: Exclude<StepDirection, "random">) => new THR
 
 type Step = {
   time: number;
+  shoeScale: number;
   contact: THREE.Vector3;
   start: THREE.Vector3;
   end: THREE.Vector3;
@@ -45,6 +46,7 @@ export class StepApp {
   private readonly projectedAnkleScreen = new THREE.Vector2();
   private readonly observer: ResizeObserver;
   private settings = { ...DEFAULT_STEP_SETTINGS };
+  private shoeScale = 1;
   private step: Step | null = null;
   private queued: THREE.Vector2 | null = null;
   private lastDirection = -1;
@@ -94,6 +96,11 @@ export class StepApp {
     this.settings.speed = clamp(this.settings.speed, 0.5, 1.5);
   }
 
+  setShoeScale(value: number) {
+    this.shoeScale = clamp(value, 0.4, 1.5);
+    if (!this.step) this.model.shoe.scale.setScalar(this.shoeScale);
+  }
+
   private async loadShoe() {
     try {
       const asset = await loadShoeAsset();
@@ -137,7 +144,9 @@ export class StepApp {
     else { startNdc.y = -direction.y * OFFSCREEN_NDC; endNdc.y = direction.y * OFFSCREEN_NDC; }
     const start = this.worldAt(startNdc) ?? contact.clone().addScaledVector(forward, -1.7);
     const end = this.worldAt(endNdc) ?? contact.clone().addScaledVector(forward, 1.7);
-    this.step = { time: 0, contact, start, end, heading: Math.atan2(forward.x, forward.z), stamped: false };
+    this.step = { time: 0, shoeScale: this.shoeScale, contact, start, end,
+      heading: Math.atan2(forward.x, forward.z), stamped: false };
+    this.model.shoe.scale.setScalar(this.step.shoeScale);
     this.model.shoe.visible = true;
     this.passage.begin(direction);
     this.lastTime = 0;
@@ -190,13 +199,15 @@ export class StepApp {
     this.passage.update(t, this.projectedAnkleScreen);
     if (!step.stamped && t >= plantAt + 0.03) {
       step.stamped = true;
-      const { length, width } = this.prints.dimensions;
+      const dimensions = this.prints.dimensions;
+      const length = dimensions.length * step.shoeScale;
+      const width = dimensions.width * step.shoeScale;
       const contact: StepContact = { position: step.contact.clone(), heading: step.heading, length, width, pressure: 1 };
       if (this.options.renderPrints !== false) this.prints.stamp(contact);
       if (this.onContact) {
         const side = new THREE.Vector3(-Math.cos(step.heading) * width, 0, Math.sin(step.heading) * width);
         const heel = new THREE.Vector3(-Math.sin(step.heading) * length, 0, -Math.cos(step.heading) * length);
-        const center = step.contact.clone().addScaledVector(heel, -this.prints.centerOffset / length);
+        const center = step.contact.clone().addScaledVector(heel, -this.prints.centerOffset * step.shoeScale / length);
         const project = (point: THREE.Vector3) => {
           const ndc = point.project(this.camera);
           return { x: (ndc.x + 1) * this.canvas.clientWidth / 2, y: (1 - ndc.y) * this.canvas.clientHeight / 2 };

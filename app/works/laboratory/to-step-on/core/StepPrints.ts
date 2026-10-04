@@ -124,7 +124,10 @@ export class StepPrints {
     const pivot = new THREE.Group(); pivot.position.copy(contact.position); pivot.position.y = 0.0015;
     pivot.rotation.y = contact.heading;
     const print = new THREE.Mesh(this.geometry, this.material);
-    print.rotation.set(-Math.PI / 2, 0, Math.PI); print.position.z = this.offset;
+    const scale = contact.length / this.length;
+    print.rotation.set(-Math.PI / 2, 0, Math.PI);
+    print.scale.setScalar(scale);
+    print.position.z = this.offset * scale;
     pivot.add(print); this.group.add(pivot);
     // Shared geometries/materials make retained prints inexpensive and bounded.
     if (this.group.children.length > 64) this.group.remove(this.group.children[0]);
