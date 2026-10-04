@@ -72,6 +72,32 @@ try {
       assert(await page.getByLabel(/base color/).isVisible());
       assert(await page.getByRole('slider', { name: /shadow depth/ }).isVisible());
     }
+    await page.getByRole('tab', { name: 'Wall' }).click();
+    assert(await page.getByRole('slider', { name: 'Wall edge irregularity' }).isVisible());
+    assert(await page.getByRole('slider', { name: 'wall Noise scale' }).isVisible());
+    const printSignature = () => page.locator('canvas[data-print-count]').evaluate(canvas => {
+      const gl = canvas.getContext('webgl2');
+      const pixels = new Uint8Array(canvas.width * canvas.height * 4);
+      gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      let hash = 2166136261;
+      for (let index = 0; index < pixels.length; index += 16) {
+        hash = Math.imul(hash ^ pixels[index], 16777619);
+      }
+      return hash >>> 0;
+    });
+    await page.getByRole('slider', { name: 'wall Height / relief' }).fill('0');
+    const smoothWall = await printSignature();
+    await page.getByRole('slider', { name: 'wall Height / relief' }).fill('15');
+    assert.notEqual(await printSignature(), smoothWall, 'Wall relief should update existing impressions');
+    const fineWall = await printSignature();
+    await page.getByRole('slider', { name: 'wall Noise scale' }).fill('36');
+    assert.notEqual(await printSignature(), fineWall, 'Wall grain scale should update existing impressions');
+    await page.getByRole('slider', { name: 'Wall edge irregularity' }).fill('0');
+    const evenEdge = await printSignature();
+    await page.getByRole('slider', { name: 'Wall edge irregularity' }).fill('2');
+    assert.notEqual(await printSignature(), evenEdge, 'Wall edge irregularity should update existing impressions');
+    assert.equal(await page.locator('canvas[data-print-count]').getAttribute('data-print-count'), '2');
+    await page.screenshot({ path: path.join(output, `${mobile ? 'mobile' : 'desktop'}-wall-controls.png`) });
     await page.getByRole('tab', { name: 'Layer 1' }).click();
     await page.getByRole('slider', { name: 'layer1 Noise scale' }).fill('12');
     await page.getByLabel('layer1 base color').fill('#d06050');

@@ -10,6 +10,7 @@ import type { StepContact } from "../../to-step-on/core/StepPrints";
 
 type ScreenPrint = NonNullable<StepContact["screen"]>;
 export type TraceShape = "shoe" | FootPrintShape;
+export const DEFAULT_WALL_NOISE: NoiseParams = { scale: 14, octaves: 4, roughness: 0.5, relief: 3, seed: 61 };
 type Print = {
   screen: ScreenPrint; product: ProductTread; seed: number; width: number; height: number;
   shape: TraceShape; size: number; edgeLayer3: boolean;
@@ -22,7 +23,9 @@ layout(location = 0) in vec2 aPosition;
 void main() { gl_Position = vec4(aPosition, 0.0, 1.0); }`;
 const FRAGMENT = `#version 300 es
 precision highp float;
-uniform float uRatio, uDistanceScale, uImpressionScale, uSeed;
+uniform float uRatio, uDistanceScale, uImpressionScale, uSeed, uEdgeIrregularity;
+uniform float uWallScale, uWallRoughness, uWallRelief, uWallSeed;
+uniform int uWallOctaves;
 uniform vec2 uViewport, uCenter, uSide, uHeel;
 uniform vec3 uDepth, uShadow, uScale, uRoughness, uRelief, uSeeds;
 uniform ivec3 uOctaves;
@@ -72,9 +75,9 @@ Field impressionField(vec2 pixel) {
       shapeDistance = (inside ? -1.0 : 1.0) * min(da, min(db, dc));
     }
   }
-  float d = shapeDistance + fine * 2.2 + broad * 3.8;
+  float d = shapeDistance + (fine * 2.2 + broad * 3.8) * uEdgeIrregularity;
   float wall = clamp(min(length(uSide), length(uHeel)) * 0.11 / uImpressionScale, 5.0, 12.0)
-    * clamp(1.0 + fine * 0.32 + broad * 0.42, 0.7, 1.3);
+    * clamp(1.0 + (fine * 0.32 + broad * 0.42) * uEdgeIrregularity, 0.5, 1.6);
   vec4 tread = texture(uTread, uv);
   float black = clamp((1.0 - tread.r) * tread.a, 0.0, 1.0);
   float edge3 = uEdgeLayer3 * smoothstep(-wall * 1.25, -wall * 0.25, d);
@@ -89,6 +92,19 @@ float interiorNoise(vec2 pixel, float scale, int octaves, float roughness, float
     total += amplitude;
     frequency *= 2.0;
     amplitude *= roughness;
+  }
+  return height / max(total, 0.001);
+}
+float wallNoise(vec2 pixel) {
+  // Anchor the wall grain to the shoe, so a viewport resize keeps its scale.
+  vec2 local = (pixel - uCenter) / uImpressionScale;
+  float frequency = 1.0, amplitude = 1.0, height = 0.0, total = 0.0;
+  for (int octave = 0; octave < 6; octave++) {
+    if (octave >= uWallOctaves || uWallScale / frequency < 2.5 / uRatio) break;
+    height += amplitude * perlinSeeded(local * frequency / uWallScale + vec2(float(octave) * 29.7), uWallSeed);
+    total += amplitude;
+    frequency *= 2.0;
+    amplitude *= uWallRoughness;
   }
   return height / max(total, 0.001);
 }
@@ -110,11 +126,15 @@ void main() {
   float texturedSurface = 1.0 - smoothstep(-wallWidth * 2.0, 2.0, d);
   float wallSurface = -f.depth * (1.0 - smoothstep(-wallWidth, 2.0, d));
   float grainSurface = grain * dot(weights, uRelief) * 0.5 * texturedSurface;
-  float height = wallSurface + grainSurface;
+  float wallMask = smoothstep(-wallWidth * 1.7, -wallWidth * 0.75, d)
+    * (1.0 - smoothstep(-wallWidth * 0.18, 2.0, d));
+  float wallGrain = wallMask > 0.001 && uWallRelief > 0.0 ? wallNoise(pixel) : 0.0;
+  float wallTextureSurface = wallGrain * uWallRelief * 0.5 * wallMask;
+  float height = wallSurface + grainSurface + wallTextureSurface;
   // The indentation is model-sized, while the shared snow grain stays in CSS pixels.
   vec3 normal = normalize(vec3(
-    -(dFdx(wallSurface) * uImpressionScale + dFdx(grainSurface)) * uRatio,
-    -(dFdy(wallSurface) * uImpressionScale + dFdy(grainSurface)) * uRatio, 1.0));
+    -(dFdx(wallSurface + wallTextureSurface) * uImpressionScale + dFdx(grainSurface)) * uRatio,
+    -(dFdy(wallSurface + wallTextureSurface) * uImpressionScale + dFdy(grainSurface)) * uRatio, 1.0));
   vec3 light = normalize(uLight);
   vec2 travelDirection = normalize(vec2(light.x, -light.y) + vec2(0.00001));
   float lightRise = max(light.z, 0.03) / max(length(light.xy), 0.03);
@@ -130,6 +150,7 @@ void main() {
   float wall = smoothstep(-wallWidth, 2.0, d);
   vec3 snow = (uColor1 * weights.x + uColor2 * weights.y + uColor3 * weights.z)
     * mix(0.82 + grain * 0.18, 0.98, wall * 0.72);
+  snow *= 1.0 + wallGrain * wallMask * uWallRelief * 0.008;
   float diffuse = mix(1.0, 0.28 + 0.72 * max(dot(normal, light), 0.0), shadowDepth);
   vec3 color = snow * diffuse * (1.0 - 0.72 * min(shadowDepth, 1.0) * wallShadow * bottom);
   float alpha = 1.0 - smoothstep(-3.0, 4.5, d);
@@ -232,6 +253,8 @@ export class TracePrintRenderer {
   private readonly colors: Record<ImpressionLayer, string> = {
     layer1: DEFAULT_COLOR, layer2: DEFAULT_COLOR, layer3: DEFAULT_COLOR,
   };
+  private wallNoiseSettings: NoiseParams = { ...DEFAULT_WALL_NOISE };
+  private edgeIrregularity = 1;
   private lightDirection: LightDirection = [...DEFAULT_LIGHT_DIRECTION];
   private readonly observer: ResizeObserver;
 
@@ -302,6 +325,12 @@ export class TracePrintRenderer {
   setNoise(layer: ImpressionLayer, next: Partial<NoiseParams>) {
     this.noise[layer] = { ...this.noise[layer], ...next }; this.render();
   }
+  setWallNoise(next: Partial<NoiseParams>) {
+    this.wallNoiseSettings = { ...this.wallNoiseSettings, ...next }; this.render();
+  }
+  setEdgeIrregularity(value: number) {
+    this.edgeIrregularity = Math.max(0, Math.min(2, value)); this.render();
+  }
   setColor(layer: ImpressionLayer, color: string) {
     if (!/^#[0-9a-f]{6}$/i.test(color)) return;
     this.colors[layer] = color; this.render();
@@ -364,6 +393,12 @@ export class TracePrintRenderer {
     gl.uniform3f(gl.getUniformLocation(program, "uRelief"), a.relief, b.relief, c.relief);
     gl.uniform3f(gl.getUniformLocation(program, "uSeeds"), a.seed, b.seed, c.seed);
     gl.uniform1f(gl.getUniformLocation(program, "uSeed"), DEFAULT_INSIDE_NOISE.seed);
+    gl.uniform1f(gl.getUniformLocation(program, "uEdgeIrregularity"), this.edgeIrregularity);
+    gl.uniform1f(gl.getUniformLocation(program, "uWallScale"), this.wallNoiseSettings.scale);
+    gl.uniform1i(gl.getUniformLocation(program, "uWallOctaves"), this.wallNoiseSettings.octaves);
+    gl.uniform1f(gl.getUniformLocation(program, "uWallRoughness"), this.wallNoiseSettings.roughness);
+    gl.uniform1f(gl.getUniformLocation(program, "uWallRelief"), this.wallNoiseSettings.relief);
+    gl.uniform1f(gl.getUniformLocation(program, "uWallSeed"), this.wallNoiseSettings.seed);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.modelOutline ?? this.outline);
     gl.uniform1i(gl.getUniformLocation(program, "uOutline"), 0);
     for (const print of this.prints) {

@@ -16,7 +16,7 @@ import { PAINTED_NOISE_CONTROLS } from "../Painted/noiseControls";
 import { SOLE_FAMILIES } from "../sole/core/generateSole";
 import type { ProductTread } from "../sole/core/productTreads";
 import { DEFAULT_STEP_SETTINGS, StepApp, type StepDirection } from "../to-step-on/core/StepApp";
-import { TracePrintRenderer, type TraceShape } from "./core/TracePrintRenderer";
+import { DEFAULT_WALL_NOISE, TracePrintRenderer, type TraceShape } from "./core/TracePrintRenderer";
 import stepStyles from "../to-step-on/step.module.css";
 import styles from "./trace.module.css";
 
@@ -26,10 +26,11 @@ const DIRECTIONS: { value: StepDirection; label: string }[] = [
   { value: "up", label: "Bottom → Top" },
 ];
 const LAYERS = ["layer1", "layer2", "layer3"] as const;
-type SurfaceTab = "outside" | ImpressionLayer;
+type SurfaceTab = "outside" | "wall" | ImpressionLayer;
 const SURFACE_TABS: { value: SurfaceTab; label: string }[] = [
   { value: "outside", label: "Outside" }, { value: "layer1", label: "Layer 1" },
   { value: "layer2", label: "Layer 2" }, { value: "layer3", label: "Layer 3" },
+  { value: "wall", label: "Wall" },
 ];
 const SHAPES: { value: TraceShape; label: string }[] = [
   { value: "shoe", label: "Shoe" }, { value: "circle", label: "Circle" },
@@ -66,6 +67,8 @@ export default function TraceExperience() {
     layer1: DEFAULT_COLOR, layer2: DEFAULT_COLOR, layer3: DEFAULT_COLOR,
   });
   const [outsideNoise, setOutsideNoise] = useState<NoiseParams>({ ...DEFAULT_NOISE });
+  const [wallNoise, setWallNoise] = useState<NoiseParams>({ ...DEFAULT_WALL_NOISE });
+  const [edgeIrregularity, setEdgeIrregularity] = useState(1);
   const [outsideColor, setOutsideColor] = useState(DEFAULT_COLOR);
   const [outsideShadow, setOutsideShadow] = useState(DEFAULT_SHADOW_DEPTH);
   const [lightDirection, setLightDirection] = useState<LightDirection>([...DEFAULT_LIGHT_DIRECTION]);
@@ -114,6 +117,9 @@ export default function TraceExperience() {
     if (surfaceTab === "outside") {
       setOutsideNoise(current => ({ ...current, [key]: value }));
       snowRef.current?.setNoise({ [key]: value });
+    } else if (surfaceTab === "wall") {
+      setWallNoise(current => ({ ...current, [key]: value }));
+      printsRef.current?.setWallNoise({ [key]: value });
     } else {
       const layer = surfaceTab;
       setLayerNoise(current => ({ ...current, [layer]: { ...current[layer], [key]: value } }));
@@ -123,7 +129,7 @@ export default function TraceExperience() {
   const updateColor = (value: string) => {
     if (surfaceTab === "outside") {
       setOutsideColor(value); snowRef.current?.setColor(value);
-    } else {
+    } else if (surfaceTab !== "wall") {
       const layer = surfaceTab;
       setLayerColor(current => ({ ...current, [layer]: value }));
       printsRef.current?.setColor(layer, value);
@@ -132,7 +138,7 @@ export default function TraceExperience() {
   const updateShadow = (value: number) => {
     if (surfaceTab === "outside") {
       setOutsideShadow(value); snowRef.current?.setShadowDepth(value);
-    } else {
+    } else if (surfaceTab !== "wall") {
       const layer = surfaceTab;
       setLayerShadow(current => ({ ...current, [layer]: value }));
       printsRef.current?.setShadow(layer, value);
@@ -143,9 +149,9 @@ export default function TraceExperience() {
     snowRef.current?.setLightDirection(direction);
     printsRef.current?.setLightDirection(direction);
   };
-  const selectedNoise = surfaceTab === "outside" ? outsideNoise : layerNoise[surfaceTab];
-  const selectedColor = surfaceTab === "outside" ? outsideColor : layerColor[surfaceTab];
-  const selectedShadow = surfaceTab === "outside" ? outsideShadow : layerShadow[surfaceTab];
+  const selectedNoise = surfaceTab === "outside" ? outsideNoise : surfaceTab === "wall" ? wallNoise : layerNoise[surfaceTab];
+  const selectedColor = surfaceTab === "outside" ? outsideColor : surfaceTab === "wall" ? null : layerColor[surfaceTab];
+  const selectedShadow = surfaceTab === "outside" ? outsideShadow : surfaceTab === "wall" ? null : layerShadow[surfaceTab];
 
   return <main className={styles.page}>
     <canvas ref={snowCanvas} className={styles.snow} aria-hidden="true" />
@@ -232,15 +238,26 @@ export default function TraceExperience() {
           </div>
           <div id="trace-surface-controls" className={styles.surfaceControls} role="tabpanel"
             aria-label={`${SURFACE_TABS.find(tab => tab.value === surfaceTab)?.label} texture controls`}>
-            <label className={styles.colorPicker}>Base color
+            {surfaceTab === "wall" && <>
+              <p className={stepStyles.note}>Adjust only the sloped edge of existing and future impressions.</p>
+              <label className={styles.rangeControl}>
+                <span>Edge irregularity <output>{edgeIrregularity.toFixed(2)}</output></span>
+                <input type="range" aria-label="Wall edge irregularity" min="0" max="2" step="0.05"
+                  value={edgeIrregularity} onChange={event => {
+                    const value = Number(event.target.value);
+                    setEdgeIrregularity(value); printsRef.current?.setEdgeIrregularity(value);
+                  }} />
+              </label>
+            </>}
+            {selectedColor !== null && <label className={styles.colorPicker}>Base color
               <input type="color" aria-label={`${surfaceTab} base color`} value={selectedColor}
                 onChange={event => updateColor(event.target.value)} />
-            </label>
-            <label className={styles.rangeControl}>
+            </label>}
+            {selectedShadow !== null && <label className={styles.rangeControl}>
               <span>Shadow depth <output>{selectedShadow.toFixed(2)}</output></span>
               <input type="range" aria-label={`${surfaceTab} shadow depth`} min="0" max="2" step="0.05"
                 value={selectedShadow} onChange={event => updateShadow(Number(event.target.value))} />
-            </label>
+            </label>}
             {PAINTED_NOISE_CONTROLS.map(control => <label className={styles.rangeControl} key={control.key}>
               <span>{control.label}
                 <output>{selectedNoise[control.key].toFixed(control.step >= 1 ? 0 : 2)}</output></span>
