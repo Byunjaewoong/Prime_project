@@ -209,7 +209,7 @@ export default function TraceExperience() {
           <p className={stepStyles.note}>The shoe and its imprint share one scale. Changes during a step apply to the next step.</p>
           <label className={styles.rangeControl}>
             <span>Shoe &amp; footprint size <output>{shoeScale.toFixed(2)}×</output></span>
-            <input type="range" aria-label="Shoe and footprint size" min="0.4" max="1.5" step="0.05"
+            <input type="range" aria-label="Shoe and footprint size" min="0.2" max="1.5" step="0.05"
               value={shoeScale} onChange={event => {
                 const value = Number(event.target.value);
                 setShoeScale(value); stepRef.current?.setShoeScale(value);

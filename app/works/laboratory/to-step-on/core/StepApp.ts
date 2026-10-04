@@ -100,7 +100,7 @@ export class StepApp {
   }
 
   setShoeScale(value: number) {
-    this.shoeScale = clamp(value, 0.4, 1.5);
+    this.shoeScale = clamp(value, 0.2, 1.5);
     if (!this.step) this.model.shoe.scale.setScalar(this.shoeScale);
   }
 
