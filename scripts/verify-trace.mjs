@@ -15,7 +15,16 @@ try {
     const errors = [];
     page.on('pageerror', error => errors.push(String(error)));
     await page.goto(`${base}/works/laboratory`, { waitUntil: 'domcontentloaded' });
-    await page.getByRole('link', { name: /17\. Trace/ }).click();
+    for (const label of ['13.1 Painted', '13.2 Foot print', '13.3 Sole', '13.4 To step on']) {
+      assert.equal(await page.getByRole('link', { name: new RegExp(label.replace('.', '\\.'), 'i') }).count(), 1);
+    }
+    assert(await page.getByText('13.4 To step on', { exact: true }).evaluate(element =>
+      element.getBoundingClientRect().height <= parseFloat(getComputedStyle(element).lineHeight) + 1));
+    assert.equal(await page.getByRole('link', { name: /Trace/ }).count(), 0);
+    await page.screenshot({ path: path.join(output, `${mobile ? 'mobile' : 'desktop'}-laboratory-index.png`), fullPage: true });
+    await page.goto(base, { waitUntil: 'domcontentloaded' });
+    await page.screenshot({ path: path.join(output, `${mobile ? 'mobile' : 'desktop'}-home-index.png`), fullPage: true });
+    await page.getByRole('link', { name: 'Trace', exact: true }).click();
     await page.getByRole('button', { name: /Trace\. Click or tap/ }).waitFor();
     await page.waitForFunction(() => document.querySelector('canvas[data-sole-outline]')?.getAttribute('data-sole-outline') === 'model', null, { timeout: 8000 });
     assert.equal(await page.locator('canvas[data-print-count]').getAttribute('data-print-count'), '0');

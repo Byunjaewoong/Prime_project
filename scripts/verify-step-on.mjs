@@ -124,7 +124,7 @@ try {
     await page.clock.runFor(100);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await menu(); await page.getByRole('link', { name: 'Laboratory', exact: true }).click();
-    await page.getByRole('link', { name: /16\. To step on/ }).waitFor();
+    await page.getByRole('link', { name: /13\.4 To step on/ }).waitFor();
     assert.deepEqual(errors, []);
     reports.push({ viewport: name, closeups, errors, passed: true });
     await context.close();

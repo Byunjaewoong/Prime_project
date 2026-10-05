@@ -83,6 +83,12 @@ export default function HomePage() {
             </Link>
           </li>
 
+          <li style={{ marginLeft: "18%", width: "fit-content" }}>
+            <Link href="/works/laboratory/trace" style={{ textDecoration: "none", color: "inherit" }}>
+              <span>Trace</span>
+            </Link>
+          </li>
+
           <li className={styles.emergenceItem}>
             <section className={styles.emergenceField} aria-labelledby="emergence-title">
               <svg

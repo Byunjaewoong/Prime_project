@@ -125,34 +125,28 @@ export default function LaboratoryPage() {
 
           <li>
             <Link href="/works/laboratory/Painted" style={{ textDecoration: "none", color: "inherit", display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "1px dotted rgba(26,64,49,0.2)", paddingBottom: "6px" }}>
-              <span>13. Painted</span>
+              <span>13.1 Painted</span>
               <span style={{ fontSize: "0.75rem", opacity: 0.3, marginLeft: 12 }}>painted surface study</span>
             </Link>
           </li>
 
           <li>
             <Link href="/works/laboratory/Foot-print" style={{ textDecoration: "none", color: "inherit", display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "1px dotted rgba(26,64,49,0.2)", paddingBottom: "6px" }}>
-              <span>14. Foot print</span>
+              <span>13.2 Foot print</span>
               <span style={{ fontSize: "0.75rem", opacity: 0.3, marginLeft: 12 }}>snow impression study</span>
             </Link>
           </li>
 
           <li>
             <Link href="/works/laboratory/sole" style={{ textDecoration: "none", color: "inherit", display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "1px dotted rgba(26,64,49,0.2)", paddingBottom: "6px" }}>
-              <span>15. Sole</span>
+              <span>13.3 Sole</span>
               <span style={{ fontSize: "0.75rem", opacity: 0.3, marginLeft: 12 }}>procedural outsole prints</span>
             </Link>
           </li>
           <li>
             <Link href="/works/laboratory/to-step-on" style={{ textDecoration: "none", color: "inherit", display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "1px dotted rgba(26,64,49,0.2)", paddingBottom: "6px" }}>
-              <span>16. To step on</span>
-              <span style={{ fontSize: "0.75rem", opacity: 0.3, marginLeft: 12 }}>a step, a passing silhouette</span>
-            </Link>
-          </li>
-          <li>
-            <Link href="/works/laboratory/trace" style={{ textDecoration: "none", color: "inherit", display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "1px dotted rgba(26,64,49,0.2)", paddingBottom: "6px" }}>
-              <span>17. Trace</span>
-              <span style={{ fontSize: "0.75rem", opacity: 0.3, marginLeft: 12 }}>steps in snow</span>
+              <span style={{ whiteSpace: "nowrap", flexShrink: 0 }}>13.4 To step on</span>
+              <span style={{ fontSize: "0.75rem", opacity: 0.3, marginLeft: 12, textAlign: "right" }}>a step, a passing silhouette</span>
             </Link>
           </li>
         </ul>
