@@ -10,7 +10,7 @@ export type AtomBeatAction = "off" | "matrix" | "palette" | AtomBeatParameter;
 export const ATOM_BEAT_RANGES: Record<AtomBeatParameter, {
   label: string; min: number; max: number; step: number; decimals: number;
 }> = {
-  repel: { label: "repel force", min: 0.01, max: 4, step: 0.01, decimals: 2 },
+  repel: { label: "repel force", min: 0.01, max: 12, step: 0.01, decimals: 2 },
   forceFactor: { label: "force multiplier", min: 0.01, max: 2, step: 0.01, decimals: 2 },
   friction: { label: "friction", min: 0, max: 1, step: 0.01, decimals: 2 },
   particleSize: { label: "particle size", min: 0.1, max: 6, step: 0.1, decimals: 1 },
