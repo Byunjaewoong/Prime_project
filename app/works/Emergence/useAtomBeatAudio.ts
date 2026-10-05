@@ -26,10 +26,10 @@ const PARAMETERS = Object.keys(ATOM_BEAT_RANGES) as AtomBeatParameter[];
 const PULSE_DURATION = 420;
 
 function initialAssignments(): BeatAssignments {
-  const targets = { repel: 2, forceFactor: 1.2, friction: 0.5, particleSize: 4 };
+  const targets = { repel: 2, forceFactor: 1.2, friction: 1, particleSize: 4 };
   return {
-    kick: { action: "forceFactor", targets: { ...targets } },
-    snare: { action: "matrix", targets: { ...targets } },
+    kick: { action: "matrix", targets: { ...targets } },
+    snare: { action: "friction", targets: { ...targets } },
     hiHat: { action: "palette", targets: { ...targets } },
   };
 }
