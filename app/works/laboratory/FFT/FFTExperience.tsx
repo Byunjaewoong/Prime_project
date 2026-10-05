@@ -143,7 +143,7 @@ export default function FFTExperience() {
     context.clearRect(0, 0, bounds.width, bounds.height);
 
     const radius = Math.min(34, Math.max(18, bounds.width * 0.065));
-    const centerY = Math.max(radius + 7, bounds.height * 0.23);
+    const centerY = Math.max(radius + 7, bounds.height * 0.12);
     for (let index = 0; index < 3; index += 1) {
       const pulse = pulses[index] ?? 0;
       const centerX = bounds.width * (index + 1) / 4;
