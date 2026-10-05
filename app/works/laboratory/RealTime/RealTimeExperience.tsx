@@ -6,6 +6,9 @@ import { ArrowLeft, FlaskConical, Home, Mic, Square } from "lucide-react";
 import styles from "./realtime.module.css";
 
 type InputKind = "idle" | "system" | "microphone";
+type CaptureFocusController = {
+  setFocusBehavior: (behavior: "no-focus-change") => void;
+};
 
 const ANALYSER_SIZE = 4096;
 const HISTORY_SECONDS = 1;
@@ -139,7 +142,19 @@ export default function RealTimeExperience() {
         && typeof navigator.mediaDevices?.getDisplayMedia === "function";
       if (canRequestSystemAudio) {
         try {
-          const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+          const Controller = (window as typeof window & {
+            CaptureController?: new () => CaptureFocusController;
+          }).CaptureController;
+          const controller = Controller && "setFocusBehavior" in Controller.prototype
+            ? new Controller()
+            : undefined;
+          // Keep Real Time focused when another tab is selected for audio capture.
+          controller?.setFocusBehavior("no-focus-change");
+          const displayStream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: true,
+            ...(controller ? { controller } : {}),
+          });
           if (displayStream.getAudioTracks().length > 0) {
             stream = displayStream;
             nextInput = "system";
