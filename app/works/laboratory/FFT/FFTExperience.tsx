@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, FlaskConical, Home, Mic, Square } from "lucide-react";
+import { bandEnergy, BEAT_FFT_SIZE, createOnsetState, updateOnset } from "@/app/lib/audioBeatDetection";
 import styles from "./fft.module.css";
 
 type InputKind = "idle" | "system" | "microphone";
@@ -11,17 +12,9 @@ type CaptureFocusController = {
   setFocusBehavior: (behavior: "no-focus-change") => void;
 };
 
-const FFT_SIZE = 4096;
 const MIN_FREQUENCY = 20;
 const MAX_FREQUENCY = 20000;
 const BEAT_LABELS = ["KICK / BASS", "SNARE", "HI-HAT"] as const;
-
-type OnsetState = {
-  previousEnergy: number;
-  averageFlux: number;
-  cooldownUntil: number;
-  pulse: number;
-};
 
 type MutedColor = {
   hue: number;
@@ -29,61 +22,12 @@ type MutedColor = {
   lightness: number;
 };
 
-function createOnsetState(): OnsetState {
-  return { previousEnergy: 0, averageFlux: 0, cooldownUntil: 0, pulse: 0 };
-}
-
-function bandEnergy(
-  spectrum: Uint8Array,
-  binWidth: number,
-  minimumFrequency: number,
-  maximumFrequency: number,
-) {
-  const firstBin = Math.max(1, Math.floor(minimumFrequency / binWidth));
-  const lastBin = Math.min(spectrum.length - 1, Math.ceil(maximumFrequency / binWidth));
-  let energy = 0;
-  let samples = 0;
-
-  for (let bin = firstBin; bin <= lastBin; bin += 1) {
-    const amplitude = spectrum[bin] / 255;
-    energy += amplitude * amplitude;
-    samples += 1;
-  }
-
-  return samples > 0 ? Math.sqrt(energy / samples) : 0;
-}
-
 function peakAmplitude(spectrum: Uint8Array, binWidth: number, minimumFrequency: number, maximumFrequency: number) {
   const firstBin = Math.max(0, Math.floor(minimumFrequency / binWidth));
   const lastBin = Math.min(spectrum.length - 1, Math.max(firstBin, Math.ceil(maximumFrequency / binWidth)));
   let peak = 0;
   for (let bin = firstBin; bin <= lastBin; bin += 1) peak = Math.max(peak, spectrum[bin]);
   return peak / 255;
-}
-
-function updateOnset(
-  state: OnsetState,
-  energy: number,
-  now: number,
-  threshold: number,
-  cooldown: number,
-  enabled: boolean,
-  decay = 0.84,
-) {
-  const flux = Math.max(0, energy - state.previousEnergy);
-  state.averageFlux = state.averageFlux * 0.94 + flux * 0.06;
-  const adaptiveThreshold = Math.max(threshold, state.averageFlux * 2.35);
-
-  if (enabled && energy > 0.08 && flux > adaptiveThreshold && now >= state.cooldownUntil) {
-    state.pulse = 1;
-    state.cooldownUntil = now + cooldown;
-  } else {
-    state.pulse *= decay;
-  }
-
-  if (!enabled) state.pulse = 0;
-  state.previousEnergy = energy;
-  return state.pulse;
 }
 
 function isMobileDevice() {
@@ -346,7 +290,7 @@ export default function FFTExperience() {
       await audioContext.resume();
       const source = audioContext.createMediaStreamSource(stream);
       const analyser = audioContext.createAnalyser();
-      analyser.fftSize = FFT_SIZE;
+      analyser.fftSize = BEAT_FFT_SIZE;
       analyser.smoothingTimeConstant = 0.78;
       analyser.minDecibels = -96;
       analyser.maxDecibels = -18;

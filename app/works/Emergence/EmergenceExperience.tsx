@@ -8,6 +8,7 @@ import CanvasApp from "./CanvasApp";
 import { App as EmergenceApp } from "./core/App";
 import { atomColorCss, INITIAL_ATOM_COLORS, MAX_COLOR_TYPES } from "./core/AtomPalette";
 import { SimType } from "./core/types";
+import { ATOM_BEAT_RANGES, type AtomBeat, type AtomBeatAction, type AtomBeatParameter, useAtomBeatAudio } from "./useAtomBeatAudio";
 
 // ── Lenia G(Uo, Ui) 2D phase diagram ─────────────────────────────────────────
 function LeniaPhaseChart({ params }: { params: Record<string, number> }) {
@@ -195,6 +196,8 @@ export default function EmergenceExperience() {
   const [leniaParams, setLeniaParams] = useState<Record<string, number> | null>(null);
   const [atomParams, setAtomParams] = useState<Record<string, number> | null>(null);
   const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const atomAudio = useAtomBeatAudio(appRef, currentSim === "atoms");
+  const getAtomDisplayParams = atomAudio.getDisplayParams;
 
   useEffect(() => {
     const media = window.matchMedia("(pointer: coarse)");
@@ -226,10 +229,10 @@ export default function EmergenceExperience() {
   useEffect(() => {
     if (!fabOpen || currentSim !== "atoms") return;
     const id = setInterval(() => {
-      setAtomParams(appRef.current?.getSimParams() ?? null);
+      setAtomParams(getAtomDisplayParams(appRef.current?.getSimParams() ?? null));
     }, 200);
     return () => clearInterval(id);
-  }, [fabOpen, currentSim]);
+  }, [fabOpen, currentSim, getAtomDisplayParams]);
 
   useEffect(() => {
     if (currentSim !== "grayscott") return;
@@ -255,6 +258,7 @@ export default function EmergenceExperience() {
   }, [routeSim]);
 
   const selectSim = (type: SimType) => {
+    atomAudio.stop();
     setShowOverlay(false);
     setCurrentSim(type);
     appRef.current?.setSim(type);
@@ -262,6 +266,7 @@ export default function EmergenceExperience() {
   };
 
   const goBack = () => {
+    atomAudio.stop();
     appRef.current?.stopSim();
     setCurrentSim(null);
     setShowOverlay(true);
@@ -641,6 +646,19 @@ export default function EmergenceExperience() {
                     { key: "friction", label: "friction", min: 0, max: 1, step: 0.01, decimals: 2 },
                     { key: "particleSize", label: "particle size", min: 0.1, max: 6, step: 0.1, decimals: 1 },
                   ];
+                  const beatRows: { beat: AtomBeat; label: string }[] = [
+                    { beat: "kick", label: "Kick / Bass" },
+                    { beat: "snare", label: "Snare" },
+                    { beat: "hiHat", label: "Hi-hat" },
+                  ];
+                  const beatActions: { value: AtomBeatAction; label: string }[] = [
+                    { value: "off", label: "Off" },
+                    { value: "matrix", label: "Directed force matrix" },
+                    { value: "palette", label: "Particle palette" },
+                    ...Object.entries(ATOM_BEAT_RANGES).map(([value, range]) => ({
+                      value: value as AtomBeatParameter, label: range.label,
+                    })),
+                  ];
                   return (
                     <div className="orbit-panel-section" style={{ marginTop: 8, minWidth: 0, maxWidth: "100%" }}>
                       <div style={{ padding: "8px 9px", marginBottom: 12, borderRadius: 5, background: "rgba(255,255,255,0.04)", fontSize: 10, lineHeight: 1.55, opacity: 0.65 }}>
@@ -652,6 +670,61 @@ export default function EmergenceExperience() {
                           {isTouchDevice ? "tap · randomize force / pinch · camera zoom / world size · field bounds" : "click · randomize force / wheel · world size / left-drag · pan"}
                         </div>
                         {atomParams.depthMode === 1 && <div>double tap / double click · switch focus</div>}
+                      </div>
+                      <div style={{ padding: "10px 9px", marginBottom: 12, border: "1px solid rgba(255,255,255,0.15)", borderRadius: 6 }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
+                          <span style={{ fontSize: 10, letterSpacing: "0.12em", opacity: 0.7, textTransform: "uppercase" }}>audio reaction</span>
+                          <button
+                            type="button"
+                            aria-label={atomAudio.inputKind === "idle" ? "Play audio reaction" : "Stop audio reaction"}
+                            disabled={atomAudio.starting}
+                            onClick={() => { if (atomAudio.inputKind === "idle") void atomAudio.start(); else atomAudio.stop(); }}
+                            style={{ fontSize: 11, padding: "5px 10px", background: atomAudio.inputKind === "idle" ? "rgba(255,255,255,0.08)" : "rgba(174,238,255,0.18)", border: "1px solid rgba(255,255,255,0.28)", borderRadius: 4, color: "inherit", cursor: "pointer" }}
+                          >
+                            {atomAudio.starting ? "requesting..." : atomAudio.inputKind === "idle" ? "▶ play" : "■ stop"}
+                          </button>
+                        </div>
+                        {atomAudio.inputKind !== "idle" && <div style={{ fontSize: 10, opacity: 0.55, marginBottom: 8 }}>listening: {atomAudio.inputKind === "system" ? "tab audio" : "microphone"}</div>}
+                        {atomAudio.error && <div role="alert" style={{ fontSize: 10, color: "#ff9dab", marginBottom: 8 }}>{atomAudio.error}</div>}
+                        {beatRows.map(({ beat, label }) => {
+                          const assignment = atomAudio.assignments[beat];
+                          const action = assignment.action;
+                          const numeric = action in ATOM_BEAT_RANGES ? action as AtomBeatParameter : null;
+                          const range = numeric ? ATOM_BEAT_RANGES[numeric] : null;
+                          const target = numeric ? assignment.targets[numeric] : 0;
+                          return (
+                            <div key={beat} style={{ padding: "9px 0", borderTop: "1px solid rgba(255,255,255,0.1)" }}>
+                              <label style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 6, fontSize: 11, marginBottom: numeric ? 8 : 0 }}>
+                                <span style={{ minWidth: 76, opacity: 0.7 }}>{label}</span>
+                                <select
+                                  aria-label={`${label} action`}
+                                  value={action}
+                                  onChange={(event) => atomAudio.setAction(beat, event.target.value as AtomBeatAction)}
+                                  style={{ width: "100%", minWidth: 0, padding: "6px 4px", background: "#17202a", border: "1px solid rgba(255,255,255,0.24)", borderRadius: 4, color: "#e5e7eb", fontSize: 10 }}
+                                >
+                                  {beatActions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                </select>
+                              </label>
+                              {numeric && range && (
+                                <div style={{ paddingInline: 14 }} onWheel={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  atomAudio.setTarget(beat, numeric, target + (event.deltaY < 0 ? range.step : -range.step));
+                                }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 4 }}>
+                                    <span style={{ opacity: 0.55 }}>target A · {range.label}</span>
+                                    <span style={{ color: "#aef" }}>{target.toFixed(range.decimals)}</span>
+                                  </div>
+                                  {isTouchDevice ? (
+                                    <AtomTouchSlider label={`${label} target A`} value={target} min={range.min} max={range.max} step={range.step} onChange={(value) => atomAudio.setTarget(beat, numeric, value)} />
+                                  ) : (
+                                    <input type="range" aria-label={`${label} target A`} min={range.min} max={range.max} step={range.step} value={target} style={{ width: "100%", accentColor: "#aef" }} onChange={(event) => atomAudio.setTarget(beat, numeric, Number(event.target.value))} />
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
                         <button
@@ -736,7 +809,8 @@ export default function EmergenceExperience() {
                       {controls.map(({ key, label, min, max, step, decimals }) => {
                         const value = atomParams[key] ?? min;
                         const update = (next: number) => {
-                          appRef.current?.setSimParam(key, next);
+                          if (key in ATOM_BEAT_RANGES) atomAudio.setBaseParameter(key as AtomBeatParameter, next);
+                          else appRef.current?.setSimParam(key, next);
                           setAtomParams(prev => prev ? { ...prev, [key]: next } : prev);
                         };
                         return (
