@@ -14,6 +14,7 @@ type CaptureFocusController = {
 const FFT_SIZE = 4096;
 const MIN_FREQUENCY = 20;
 const MAX_FREQUENCY = 20000;
+const BEAT_LABELS = ["KICK / BASS", "SNARE", "HI-HAT"] as const;
 
 type OnsetState = {
   previousEnergy: number;
@@ -96,29 +97,77 @@ function stopMediaStream(stream: MediaStream | null) {
 
 export default function FFTExperience() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const beatCanvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const contextRef = useRef<AudioContext | null>(null);
   const animationRef = useRef<number | null>(null);
-  const detectionRef = useRef({ kick: true, hiHat: true });
+  const detectionRef = useRef({ kick: true, snare: true, hiHat: true });
   const frequencyScaleRef = useRef<FrequencyScale>("log");
-  const onsetRef = useRef({ kick: createOnsetState(), hiHat: createOnsetState() });
+  const onsetRef = useRef({ kick: createOnsetState(), snare: createOnsetState(), hiHat: createOnsetState() });
   const hiHatColorRef = useRef<MutedColor>({ hue: 205, saturation: 20, lightness: 42 });
   const [inputKind, setInputKind] = useState<InputKind>("idle");
   const [isStarting, setIsStarting] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [kickEnabled, setKickEnabled] = useState(true);
+  const [snareEnabled, setSnareEnabled] = useState(true);
   const [hiHatEnabled, setHiHatEnabled] = useState(true);
   const [frequencyScale, setFrequencyScale] = useState<FrequencyScale>("log");
 
-  const setDetection = useCallback((kind: "kick" | "hiHat", enabled: boolean) => {
+  const setDetection = useCallback((kind: "kick" | "snare" | "hiHat", enabled: boolean) => {
     detectionRef.current[kind] = enabled;
     if (kind === "kick") setKickEnabled(enabled);
+    else if (kind === "snare") setSnareEnabled(enabled);
     else setHiHatEnabled(enabled);
   }, []);
 
   const selectFrequencyScale = useCallback((scale: FrequencyScale) => {
     frequencyScaleRef.current = scale;
     setFrequencyScale(scale);
+  }, []);
+
+  const drawBeatRings = useCallback((pulses: readonly number[], now: number) => {
+    const canvas = beatCanvasRef.current;
+    if (!canvas) return;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+
+    const bounds = canvas.getBoundingClientRect();
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    const width = Math.max(1, Math.round(bounds.width * pixelRatio));
+    const height = Math.max(1, Math.round(bounds.height * pixelRatio));
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    context.clearRect(0, 0, bounds.width, bounds.height);
+
+    const radius = Math.min(34, Math.max(18, bounds.width * 0.065));
+    const centerY = Math.max(radius + 7, bounds.height * 0.23);
+    for (let index = 0; index < 3; index += 1) {
+      const pulse = pulses[index] ?? 0;
+      const centerX = bounds.width * (index + 1) / 4;
+      const ringRadius = radius + pulse * 6;
+      context.beginPath();
+      for (let point = 0; point <= 96; point += 1) {
+        const angle = point / 96 * Math.PI * 2;
+        const vibration = pulse * (
+          Math.sin(angle * (11 + index * 3) + now * 0.028) * 1.5
+          + Math.sin(angle * (19 + index * 2) - now * 0.019) * 0.7
+        );
+        const x = centerX + Math.cos(angle) * (ringRadius + vibration);
+        const y = centerY + Math.sin(angle) * (ringRadius + vibration);
+        if (point === 0) context.moveTo(x, y);
+        else context.lineTo(x, y);
+      }
+      context.strokeStyle = `rgba(5, 5, 5, ${0.36 + pulse * 0.62})`;
+      context.lineWidth = 1.1 + pulse * 0.35;
+      context.stroke();
+      context.fillStyle = `rgba(5, 5, 5, ${0.42 + pulse * 0.4})`;
+      context.font = "10px monospace";
+      context.textAlign = "center";
+      context.fillText(BEAT_LABELS[index], centerX, centerY + radius + 23);
+    }
   }, []);
 
   const stop = useCallback(() => {
@@ -130,9 +179,10 @@ export default function FFTExperience() {
     streamRef.current = null;
     void contextRef.current?.close();
     contextRef.current = null;
-    onsetRef.current = { kick: createOnsetState(), hiHat: createOnsetState() };
+    onsetRef.current = { kick: createOnsetState(), snare: createOnsetState(), hiHat: createOnsetState() };
+    drawBeatRings([0, 0, 0], 0);
     setInputKind("idle");
-  }, []);
+  }, [drawBeatRings]);
 
   const drawSpectrum = useCallback((analyser: AnalyserNode) => {
     const canvas = canvasRef.current;
@@ -182,6 +232,15 @@ export default function FFTExperience() {
         120,
         detectionRef.current.kick,
       );
+      const snarePulse = updateOnset(
+        onsetRef.current.snare,
+        bandEnergy(spectrum, binWidth, 180, 2800),
+        now,
+        0.026,
+        100,
+        detectionRef.current.snare,
+        0.87,
+      );
       const hiHatPulse = updateOnset(
         onsetRef.current.hiHat,
         bandEnergy(spectrum, binWidth, 5000, 15000),
@@ -227,12 +286,13 @@ export default function FFTExperience() {
       context.lineWidth = 1.35 + kickPulse * 3.4;
       context.lineJoin = "round";
       context.stroke();
+      drawBeatRings([kickPulse, snarePulse, hiHatPulse], now);
 
       animationRef.current = requestAnimationFrame(draw);
     };
 
     draw();
-  }, []);
+  }, [drawBeatRings]);
 
   const start = useCallback(async () => {
     if (isStarting) return;
@@ -308,7 +368,17 @@ export default function FFTExperience() {
     }
   }, [drawSpectrum, isStarting, stop]);
 
-  useEffect(() => stop, [stop]);
+  useEffect(() => {
+    drawBeatRings([0, 0, 0], 0);
+    const observer = new ResizeObserver(() => {
+      if (animationRef.current === null) drawBeatRings([0, 0, 0], 0);
+    });
+    if (beatCanvasRef.current) observer.observe(beatCanvasRef.current);
+    return () => {
+      observer.disconnect();
+      stop();
+    };
+  }, [drawBeatRings, stop]);
 
   return (
     <main className={styles.page}>
@@ -322,6 +392,11 @@ export default function FFTExperience() {
             ref={canvasRef}
             className={styles.canvas}
             aria-label="Real-time audio frequency spectrum with frequency on the horizontal axis and amplitude on the vertical axis"
+          />
+          <canvas
+            ref={beatCanvasRef}
+            className={styles.beatCanvas}
+            aria-label="Kick and bass, snare, and hi-hat beat indicators"
           />
         </div>
 
@@ -375,6 +450,15 @@ export default function FFTExperience() {
               >
                 <span>Kick / Bass</span>
                 <span className={`${styles.switch} ${kickEnabled ? styles.switchOn : ""}`} aria-hidden="true"><i /></span>
+              </button>
+              <button
+                type="button"
+                className={styles.toggle}
+                onClick={() => setDetection("snare", !snareEnabled)}
+                aria-pressed={snareEnabled}
+              >
+                <span>Snare</span>
+                <span className={`${styles.switch} ${snareEnabled ? styles.switchOn : ""}`} aria-hidden="true"><i /></span>
               </button>
               <button
                 type="button"
