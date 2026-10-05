@@ -7,6 +7,9 @@ import styles from "./fft.module.css";
 
 type InputKind = "idle" | "system" | "microphone";
 type FrequencyScale = "log" | "linear";
+type CaptureFocusController = {
+  setFocusBehavior: (behavior: "no-focus-change") => void;
+};
 
 const FFT_SIZE = 4096;
 const MIN_FREQUENCY = 20;
@@ -244,9 +247,18 @@ export default function FFTExperience() {
 
       if (canRequestSystemAudio) {
         try {
+          const Controller = (window as typeof window & {
+            CaptureController?: new () => CaptureFocusController;
+          }).CaptureController;
+          const controller = Controller && "setFocusBehavior" in Controller.prototype
+            ? new Controller()
+            : undefined;
+          // Decide before opening the picker so Chrome keeps FFT in front when sharing starts.
+          controller?.setFocusBehavior("no-focus-change");
           const displayStream = await navigator.mediaDevices.getDisplayMedia({
             video: true,
             audio: true,
+            ...(controller ? { controller } : {}),
           });
           if (displayStream.getAudioTracks().length > 0) {
             stream = displayStream;
