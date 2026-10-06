@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FlaskConical, Home, Pause, Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_COLOR, DEFAULT_LIGHT_DIRECTION, DEFAULT_NOISE, DEFAULT_PEAK_HOLD, DEFAULT_SHADOW_DEPTH, PaintedRenderer, type LightDirection, type NoiseParams } from "./core/PaintedRenderer";
+import { DEFAULT_COLOR, DEFAULT_LIGHT_DIRECTION, DEFAULT_NOISE, DEFAULT_PEAK_HOLD, DEFAULT_SHADOW_COLOR, DEFAULT_SHADOW_DEPTH, PaintedRenderer, type LightDirection, type NoiseParams } from "./core/PaintedRenderer";
 import DragOnlyRange from "./DragOnlyRange";
 import LightDirectionSphere from "./LightDirectionSphere";
 import { PAINTED_NOISE_CONTROLS } from "./noiseControls";
@@ -63,6 +63,7 @@ export default function PaintedExperience() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [noise, setNoise] = useState<NoiseParams>(DEFAULT_NOISE);
   const [color, setColor] = useState(DEFAULT_COLOR);
+  const [shadowColor, setShadowColor] = useState(DEFAULT_SHADOW_COLOR);
   const [hsl, setHsl] = useState<HslColor>({ hue: 202, saturation: 32, lightness: 100 });
   const [shadowDepth, setShadowDepth] = useState(DEFAULT_SHADOW_DEPTH);
   const [lightDirection, setLightDirection] = useState<LightDirection>(DEFAULT_LIGHT_DIRECTION);
@@ -105,6 +106,11 @@ export default function PaintedExperience() {
   const updateShadowDepth = (value: number) => {
     setShadowDepth(value);
     rendererRef.current?.setShadowDepth(value);
+  };
+
+  const updateShadowColor = (value: string) => {
+    setShadowColor(value);
+    rendererRef.current?.setShadowColor(value);
   };
 
   const updateLightDirection = (direction: LightDirection) => {
@@ -173,6 +179,10 @@ export default function PaintedExperience() {
             <label className={styles.colorPicker}>
               <span>Custom color</span>
               <input type="color" value={color} aria-label="Custom color" onChange={event => updateColor(event.target.value)} />
+            </label>
+            <label className={styles.colorPicker}>
+              <span>Shadow color</span>
+              <input type="color" value={shadowColor} aria-label="Shadow color" onChange={event => updateShadowColor(event.target.value)} />
             </label>
             {([
               { key: "hue", label: "Hue", max: 360, unit: "°" },

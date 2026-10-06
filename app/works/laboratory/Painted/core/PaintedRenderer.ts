@@ -11,6 +11,7 @@ export type NoiseParams = {
 export const DEFAULT_NOISE: NoiseParams = { scale: 40, octaves: 6, roughness: 0.45, relief: 15, seed: 45 };
 
 export const DEFAULT_COLOR = "#ffffff";
+export const DEFAULT_SHADOW_COLOR = "#000000";
 export const DEFAULT_SHADOW_DEPTH = 0.2;
 export const DEFAULT_PEAK_HOLD = 0.25;
 export type LightDirection = [number, number, number];
@@ -86,6 +87,7 @@ uniform sampler2D uNormalsB2;
 uniform vec3 uBlends;
 uniform float uPeakHold;
 uniform vec3 uColor;
+uniform vec3 uShadowColor;
 uniform vec3 uLight;
 uniform float uShadowDepth;
 out vec4 outColor;
@@ -116,7 +118,9 @@ void main() {
   vec3 normal = normalize(vec3(slope, 1.0));
   float illumination = max(dot(normal, normalize(uLight)), 0.0);
   float shade = mix(1.0, 0.24 + 0.96 * illumination, uShadowDepth);
-  outColor = vec4(clamp(uColor * shade, 0.0, 1.0), 1.0);
+  float darkness = clamp(1.0 - shade, 0.0, 1.0);
+  vec3 shadedColor = mix(uColor * max(shade, 1.0), uShadowColor, darkness);
+  outColor = vec4(clamp(shadedColor, 0.0, 1.0), 1.0);
 }
 `;
 
@@ -214,6 +218,7 @@ export class PaintedRenderer {
   private playing = false;
   private lastFrameTime: number | null = null;
   private color = DEFAULT_COLOR;
+  private shadowColor = DEFAULT_SHADOW_COLOR;
   private shadowDepth = DEFAULT_SHADOW_DEPTH;
   private lightDirection: LightDirection = [...DEFAULT_LIGHT_DIRECTION];
   private frame: number | null = null;
@@ -312,6 +317,12 @@ export class PaintedRenderer {
   setColor(hex: string) {
     if (!/^#[0-9a-f]{6}$/i.test(hex)) return;
     this.color = hex;
+    this.scheduleRender();
+  }
+
+  setShadowColor(hex: string) {
+    if (!/^#[0-9a-f]{6}$/i.test(hex)) return;
+    this.shadowColor = hex;
     this.scheduleRender();
   }
 
@@ -482,6 +493,7 @@ export class PaintedRenderer {
       ...this.cycles.map(cycle => cycle.nextSeed === null ? 0 : cycle.progress) as [number, number, number]);
     gl.uniform1f(gl.getUniformLocation(this.displayProgram, "uPeakHold"), this.peakHold);
     gl.uniform3f(gl.getUniformLocation(this.displayProgram, "uColor"), ...colorChannels(this.color));
+    gl.uniform3f(gl.getUniformLocation(this.displayProgram, "uShadowColor"), ...colorChannels(this.shadowColor));
     gl.uniform3f(gl.getUniformLocation(this.displayProgram, "uLight"), ...this.lightDirection);
     gl.uniform1f(gl.getUniformLocation(this.displayProgram, "uShadowDepth"), this.shadowDepth);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -491,6 +503,7 @@ export class PaintedRenderer {
     const context = this.fallback;
     if (!context) return;
     const color = colorChannels(this.color);
+    const shadowColor = colorChannels(this.shadowColor);
     const { width, height } = this.canvas;
     const downsample = Math.min(1, Math.sqrt(750_000 / (width * height)));
     const sampleWidth = Math.max(1, Math.round(width * downsample));
@@ -574,7 +587,11 @@ export class PaintedRenderer {
         const ny = (below - above) * this.params.relief / (2 * worldStepY);
         const dot = Math.max(0, (nx * this.lightDirection[0] + ny * this.lightDirection[1] + this.lightDirection[2]) / (Math.hypot(nx, ny, 1) * lightLength));
         const shade = 1 + this.shadowDepth * (0.24 + 0.96 * dot - 1);
-        for (let channel = 0; channel < 3; channel++) image.data[index * 4 + channel] = Math.round(color[channel] * shade * 255);
+        const darkness = Math.max(0, Math.min(1, 1 - shade));
+        for (let channel = 0; channel < 3; channel++) {
+          const lit = color[channel] * Math.max(shade, 1);
+          image.data[index * 4 + channel] = Math.round((lit * (1 - darkness) + shadowColor[channel] * darkness) * 255);
+        }
         image.data[index * 4 + 3] = 255;
       }
     }
