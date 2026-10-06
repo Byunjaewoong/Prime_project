@@ -54,12 +54,16 @@ float heightAt(vec2 pixel) {
   float amplitude = 1.0;
   float height = 0.0;
   float totalAmplitude = 0.0;
+  // Rotate the lattice between octaves and skip frequencies too fine for the display pixels.
+  vec2 samplePoint = vec2(0.8 * pixel.x - 0.6 * pixel.y, 0.6 * pixel.x + 0.8 * pixel.y) / uScale;
   for (int octave = 0; octave < 6; octave++) {
-    if (octave >= uOctaves || uScale / frequency < 1.25 * uFieldZoom / uPixelRatio) break;
-    height += amplitude * perlin(pixel * frequency / uScale + vec2(float(octave) * 29.7));
+    if (octave >= uOctaves || uScale / frequency < 2.8 * uFieldZoom / uPixelRatio) break;
+    height += amplitude * perlin(samplePoint + vec2(float(octave) * 29.7));
     totalAmplitude += amplitude;
     frequency *= 2.0;
     amplitude *= uRoughness;
+    samplePoint = 2.0 * vec2(0.8 * samplePoint.x - 0.6 * samplePoint.y,
+                             0.6 * samplePoint.x + 0.8 * samplePoint.y);
   }
   return height / max(totalAmplitude, 0.001);
 }
@@ -551,19 +555,22 @@ export class PaintedRenderer {
         for (let x = 0; x < sampleWidth; x++) {
           const worldX = (x * cssStepX - this.canvas.clientWidth * 0.5) * FIELD_ZOOM + this.canvas.clientWidth * 0.5;
           const worldY = (y * cssStepY - this.canvas.clientHeight * 0.5) * FIELD_ZOOM + this.canvas.clientHeight * 0.5;
+          let sampleX = (0.8 * worldX - 0.6 * worldY) / (this.params.scale * spatialScale);
+          let sampleY = (0.6 * worldX + 0.8 * worldY) / (this.params.scale * spatialScale);
           let frequency = 1;
           let amplitude = 1;
           let value = 0;
           let totalAmplitude = 0;
           for (let octave = 0; octave < this.params.octaves; octave++) {
             const scale = this.params.scale * spatialScale;
-            if (scale / frequency < Math.max(worldStepX, worldStepY) * 1.25) break;
-            const px = worldX * frequency / scale + octave * 29.7;
-            const py = worldY * frequency / scale + octave * 29.7;
-            value += amplitude * cpuPerlin(px, py, seed);
+            if (scale / frequency < Math.max(worldStepX, worldStepY) * 2.8) break;
+            value += amplitude * cpuPerlin(sampleX + octave * 29.7, sampleY + octave * 29.7, seed);
             totalAmplitude += amplitude;
             frequency *= 2;
             amplitude *= this.params.roughness;
+            const nextX = 2 * (0.8 * sampleX - 0.6 * sampleY);
+            sampleY = 2 * (0.6 * sampleX + 0.8 * sampleY);
+            sampleX = nextX;
           }
           heights[y * sampleWidth + x] = value / (totalAmplitude || 1);
         }
