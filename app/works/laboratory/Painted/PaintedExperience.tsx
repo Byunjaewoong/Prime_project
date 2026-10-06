@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FlaskConical, Home, Pause, Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_COLOR, DEFAULT_LIGHT_DIRECTION, DEFAULT_NOISE, DEFAULT_PEAK_HOLD, DEFAULT_SHADOW_COLOR, DEFAULT_SHADOW_DEPTH, PaintedRenderer, type LightDirection, type NoiseParams } from "./core/PaintedRenderer";
+import { DEFAULT_COLOR, DEFAULT_HIGHLIGHT_COLOR, DEFAULT_LIGHT_DIRECTION, DEFAULT_NOISE, DEFAULT_PEAK_HOLD, DEFAULT_SHADOW_COLOR, DEFAULT_SHADOW_DEPTH, PaintedRenderer, type ColorZones, type LightDirection, type NoiseParams } from "./core/PaintedRenderer";
 import DragOnlyRange from "./DragOnlyRange";
 import LightDirectionSphere from "./LightDirectionSphere";
 import { PAINTED_NOISE_CONTROLS } from "./noiseControls";
@@ -64,6 +64,8 @@ export default function PaintedExperience() {
   const [noise, setNoise] = useState<NoiseParams>(DEFAULT_NOISE);
   const [color, setColor] = useState(DEFAULT_COLOR);
   const [shadowColor, setShadowColor] = useState(DEFAULT_SHADOW_COLOR);
+  const [highlightColor, setHighlightColor] = useState(DEFAULT_HIGHLIGHT_COLOR);
+  const [colorZones, setColorZones] = useState<ColorZones>(2);
   const [hsl, setHsl] = useState<HslColor>({ hue: 202, saturation: 32, lightness: 100 });
   const [shadowDepth, setShadowDepth] = useState(DEFAULT_SHADOW_DEPTH);
   const [lightDirection, setLightDirection] = useState<LightDirection>(DEFAULT_LIGHT_DIRECTION);
@@ -111,6 +113,16 @@ export default function PaintedExperience() {
   const updateShadowColor = (value: string) => {
     setShadowColor(value);
     rendererRef.current?.setShadowColor(value);
+  };
+
+  const updateHighlightColor = (value: string) => {
+    setHighlightColor(value);
+    rendererRef.current?.setHighlightColor(value);
+  };
+
+  const updateColorZones = (value: ColorZones) => {
+    setColorZones(value);
+    rendererRef.current?.setColorZones(value);
   };
 
   const updateLightDirection = (direction: LightDirection) => {
@@ -184,6 +196,15 @@ export default function PaintedExperience() {
               <span>Shadow color</span>
               <input type="color" value={shadowColor} aria-label="Shadow color" onChange={event => updateShadowColor(event.target.value)} />
             </label>
+            <div className={styles.colorModes} role="group" aria-label="Color zones">
+              {([2, 3] as const).map(zones => <button key={zones} type="button"
+                className={styles.colorMode} aria-pressed={colorZones === zones}
+                onClick={() => updateColorZones(zones)}>{zones} zones</button>)}
+            </div>
+            {colorZones === 3 && <label className={styles.colorPicker}>
+              <span>Highlight color</span>
+              <input type="color" value={highlightColor} aria-label="Highlight color" onChange={event => updateHighlightColor(event.target.value)} />
+            </label>}
             {([
               { key: "hue", label: "Hue", max: 360, unit: "°" },
               { key: "saturation", label: "Saturation", max: 100, unit: "%" },

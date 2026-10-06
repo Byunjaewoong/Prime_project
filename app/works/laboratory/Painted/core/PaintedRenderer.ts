@@ -12,8 +12,10 @@ export const DEFAULT_NOISE: NoiseParams = { scale: 40, octaves: 6, roughness: 0.
 
 export const DEFAULT_COLOR = "#ffffff";
 export const DEFAULT_SHADOW_COLOR = "#000000";
+export const DEFAULT_HIGHLIGHT_COLOR = "#ffffff";
 export const DEFAULT_SHADOW_DEPTH = 0.2;
 export const DEFAULT_PEAK_HOLD = 0.25;
+export type ColorZones = 2 | 3;
 export type LightDirection = [number, number, number];
 export const DEFAULT_LIGHT_DIRECTION: LightDirection = [-0.05, Math.sqrt(1 - 0.05 ** 2 - 0.2 ** 2), 0.2];
 const FIELD_ZOOM = 2; // Twice the span on each axis: four times the visible field area.
@@ -88,6 +90,8 @@ uniform vec3 uBlends;
 uniform float uPeakHold;
 uniform vec3 uColor;
 uniform vec3 uShadowColor;
+uniform vec3 uHighlightColor;
+uniform int uColorZones;
 uniform vec3 uLight;
 uniform float uShadowDepth;
 out vec4 outColor;
@@ -120,6 +124,9 @@ void main() {
   float shade = mix(1.0, 0.24 + 0.96 * illumination, uShadowDepth);
   float darkness = clamp(1.0 - shade, 0.0, 1.0);
   vec3 shadedColor = mix(uColor * max(shade, 1.0), uShadowColor, darkness);
+  if (uColorZones == 3) {
+    shadedColor = mix(shadedColor, uHighlightColor, smoothstep(0.28, 0.62, illumination));
+  }
   outColor = vec4(clamp(shadedColor, 0.0, 1.0), 1.0);
 }
 `;
@@ -219,6 +226,8 @@ export class PaintedRenderer {
   private lastFrameTime: number | null = null;
   private color = DEFAULT_COLOR;
   private shadowColor = DEFAULT_SHADOW_COLOR;
+  private highlightColor = DEFAULT_HIGHLIGHT_COLOR;
+  private colorZones: ColorZones = 2;
   private shadowDepth = DEFAULT_SHADOW_DEPTH;
   private lightDirection: LightDirection = [...DEFAULT_LIGHT_DIRECTION];
   private frame: number | null = null;
@@ -323,6 +332,17 @@ export class PaintedRenderer {
   setShadowColor(hex: string) {
     if (!/^#[0-9a-f]{6}$/i.test(hex)) return;
     this.shadowColor = hex;
+    this.scheduleRender();
+  }
+
+  setHighlightColor(hex: string) {
+    if (!/^#[0-9a-f]{6}$/i.test(hex)) return;
+    this.highlightColor = hex;
+    this.scheduleRender();
+  }
+
+  setColorZones(value: ColorZones) {
+    this.colorZones = value;
     this.scheduleRender();
   }
 
@@ -494,6 +514,8 @@ export class PaintedRenderer {
     gl.uniform1f(gl.getUniformLocation(this.displayProgram, "uPeakHold"), this.peakHold);
     gl.uniform3f(gl.getUniformLocation(this.displayProgram, "uColor"), ...colorChannels(this.color));
     gl.uniform3f(gl.getUniformLocation(this.displayProgram, "uShadowColor"), ...colorChannels(this.shadowColor));
+    gl.uniform3f(gl.getUniformLocation(this.displayProgram, "uHighlightColor"), ...colorChannels(this.highlightColor));
+    gl.uniform1i(gl.getUniformLocation(this.displayProgram, "uColorZones"), this.colorZones);
     gl.uniform3f(gl.getUniformLocation(this.displayProgram, "uLight"), ...this.lightDirection);
     gl.uniform1f(gl.getUniformLocation(this.displayProgram, "uShadowDepth"), this.shadowDepth);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -504,6 +526,7 @@ export class PaintedRenderer {
     if (!context) return;
     const color = colorChannels(this.color);
     const shadowColor = colorChannels(this.shadowColor);
+    const highlightColor = colorChannels(this.highlightColor);
     const { width, height } = this.canvas;
     const downsample = Math.min(1, Math.sqrt(750_000 / (width * height)));
     const sampleWidth = Math.max(1, Math.round(width * downsample));
@@ -588,9 +611,14 @@ export class PaintedRenderer {
         const dot = Math.max(0, (nx * this.lightDirection[0] + ny * this.lightDirection[1] + this.lightDirection[2]) / (Math.hypot(nx, ny, 1) * lightLength));
         const shade = 1 + this.shadowDepth * (0.24 + 0.96 * dot - 1);
         const darkness = Math.max(0, Math.min(1, 1 - shade));
+        const highlightProgress = Math.max(0, Math.min(1, (dot - 0.28) / 0.34));
+        const highlightBlend = this.colorZones === 3
+          ? highlightProgress * highlightProgress * (3 - 2 * highlightProgress)
+          : 0;
         for (let channel = 0; channel < 3; channel++) {
           const lit = color[channel] * Math.max(shade, 1);
-          image.data[index * 4 + channel] = Math.round((lit * (1 - darkness) + shadowColor[channel] * darkness) * 255);
+          const shaded = lit * (1 - darkness) + shadowColor[channel] * darkness;
+          image.data[index * 4 + channel] = Math.round((shaded * (1 - highlightBlend) + highlightColor[channel] * highlightBlend) * 255);
         }
         image.data[index * 4 + 3] = 255;
       }

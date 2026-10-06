@@ -26,8 +26,11 @@
 .paletteSwatch { flex: none; width: 16px; height: 16px; border: 1px solid rgba(255,255,255,.28); border-radius: 50%; }
 .colorPicker { display: flex; min-height: 38px; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 8px; border: 1px solid rgba(255,255,255,.2); border-radius: 6px; background: rgba(255,255,255,.05); color: rgba(255,255,255,.83); cursor: pointer; }
 .colorPicker input { flex: none; width: 42px; height: 28px; padding: 2px; border: 1px solid rgba(255,255,255,.35); border-radius: 4px; background: transparent; }
+.colorModes { display: flex; gap: 6px; }
+.colorMode { flex: 1; min-height: 36px; border: 1px solid rgba(255,255,255,.25); border-radius: 6px; background: rgba(255,255,255,.05); color: rgba(255,255,255,.8); cursor: pointer; font: 11px var(--font-courier), monospace; }
+.colorMode[aria-pressed="true"] { border-color: rgba(255,255,255,.9); background: rgba(255,255,255,.16); color: #fff; }
 .colorControl { display: grid; gap: 6px; }
 .lightSphere { width: 188px; height: 188px; align-self: center; touch-action: none; cursor: grab; }
 .lightSphere:active { cursor: grabbing; }
 .lightCoordinates { display: flex; justify-content: space-around; gap: 8px; color: rgba(255,255,255,.65); font-size: 10px; font-variant-numeric: tabular-nums; }
-.menuButton:focus-visible, .menuLinks a:focus-visible, .control input:focus-visible, .range:focus-visible, .paletteOption:focus-visible, .lightSphere:focus-visible, .playButton:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.menuButton:focus-visible, .menuLinks a:focus-visible, .control input:focus-visible, .range:focus-visible, .paletteOption:focus-visible, .colorMode:focus-visible, .lightSphere:focus-visible, .playButton:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
