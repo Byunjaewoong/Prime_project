@@ -676,7 +676,7 @@ export default function EmergenceExperience() {
                       <div style={{ marginBottom: 12 }}>
                         <div style={{ fontSize: 10, letterSpacing: "0.12em", opacity: 0.55, textTransform: "uppercase", marginBottom: 7 }}>presets</div>
                         <div role="group" aria-label="Atoms presets" style={{ display: "flex", gap: 7 }}>
-                          {([0, 1] as const).map(preset => (
+                          {([0, 1, 2] as const).map(preset => (
                             <button
                               key={preset}
                               type="button"
@@ -686,9 +686,9 @@ export default function EmergenceExperience() {
                                 const values = {
                                   particles: preset === 0 ? defaults.particleCount : 15000,
                                   colors: DEFAULT_COLOR_TYPES,
-                                  repel: 1,
+                                  repel: preset === 2 ? 0.9 : 1,
                                   forceFactor: 0.18,
-                                  friction: preset === 0 ? defaults.friction : 0.3,
+                                  friction: preset === 0 ? defaults.friction : preset === 1 ? 0.3 : 0.2,
                                   particleSize: 4,
                                 };
                                 atomAudio.selectPreset(preset);
