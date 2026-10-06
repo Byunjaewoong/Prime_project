@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, FlaskConical, Home, Mic, Square } from "lucide-react";
 import { bandEnergy, BEAT_FFT_SIZE, createOnsetState, updateOnset } from "@/app/lib/audioBeatDetection";
+import { estimateVoicePitch } from "@/app/lib/voicePitch";
 import styles from "./fft.module.css";
 
 type InputKind = "idle" | "system" | "microphone";
@@ -14,7 +15,7 @@ type CaptureFocusController = {
 
 const MIN_FREQUENCY = 20;
 const MAX_FREQUENCY = 20000;
-const RING_LABELS = ["KICK / BASS", "SNARE", "HI-HAT", "VOICE"] as const;
+const RING_LABELS = ["KICK / BASS", "SNARE", "HI-HAT", "VOICE", "TONE"] as const;
 
 type MutedColor = {
   hue: number;
@@ -49,6 +50,7 @@ export default function FFTExperience() {
   const frequencyScaleRef = useRef<FrequencyScale>("log");
   const onsetRef = useRef({ kick: createOnsetState(), snare: createOnsetState(), hiHat: createOnsetState() });
   const voiceLevelRef = useRef(0);
+  const toneLevelRef = useRef(0);
   const hiHatColorRef = useRef<MutedColor>({ hue: 205, saturation: 20, lightness: 42 });
   const [inputKind, setInputKind] = useState<InputKind>("idle");
   const [isStarting, setIsStarting] = useState(false);
@@ -87,12 +89,16 @@ export default function FFTExperience() {
     context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     context.clearRect(0, 0, bounds.width, bounds.height);
 
-    const radius = Math.min(34, Math.max(18, bounds.width * 0.065));
+    const radius = Math.min(34, Math.max(15, bounds.width * 0.052));
     const centerY = Math.max(radius + 7, bounds.height * 0.12);
     for (let index = 0; index < RING_LABELS.length; index += 1) {
       const pulse = pulses[index] ?? 0;
       const centerX = bounds.width * (index + 1) / (RING_LABELS.length + 1);
-      const ringRadius = radius + pulse * 6;
+      const isTone = index === RING_LABELS.length - 1;
+      const ringRadius = isTone ? radius * (0.55 + pulse * 1.05) : radius + pulse * 6;
+      const ringCenterY = isTone && pulse > 0.02
+        ? centerY + (0.5 - (pulse - 0.2) / 0.8) * 14
+        : centerY;
       context.beginPath();
       for (let point = 0; point <= 96; point += 1) {
         const angle = point / 96 * Math.PI * 2;
@@ -101,7 +107,7 @@ export default function FFTExperience() {
           + Math.sin(angle * (19 + index * 2) - now * 0.019) * 0.7
         );
         const x = centerX + Math.cos(angle) * (ringRadius + vibration);
-        const y = centerY + Math.sin(angle) * (ringRadius + vibration);
+        const y = ringCenterY + Math.sin(angle) * (ringRadius + vibration);
         if (point === 0) context.moveTo(x, y);
         else context.lineTo(x, y);
       }
@@ -126,7 +132,8 @@ export default function FFTExperience() {
     contextRef.current = null;
     onsetRef.current = { kick: createOnsetState(), snare: createOnsetState(), hiHat: createOnsetState() };
     voiceLevelRef.current = 0;
-    drawBeatRings([0, 0, 0, 0], 0);
+    toneLevelRef.current = 0;
+    drawBeatRings([0, 0, 0, 0, 0], 0);
     setInputKind("idle");
   }, [drawBeatRings]);
 
@@ -138,6 +145,9 @@ export default function FFTExperience() {
     if (!context) return;
 
     const spectrum = new Uint8Array(analyser.frequencyBinCount);
+    const waveform = new Float32Array(analyser.fftSize);
+    let pitchFrame = 0;
+    let lastPitch: number | null = null;
     const draw = () => {
       const bounds = canvas.getBoundingClientRect();
       const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
@@ -200,6 +210,13 @@ export default function FFTExperience() {
       const voiceTarget = Math.min(1, Math.max(0, (voiceEnergy - 0.06) * 2.1));
       const voiceSmoothing = voiceTarget > voiceLevelRef.current ? 0.35 : 0.1;
       voiceLevelRef.current += (voiceTarget - voiceLevelRef.current) * voiceSmoothing;
+      if (pitchFrame++ % 2 === 0) {
+        analyser.getFloatTimeDomainData(waveform);
+        lastPitch = voiceTarget > 0.08 ? estimateVoicePitch(waveform, sampleRate) : null;
+      }
+      const toneTarget = lastPitch === null ? 0
+        : 0.2 + Math.max(0, Math.min(1, Math.log2(lastPitch / 80) / Math.log2(900 / 80))) * 0.8;
+      toneLevelRef.current += (toneTarget - toneLevelRef.current) * (toneTarget > toneLevelRef.current ? 0.28 : 0.12);
 
       if (hiHatPulse === 1) {
         hiHatColorRef.current = {
@@ -236,7 +253,7 @@ export default function FFTExperience() {
       context.lineWidth = 1.35 + kickPulse * 3.4;
       context.lineJoin = "round";
       context.stroke();
-      drawBeatRings([kickPulse, snarePulse, hiHatPulse, voiceLevelRef.current], now);
+      drawBeatRings([kickPulse, snarePulse, hiHatPulse, voiceLevelRef.current, toneLevelRef.current], now);
 
       animationRef.current = requestAnimationFrame(draw);
     };
@@ -319,9 +336,9 @@ export default function FFTExperience() {
   }, [drawSpectrum, isStarting, stop]);
 
   useEffect(() => {
-    drawBeatRings([0, 0, 0, 0], 0);
+    drawBeatRings([0, 0, 0, 0, 0], 0);
     const observer = new ResizeObserver(() => {
-      if (animationRef.current === null) drawBeatRings([0, 0, 0, 0], 0);
+      if (animationRef.current === null) drawBeatRings([0, 0, 0, 0, 0], 0);
     });
     if (beatCanvasRef.current) observer.observe(beatCanvasRef.current);
     return () => {
@@ -346,7 +363,7 @@ export default function FFTExperience() {
           <canvas
             ref={beatCanvasRef}
             className={styles.beatCanvas}
-            aria-label="Kick and bass, snare, hi-hat, and voice-band level indicators"
+            aria-label="Kick and bass, snare, hi-hat, voice-band level, and tone pitch indicators"
           />
         </div>
 
