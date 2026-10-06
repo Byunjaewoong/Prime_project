@@ -6,9 +6,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import CanvasApp from "./CanvasApp";
 import { App as EmergenceApp } from "./core/App";
-import { atomColorCss, INITIAL_ATOM_COLORS, MAX_COLOR_TYPES } from "./core/AtomPalette";
+import { atomColorCss, DEFAULT_COLOR_TYPES, INITIAL_ATOM_COLORS, MAX_COLOR_TYPES } from "./core/AtomPalette";
+import { DESKTOP_ATOM_DEFAULTS, MOBILE_ATOM_DEFAULTS } from "./core/AtomsDefaults";
 import { SimType } from "./core/types";
-import { ATOM_BEAT_RANGES, type AtomBeat, type AtomBeatAction, type AtomBeatParameter, useAtomBeatAudio } from "./useAtomBeatAudio";
+import { ATOM_BEAT_RANGES, type AtomBeat, type AtomBeatAction, type AtomBeatParameter, type AtomBeatPreset, useAtomBeatAudio } from "./useAtomBeatAudio";
 
 // ── Lenia G(Uo, Ui) 2D phase diagram ─────────────────────────────────────────
 function LeniaPhaseChart({ params }: { params: Record<string, number> }) {
@@ -195,6 +196,7 @@ export default function EmergenceExperience() {
   const [gsParams, setGsParams] = useState<Record<string, number> | null>(null);
   const [leniaParams, setLeniaParams] = useState<Record<string, number> | null>(null);
   const [atomParams, setAtomParams] = useState<Record<string, number> | null>(null);
+  const [atomPreset, setAtomPreset] = useState<AtomBeatPreset | null>(0);
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   const atomAudio = useAtomBeatAudio(appRef, currentSim === "atoms");
   const getAtomDisplayParams = atomAudio.getDisplayParams;
@@ -671,6 +673,39 @@ export default function EmergenceExperience() {
                         </div>
                         {atomParams.depthMode === 1 && <div>double tap / double click · switch focus</div>}
                       </div>
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 10, letterSpacing: "0.12em", opacity: 0.55, textTransform: "uppercase", marginBottom: 7 }}>presets</div>
+                        <div role="group" aria-label="Atoms presets" style={{ display: "flex", gap: 7 }}>
+                          {([0, 1] as const).map(preset => (
+                            <button
+                              key={preset}
+                              type="button"
+                              aria-pressed={atomPreset === preset}
+                              onClick={() => {
+                                const defaults = isTouchDevice ? MOBILE_ATOM_DEFAULTS : DESKTOP_ATOM_DEFAULTS;
+                                const values = {
+                                  particles: preset === 0 ? defaults.particleCount : 15000,
+                                  colors: DEFAULT_COLOR_TYPES,
+                                  repel: 1,
+                                  forceFactor: 0.18,
+                                  friction: preset === 0 ? defaults.friction : 0.3,
+                                  particleSize: 4,
+                                };
+                                atomAudio.selectPreset(preset);
+                                for (const [key, value] of Object.entries(values)) {
+                                  if (key in ATOM_BEAT_RANGES) atomAudio.setBaseParameter(key as AtomBeatParameter, value);
+                                  else atomAudio.setParticleSetting(key as "particles" | "colors", value);
+                                }
+                                setAtomParams(prev => prev ? { ...prev, ...values } : prev);
+                                setAtomPreset(preset);
+                              }}
+                              style={{ flex: 1, minHeight: 32, border: `1px solid ${atomPreset === preset ? "#aef" : "rgba(255,255,255,0.25)"}`, borderRadius: 4, background: atomPreset === preset ? "rgba(174,238,255,0.16)" : "rgba(255,255,255,0.06)", color: "#e5e7eb", fontSize: 11, cursor: "pointer" }}
+                            >
+                              Preset {preset}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                       <div style={{ padding: "10px 9px", marginBottom: 12, border: "1px solid rgba(255,255,255,0.15)", borderRadius: 6 }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
                           <span style={{ fontSize: 10, letterSpacing: "0.12em", opacity: 0.7, textTransform: "uppercase" }}>audio reaction</span>
@@ -699,7 +734,10 @@ export default function EmergenceExperience() {
                                 <select
                                   aria-label={`${label} action`}
                                   value={action}
-                                  onChange={(event) => atomAudio.setAction(beat, event.target.value as AtomBeatAction)}
+                                  onChange={(event) => {
+                                    atomAudio.setAction(beat, event.target.value as AtomBeatAction);
+                                    setAtomPreset(null);
+                                  }}
                                   style={{ width: "100%", minWidth: 0, padding: "6px 4px", background: "#17202a", border: "1px solid rgba(255,255,255,0.24)", borderRadius: 4, color: "#e5e7eb", fontSize: 10 }}
                                 >
                                   {beatActions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -710,15 +748,16 @@ export default function EmergenceExperience() {
                                   event.preventDefault();
                                   event.stopPropagation();
                                   atomAudio.setTarget(beat, numeric, target + (event.deltaY < 0 ? range.step : -range.step));
+                                  setAtomPreset(null);
                                 }}>
                                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 4 }}>
                                     <span style={{ opacity: 0.55 }}>target A · {range.label}</span>
                                     <span style={{ color: "#aef" }}>{target.toFixed(range.decimals)}</span>
                                   </div>
                                   {isTouchDevice ? (
-                                    <AtomTouchSlider label={`${label} target A`} value={target} min={range.min} max={range.max} step={range.step} onChange={(value) => atomAudio.setTarget(beat, numeric, value)} />
+                                    <AtomTouchSlider label={`${label} target A`} value={target} min={range.min} max={range.max} step={range.step} onChange={(value) => { atomAudio.setTarget(beat, numeric, value); setAtomPreset(null); }} />
                                   ) : (
-                                    <input type="range" aria-label={`${label} target A`} min={range.min} max={range.max} step={range.step} value={target} style={{ width: "100%", accentColor: "#aef" }} onChange={(event) => atomAudio.setTarget(beat, numeric, Number(event.target.value))} />
+                                    <input type="range" aria-label={`${label} target A`} min={range.min} max={range.max} step={range.step} value={target} style={{ width: "100%", accentColor: "#aef" }} onChange={(event) => { atomAudio.setTarget(beat, numeric, Number(event.target.value)); setAtomPreset(null); }} />
                                   )}
                                 </div>
                               )}
@@ -812,6 +851,7 @@ export default function EmergenceExperience() {
                           if (key in ATOM_BEAT_RANGES) atomAudio.setBaseParameter(key as AtomBeatParameter, next);
                           else appRef.current?.setSimParam(key, next);
                           setAtomParams(prev => prev ? { ...prev, [key]: next } : prev);
+                          if (key !== "worldScale") setAtomPreset(null);
                         };
                         return (
                           <label key={key} style={{ display: "block", marginBottom: 10, paddingInline: 18, boxSizing: "border-box" }}>

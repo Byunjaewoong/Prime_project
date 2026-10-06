@@ -6,6 +6,7 @@ import type { App as EmergenceApp } from "./core/App";
 export type AtomBeat = "kick" | "snare" | "hiHat";
 export type AtomBeatParameter = "repel" | "forceFactor" | "friction" | "particleSize";
 export type AtomBeatAction = "off" | "matrix" | "palette" | AtomBeatParameter;
+export type AtomBeatPreset = 0 | 1;
 
 export const ATOM_BEAT_RANGES: Record<AtomBeatParameter, {
   label: string; min: number; max: number; step: number; decimals: number;
@@ -32,6 +33,12 @@ function initialAssignments(): BeatAssignments {
     snare: { action: "friction", targets: { ...targets } },
     hiHat: { action: "palette", targets: { ...targets } },
   };
+}
+
+function presetAssignments(preset: AtomBeatPreset): BeatAssignments {
+  const assignments = initialAssignments();
+  if (preset === 1) assignments.snare.action = "forceFactor";
+  return assignments;
 }
 
 function isNumericAction(action: AtomBeatAction): action is AtomBeatParameter {
@@ -81,9 +88,25 @@ export function useAtomBeatAudio(appRef: RefObject<EmergenceApp | null>, isAtoms
     setAssignments(next);
   }, []);
 
+  const selectPreset = useCallback((preset: AtomBeatPreset) => {
+    for (const key of PARAMETERS) {
+      if (activeRef.current[key] && baseRef.current[key] !== undefined) {
+        appRef.current?.setSimParam(key, baseRef.current[key]);
+      }
+    }
+    activeRef.current = {};
+    const next = presetAssignments(preset);
+    assignmentsRef.current = next;
+    setAssignments(next);
+  }, [appRef]);
+
   const setBaseParameter = useCallback((key: AtomBeatParameter, value: number) => {
     baseRef.current[key] = value;
     if (!activeRef.current[key]) appRef.current?.setSimParam(key, value);
+  }, [appRef]);
+
+  const setParticleSetting = useCallback((key: "particles" | "colors", value: number) => {
+    appRef.current?.setSimParam(key, value);
   }, [appRef]);
 
   const getDisplayParams = useCallback((params: Record<string, number> | null) => {
@@ -247,5 +270,5 @@ export function useAtomBeatAudio(appRef: RefObject<EmergenceApp | null>, isAtoms
 
   useEffect(() => stop, [stop]);
 
-  return { assignments, inputKind, starting, error, start, stop, setAction, setTarget, setBaseParameter, getDisplayParams };
+  return { assignments, inputKind, starting, error, start, stop, setAction, setTarget, selectPreset, setBaseParameter, setParticleSetting, getDisplayParams };
 }
