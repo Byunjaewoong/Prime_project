@@ -14,7 +14,7 @@ type CaptureFocusController = {
 
 const MIN_FREQUENCY = 20;
 const MAX_FREQUENCY = 20000;
-const BEAT_LABELS = ["KICK / BASS", "SNARE", "HI-HAT"] as const;
+const RING_LABELS = ["KICK / BASS", "SNARE", "HI-HAT", "VOICE"] as const;
 
 type MutedColor = {
   hue: number;
@@ -48,6 +48,7 @@ export default function FFTExperience() {
   const detectionRef = useRef({ kick: true, snare: true, hiHat: true });
   const frequencyScaleRef = useRef<FrequencyScale>("log");
   const onsetRef = useRef({ kick: createOnsetState(), snare: createOnsetState(), hiHat: createOnsetState() });
+  const voiceLevelRef = useRef(0);
   const hiHatColorRef = useRef<MutedColor>({ hue: 205, saturation: 20, lightness: 42 });
   const [inputKind, setInputKind] = useState<InputKind>("idle");
   const [isStarting, setIsStarting] = useState(false);
@@ -88,9 +89,9 @@ export default function FFTExperience() {
 
     const radius = Math.min(34, Math.max(18, bounds.width * 0.065));
     const centerY = Math.max(radius + 7, bounds.height * 0.12);
-    for (let index = 0; index < 3; index += 1) {
+    for (let index = 0; index < RING_LABELS.length; index += 1) {
       const pulse = pulses[index] ?? 0;
-      const centerX = bounds.width * (index + 1) / 4;
+      const centerX = bounds.width * (index + 1) / (RING_LABELS.length + 1);
       const ringRadius = radius + pulse * 6;
       context.beginPath();
       for (let point = 0; point <= 96; point += 1) {
@@ -110,7 +111,7 @@ export default function FFTExperience() {
       context.fillStyle = `rgba(5, 5, 5, ${0.42 + pulse * 0.4})`;
       context.font = "10px monospace";
       context.textAlign = "center";
-      context.fillText(BEAT_LABELS[index], centerX, centerY + radius + 23);
+      context.fillText(RING_LABELS[index], centerX, centerY + radius + 23);
     }
   }, []);
 
@@ -124,7 +125,8 @@ export default function FFTExperience() {
     void contextRef.current?.close();
     contextRef.current = null;
     onsetRef.current = { kick: createOnsetState(), snare: createOnsetState(), hiHat: createOnsetState() };
-    drawBeatRings([0, 0, 0], 0);
+    voiceLevelRef.current = 0;
+    drawBeatRings([0, 0, 0, 0], 0);
     setInputKind("idle");
   }, [drawBeatRings]);
 
@@ -194,6 +196,10 @@ export default function FFTExperience() {
         detectionRef.current.hiHat,
         0.92,
       );
+      const voiceEnergy = bandEnergy(spectrum, binWidth, 300, 3400);
+      const voiceTarget = Math.min(1, Math.max(0, (voiceEnergy - 0.06) * 2.1));
+      const voiceSmoothing = voiceTarget > voiceLevelRef.current ? 0.35 : 0.1;
+      voiceLevelRef.current += (voiceTarget - voiceLevelRef.current) * voiceSmoothing;
 
       if (hiHatPulse === 1) {
         hiHatColorRef.current = {
@@ -230,7 +236,7 @@ export default function FFTExperience() {
       context.lineWidth = 1.35 + kickPulse * 3.4;
       context.lineJoin = "round";
       context.stroke();
-      drawBeatRings([kickPulse, snarePulse, hiHatPulse], now);
+      drawBeatRings([kickPulse, snarePulse, hiHatPulse, voiceLevelRef.current], now);
 
       animationRef.current = requestAnimationFrame(draw);
     };
@@ -313,9 +319,9 @@ export default function FFTExperience() {
   }, [drawSpectrum, isStarting, stop]);
 
   useEffect(() => {
-    drawBeatRings([0, 0, 0], 0);
+    drawBeatRings([0, 0, 0, 0], 0);
     const observer = new ResizeObserver(() => {
-      if (animationRef.current === null) drawBeatRings([0, 0, 0], 0);
+      if (animationRef.current === null) drawBeatRings([0, 0, 0, 0], 0);
     });
     if (beatCanvasRef.current) observer.observe(beatCanvasRef.current);
     return () => {
@@ -340,7 +346,7 @@ export default function FFTExperience() {
           <canvas
             ref={beatCanvasRef}
             className={styles.beatCanvas}
-            aria-label="Kick and bass, snare, and hi-hat beat indicators"
+            aria-label="Kick and bass, snare, hi-hat, and voice-band level indicators"
           />
         </div>
 
