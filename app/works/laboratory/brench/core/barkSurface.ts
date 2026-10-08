@@ -3,6 +3,9 @@ import * as THREE from "three";
 const WIDTH = 1024;
 const HEIGHT = 2048;
 const TAU = Math.PI * 2;
+// Fixed world-space tile size: growth exposes more bark instead of stretching it.
+export const BARK_TILE_WIDTH = 1;
+export const BARK_TILE_LENGTH = 2;
 const clamp = (n: number) => Math.max(0, Math.min(1, n));
 const smooth = (a: number, b: number, n: number) => {
   const t = clamp((n - a) / (b - a));
@@ -163,13 +166,43 @@ export function createBarkSurface(anisotropy: number) {
   };
   return {
     heightAt,
-    material: (detail: number, maturity: number) => new THREE.MeshStandardMaterial({
-      map, normalMap, roughnessMap: surfaceMap, aoMap: surfaceMap,
-      normalScale: new THREE.Vector2(1, 1).multiplyScalar((.45 + detail * .7) * maturity),
-      aoMapIntensity: .7,
-      roughness: 1,
-      vertexColors: true,
-    }),
+    reliefAt: (angle: number, v: number, repeat: number, offset: number) => {
+      const blend = smooth(0, .14, Math.min(angle, 1 - angle));
+      return heightAt(((angle + .5) % 1) * repeat + offset, v) * (1 - blend)
+        + heightAt(angle * repeat + offset, v) * blend;
+    },
+    material: (detail: number, offset: number) => {
+      const material = new THREE.MeshStandardMaterial({
+        map, normalMap, roughnessMap: surfaceMap, aoMap: surfaceMap,
+        normalScale: new THREE.Vector2(1, 1).multiplyScalar(.45 + detail * .7),
+        aoMapIntensity: .7,
+        roughness: 1,
+        vertexColors: true,
+      });
+      material.onBeforeCompile = shader => {
+        shader.uniforms.barkOffset = { value: offset };
+        shader.vertexShader = `attribute float barkRepeat; varying float vBarkRepeat;\n${shader.vertexShader}`
+          .replace("#include <uv_vertex>", "#include <uv_vertex>\nvBarkRepeat = barkRepeat;");
+        // Overlap two cylindrical charts to hide the seam at any circumference.
+        // All PBR channels and the CPU relief use exactly the same coordinates.
+        shader.fragmentShader = `
+          uniform float barkOffset;
+          varying float vBarkRepeat;
+          vec4 sampleBark(sampler2D tex, vec2 uv) {
+            float blend = smoothstep(0.0, 0.14, min(uv.x, 1.0 - uv.x));
+            vec2 a = vec2(uv.x * vBarkRepeat + barkOffset, uv.y);
+            vec2 b = vec2(fract(uv.x + 0.5) * vBarkRepeat + barkOffset, uv.y);
+            return mix(texture2D(tex, b), texture2D(tex, a), blend);
+          }
+        ${shader.fragmentShader}`;
+        for (const chunk of ["map_fragment", "normal_fragment_maps", "roughnessmap_fragment", "aomap_fragment"] as const) {
+          shader.fragmentShader = shader.fragmentShader.replace(`#include <${chunk}>`,
+            THREE.ShaderChunk[chunk].replace(/texture2D\( (map|normalMap|roughnessMap|aoMap), /g, "sampleBark( $1, "));
+        }
+      };
+      material.customProgramCacheKey = () => "bark-physical-growth-v1";
+      return material;
+    },
     dispose: () => { map.dispose(); normalMap.dispose(); surfaceMap.dispose(); },
   };
 }
