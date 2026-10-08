@@ -99,7 +99,7 @@ function tube(stem: Stem, random: () => number) {
       uvs.push(j / sides, t * stem.length * 1.2);
       if (i < segments && j < sides) {
         const k = i * (sides + 1) + j;
-        indices.push(k, k + sides + 1, k + 1, k + 1, k + sides + 1, k + sides + 2);
+        indices.push(k, k + 1, k + sides + 1, k + 1, k + sides + 2, k + sides + 1);
       }
     }
   }
@@ -120,7 +120,7 @@ export function createBranch(settings: BranchSettings) {
     bumpMap: textures.bumpMap,
     bumpScale: .025 + settings.texture * .065,
     roughness: .94,
-    side: THREE.DoubleSide,
+    side: THREE.FrontSide,
   });
   const group = new THREE.Group();
   const stems: Stem[] = [];
@@ -128,7 +128,10 @@ export function createBranch(settings: BranchSettings) {
     const curve = new THREE.CatmullRomCurve3(points, false, "centripetal");
     const stem = { curve, radius, tip, length: curve.getLength() };
     stems.push(stem);
-    group.add(new THREE.Mesh(tube(stem, random), material));
+    const mesh = new THREE.Mesh(tube(stem, random), material);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    group.add(mesh);
     return stem;
   };
   const point = (x: number, y: number, z = 0) => new THREE.Vector3(x, y, z);

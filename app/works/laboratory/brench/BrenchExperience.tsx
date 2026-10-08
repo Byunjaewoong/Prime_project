@@ -19,6 +19,11 @@ type Viewer = {
   renderer: THREE.WebGLRenderer;
   model: ReturnType<typeof createBranch> | null;
   rotation: { x: number; y: number };
+  lights: {
+    ambient: THREE.HemisphereLight;
+    key: THREE.DirectionalLight;
+    fill: THREE.DirectionalLight;
+  };
 };
 
 export default function BrenchExperience() {
@@ -27,6 +32,7 @@ export default function BrenchExperience() {
   const viewerRef = useRef<Viewer | null>(null);
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const [settings, setSettings] = useState(initialSettings);
+  const [contrast, setContrast] = useState(1);
   const [error, setError] = useState(false);
   const [branchCount, setBranchCount] = useState(0);
 
@@ -46,20 +52,33 @@ export default function BrenchExperience() {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.1;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     const scene = new THREE.Scene();
     const camera = new THREE.OrthographicCamera(-6, 6, 6, -6, .1, 100);
     camera.position.set(0, -.22, 18);
     camera.lookAt(0, -.22, 0);
-    scene.add(new THREE.HemisphereLight(0xffffff, 0xa99b89, 1.5));
-    const key = new THREE.DirectionalLight(0xfff6e9, 2.4);
-    key.position.set(-4, 7, 9);
+    const ambient = new THREE.HemisphereLight(0xffffff, 0x766b5f, .85);
+    scene.add(ambient);
+    const key = new THREE.DirectionalLight(0xfff6e9, 3.4);
+    key.position.set(-5, 7, 9);
+    key.castShadow = true;
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.camera.left = -7;
+    key.shadow.camera.right = 7;
+    key.shadow.camera.top = 7;
+    key.shadow.camera.bottom = -7;
+    key.shadow.camera.near = .5;
+    key.shadow.camera.far = 30;
+    key.shadow.bias = -.0002;
+    key.shadow.normalBias = .015;
     scene.add(key);
-    const fill = new THREE.DirectionalLight(0xd5e3e5, .7);
+    const fill = new THREE.DirectionalLight(0xd5e3e5, .25);
     fill.position.set(5, -2, -5);
     scene.add(fill);
 
-    const viewer: Viewer = { scene, renderer, model: null, rotation: { x: 0, y: 0 } };
+    const viewer: Viewer = { scene, renderer, model: null, rotation: { x: 0, y: 0 }, lights: { ambient, key, fill } };
     viewerRef.current = viewer;
     const resize = () => {
       const width = canvas.clientWidth;
@@ -110,6 +129,14 @@ export default function BrenchExperience() {
     viewer.scene.add(next.group);
     setBranchCount(next.count);
   }, [settings]);
+
+  useEffect(() => {
+    const lights = viewerRef.current?.lights;
+    if (!lights) return;
+    lights.ambient.intensity = 1.45 - contrast * .6;
+    lights.key.intensity = 2.2 + contrast * 1.2;
+    lights.fill.intensity = .55 - contrast * .3;
+  }, [contrast]);
 
   const setValue = useCallback((key: "curvature" | "spread" | "texture", value: number) => {
     setSettings(previous => ({ ...previous, [key]: value }));
@@ -182,6 +209,11 @@ export default function BrenchExperience() {
             <span><b>수피 질감</b><small>BARK DETAIL</small></span>
             <input type="range" min="0" max="2" step="0.05" value={settings.texture} onChange={event => setValue("texture", Number(event.target.value))} />
             <output>{settings.texture.toFixed(2)}</output>
+          </label>
+          <label className={styles.control}>
+            <span><b>명암</b><small>LIGHT &amp; SHADE</small></span>
+            <input type="range" min="0" max="2" step="0.05" value={contrast} onChange={event => setContrast(Number(event.target.value))} />
+            <output>{contrast.toFixed(2)}</output>
           </label>
           <button className={styles.generate} onClick={regenerate}><RefreshCw size={15} /> 새 가지 생성 <span>↗</span></button>
           <div className={styles.secondaryActions}>
