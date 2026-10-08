@@ -1,18 +1,22 @@
 .page { min-height: 100svh; background: #f9f8f5; color: #302f2b; font-family: var(--font-courier), monospace; display: flex; flex-direction: column; }
-.header { height: 66px; flex: none; display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: center; padding: 0 32px; border-bottom: 1px solid #dedbd4; font-size: 11px; letter-spacing: .055em; }
+.timeline { height: 380svh; flex: none; position: relative; }
+.header { height: 66px; position: absolute; top: 0; left: 0; right: 0; z-index: 2; display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: center; padding: 0 32px; border-bottom: 1px solid #dedbd4; font-size: 11px; letter-spacing: .055em; }
 .back { color: inherit; text-decoration: none; width: fit-content; }
 .back:hover { opacity: .55; }
 .archive { text-align: center; color: #8e8a81; }
 .index { text-align: right; color: #8e8a81; }
-.stage { flex: 1; min-height: 640px; position: relative; overflow: hidden; background: radial-gradient(ellipse at 58% 42%, #fffefa 0%, #f9f8f5 68%); }
-.canvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; position: absolute; inset: 0; }
+.stage { position: sticky; top: 0; height: 100svh; min-height: 0; overflow: hidden; background: radial-gradient(ellipse at 58% 42%, #fffefa 0%, #f9f8f5 68%); }
+.canvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: pan-y; position: absolute; inset: 0; }
 .canvas:active { cursor: grabbing; }
-.titleBlock { position: absolute; top: 46px; left: 42px; pointer-events: none; }
+.titleBlock { position: absolute; top: 112px; left: 42px; pointer-events: none; }
 .eyebrow { color: #8a8173; font-size: 10px; letter-spacing: .13em; }
 .titleBlock h1 { font-family: Georgia, 'Times New Roman', serif; font-weight: normal; letter-spacing: -.065em; font-size: clamp(52px, 7vw, 98px); line-height: 1.05; margin: 12px 0 8px; }
 .period { color: #a87850; }
 .titleBlock p { font-size: 12px; color: #777268; letter-spacing: -.03em; margin: 0; }
-.controls { position: absolute; top: 48px; right: 42px; width: 232px; padding: 20px 20px 18px; background: rgba(251, 250, 247, .88); border: 1px solid #e4e0d8; box-shadow: 0 10px 35px #5c4b3512; backdrop-filter: blur(10px); }
+.startPrompt { position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%); pointer-events: none; color: #9c8b78; font-size: 11px; letter-spacing: .18em; white-space: nowrap; text-align: center; }
+.startPrompt span { display: block; margin-top: 14px; font-size: 22px; line-height: 1; }
+.controls { position: absolute; top: 115px; right: 42px; width: 232px; padding: 20px 20px 18px; background: rgba(251, 250, 247, .88); border: 1px solid #e4e0d8; box-shadow: 0 10px 35px #5c4b3512; backdrop-filter: blur(10px); }
+.settingsToggle { display: none; }
 .controlHead { display: flex; justify-content: space-between; color: #89847a; font-size: 9px; letter-spacing: .09em; border-bottom: 1px solid #e4e0d8; padding-bottom: 16px; margin-bottom: 19px; }
 .control { display: grid; grid-template-columns: 1fr auto; gap: 9px; align-items: center; margin-bottom: 18px; }
 .control > span { display: flex; justify-content: space-between; grid-column: 1 / -1; align-items: baseline; }
@@ -28,20 +32,33 @@
 .secondaryActions { display: flex; justify-content: space-between; gap: 5px; margin-top: 13px; }
 .secondaryActions button { background: none; border: 0; color: #817a70; font: inherit; font-size: 9px; cursor: pointer; padding: 4px 0; display: inline-flex; align-items: center; gap: 4px; }
 .secondaryActions button:hover { color: #3c352f; }
-.caption { position: absolute; bottom: 28px; left: 42px; right: 42px; display: flex; justify-content: space-between; pointer-events: none; color: #999287; font-size: 10px; letter-spacing: .07em; }
+.caption { position: absolute; bottom: 74px; left: 42px; right: 42px; display: flex; justify-content: space-between; pointer-events: none; color: #999287; font-size: 10px; letter-spacing: .07em; }
+.timeReadout { position: absolute; bottom: 47px; left: 42px; display: flex; align-items: baseline; gap: 18px; color: #6f5a45; font-size: 12px; letter-spacing: .07em; pointer-events: none; }
+.timeReadout small { color: #a39a8e; font-size: 9px; letter-spacing: .09em; }
+.timelineScale { position: absolute; bottom: 19px; left: 42px; right: 42px; display: flex; align-items: center; gap: 12px; color: #a39a8e; font-size: 9px; pointer-events: none; }
+.scaleBar { flex: 1; height: 3px; background: repeating-linear-gradient(90deg, #d7d1c7 0, #d7d1c7 1px, transparent 1px, transparent 25%), #eeeae3; position: relative; }
+.scaleFill { height: 100%; background: #85664e; position: relative; transition: width .08s linear; }
+.scaleFill::after { content: ''; position: absolute; right: -4px; top: -3px; width: 9px; height: 9px; border-radius: 50%; background: #85664e; }
 .error { position: absolute; inset: 0; display: grid; place-items: center; font-size: 13px; color: #665e54; background: #f9f8f5; }
 @media (max-width: 760px) {
   .header { height: 54px; padding: 0 16px; grid-template-columns: 1fr auto; }
   .archive { display: none; }
-  .stage { min-height: 0; height: auto; flex: none; padding-top: 68svh; padding-bottom: 30px; overflow: visible; }
-  .canvas { height: 68svh; bottom: auto; }
-  .titleBlock { top: 20px; left: 18px; }
+  .stage { min-height: 0; height: 100svh; padding: 0; overflow: hidden; }
+  .canvas { height: 100%; }
+  .titleBlock { top: 76px; left: 18px; }
+  .startPrompt { top: 48%; font-size: 10px; }
   .titleBlock h1 { font-size: 53px; margin-top: 6px; }
   .titleBlock p { font-size: 10px; }
-  .controls { position: relative; top: auto; bottom: auto; right: auto; left: auto; width: auto; margin: 0 14px; padding: 12px 14px; }
+  .settingsToggle { display: block; position: absolute; right: 14px; bottom: 45px; border: 1px solid #d9d2c7; background: #fbfaf7e8; color: #51473c; padding: 9px 12px; font: inherit; font-size: 10px; cursor: pointer; z-index: 2; }
+  .controls { display: none; top: auto; bottom: 87px; right: 14px; left: 14px; width: auto; max-height: calc(100svh - 190px); overflow-y: auto; padding: 12px 14px; z-index: 2; }
+  .controlsOpen { display: block; }
   .controlHead { padding-bottom: 8px; margin-bottom: 10px; }
   .control { margin-bottom: 9px; }
   .generate { margin-top: 4px; }
   .secondaryActions { margin-top: 7px; }
-  .caption { top: calc(68svh - 23px); bottom: auto; left: 18px; right: 18px; font-size: 8px; }
+  .caption { bottom: 94px; left: 18px; right: 18px; font-size: 8px; }
+  .caption span:last-child { display: none; }
+  .timeReadout { bottom: 48px; left: 18px; display: block; font-size: 10px; }
+  .timeReadout small { display: block; margin-top: 4px; font-size: 8px; }
+  .timelineScale { bottom: 15px; left: 18px; right: 18px; }
 }

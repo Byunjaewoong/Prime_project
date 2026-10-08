@@ -7,7 +7,14 @@ export type BranchSettings = {
   texture: number;
 };
 
-type Stem = { curve: THREE.CatmullRomCurve3; radius: number; tip: number; length: number };
+type Stem = {
+  curve: THREE.CatmullRomCurve3;
+  radius: number;
+  tip: number;
+  length: number;
+  growthStart: number;
+  growthEnd: number;
+};
 
 function randomSource(seed: number) {
   let state = seed >>> 0;
@@ -124,11 +131,29 @@ export function createBranch(settings: BranchSettings) {
   });
   const group = new THREE.Group();
   const stems: Stem[] = [];
-  const makeStem = (points: THREE.Vector3[], radius: number, tip = .08) => {
+  const growthMeshes: {
+    geometry: THREE.BufferGeometry;
+    segments: number;
+    start: number;
+    end: number;
+    original: Float32Array;
+    centers: THREE.Vector3[];
+  }[] = [];
+  const makeStem = (points: THREE.Vector3[], radius: number, tip = .08, growthStart = 0, growthEnd = 1) => {
     const curve = new THREE.CatmullRomCurve3(points, false, "centripetal");
-    const stem = { curve, radius, tip, length: curve.getLength() };
+    const stem = { curve, radius, tip, length: curve.getLength(), growthStart, growthEnd };
     stems.push(stem);
-    const mesh = new THREE.Mesh(tube(stem, random), material);
+    const geometry = tube(stem, random);
+    const segments = geometry.index!.count / (6 * 12);
+    const positions = geometry.getAttribute("position") as THREE.BufferAttribute;
+    positions.setUsage(THREE.DynamicDrawUsage);
+    geometry.setDrawRange(0, 0);
+    growthMeshes.push({
+      geometry, segments, start: growthStart, end: growthEnd,
+      original: new Float32Array(positions.array as Float32Array),
+      centers: Array.from({ length: segments + 1 }, (_, i) => curve.getPointAt(i / segments)),
+    });
+    const mesh = new THREE.Mesh(geometry, material);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     group.add(mesh);
@@ -141,13 +166,16 @@ export function createBranch(settings: BranchSettings) {
     [-.61, 2.09], [-.43, 2.88], [-.48, 3.62], [-.29, 4.38],
   ].map(([x, y], i) => point(x + vary((i === 0 ? .035 : .13) * settings.curvature), y + vary(.07 * settings.curvature), vary(.13)));
   const guideCurve = new THREE.CatmullRomCurve3(trunkPoints, false, "centripetal");
-  const trunkGuide: Stem = { curve: guideCurve, radius: .31, tip: .08, length: guideCurve.getLength() };
+  const trunkGuide: Stem = {
+    curve: guideCurve, radius: .31, tip: .08, length: guideCurve.getLength(),
+    growthStart: .09, growthEnd: .68,
+  };
   // Extend the main mesh below the frame while retaining the original attachment positions.
   makeStem([
     point(-2.42, -6.43, trunkPoints[0].z - .08),
     point(-1.97, -5.63, trunkPoints[0].z - .02),
     ...trunkPoints,
-  ], .33, .08);
+  ], .33, .08, 0, .68);
 
   // Large limbs are deliberately sparse. Random perturbations change each silhouette
   // while keeping the broad, asymmetric branching rhythm of the reference.
@@ -167,7 +195,10 @@ export function createBranch(settings: BranchSettings) {
       const variation = i === 0 ? .035 : .16 * settings.curvature;
       points.push(point(start.x + dx * settings.spread + vary(variation), start.y + dy + vary(variation), start.z + dz + vary(.22)));
     }
-    grown.push(makeStem(points, limb.radius * (.9 + random() * .22), .075));
+    const birth = limb.parent.growthStart + (limb.parent.growthEnd - limb.parent.growthStart) * limb.at;
+    const reach = new THREE.CatmullRomCurve3(points, false, "centripetal").getLength();
+    const finish = Math.min(1, birth + .17 + reach * .055);
+    grown.push(makeStem(points, limb.radius * (.9 + random() * .22), .075, birth, finish));
   }
 
   const addTwig = (parent: Stem, at: number, side: number, length: number, radius: number, hook = false) => {
@@ -182,7 +213,8 @@ export function createBranch(settings: BranchSettings) {
       hook ? -length * .18 : vary(.18) * settings.curvature,
       vary(.17),
     ));
-    return makeStem([start, first, middle, end], radius, .035);
+    const birth = parent.growthStart + (parent.growthEnd - parent.growthStart) * at;
+    return makeStem([start, first, middle, end], radius, .035, birth, Math.min(1, birth + .10 + length * .09));
   };
 
   const [left, right, upperLeft, upperRight] = grown;
@@ -206,6 +238,30 @@ export function createBranch(settings: BranchSettings) {
 
   return {
     group,
+    setGrowth: (progress: number) => {
+      for (const { geometry, segments, start, end, original, centers } of growthMeshes) {
+        const fraction = THREE.MathUtils.clamp((progress - start) / (end - start), 0, 1);
+        const visible = Math.floor(fraction * segments);
+        const position = geometry.getAttribute("position") as THREE.BufferAttribute;
+        const current = position.array as Float32Array;
+        current.set(original);
+        if (visible > 0) {
+          const tipRings = Math.min(4, visible);
+          for (let ring = visible - tipRings; ring <= visible; ring++) {
+            const center = centers[ring];
+            const taper = .05 + .95 * (visible - ring) / tipRings;
+            for (let side = 0; side <= 12; side++) {
+              const offset = (ring * 13 + side) * 3;
+              current[offset] = center.x + (original[offset] - center.x) * taper;
+              current[offset + 1] = center.y + (original[offset + 1] - center.y) * taper;
+              current[offset + 2] = center.z + (original[offset + 2] - center.z) * taper;
+            }
+          }
+        }
+        position.needsUpdate = true;
+        geometry.setDrawRange(0, visible * 6 * 12);
+      }
+    },
     dispose: () => {
       group.traverse(object => { if (object instanceof THREE.Mesh) object.geometry.dispose(); });
       material.dispose();

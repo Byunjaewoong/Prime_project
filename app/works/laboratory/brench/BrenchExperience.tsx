@@ -28,18 +28,20 @@ type Viewer = {
 
 export default function BrenchExperience() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const stageRef = useRef<HTMLDivElement>(null);
+  const timelineRef = useRef<HTMLElement>(null);
   const viewerRef = useRef<Viewer | null>(null);
   const dragRef = useRef<{ x: number; y: number } | null>(null);
+  const progressRef = useRef(0);
   const [settings, setSettings] = useState(initialSettings);
   const [contrast, setContrast] = useState(1);
+  const [progress, setProgress] = useState(0);
+  const [controlsOpen, setControlsOpen] = useState(false);
   const [error, setError] = useState(false);
   const [branchCount, setBranchCount] = useState(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    const stage = stageRef.current;
-    if (!canvas || !stage) return;
+    if (!canvas) return;
     let renderer: THREE.WebGLRenderer;
     try {
       renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
@@ -127,8 +129,35 @@ export default function BrenchExperience() {
     }
     viewer.model = next;
     viewer.scene.add(next.group);
+    next.setGrowth(progressRef.current);
     setBranchCount(next.count);
   }, [settings]);
+
+  useEffect(() => {
+    const timeline = timelineRef.current;
+    if (!timeline) return;
+    let frame = 0;
+    const update = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const bounds = timeline.getBoundingClientRect();
+        const distance = Math.max(1, bounds.height - window.innerHeight);
+        const next = THREE.MathUtils.clamp(-bounds.top / distance, 0, 1);
+        progressRef.current = next;
+        viewerRef.current?.model?.setGrowth(next);
+        setProgress(Math.round(next * 1000) / 1000);
+      });
+    };
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
 
   useEffect(() => {
     const lights = viewerRef.current?.lights;
@@ -158,13 +187,13 @@ export default function BrenchExperience() {
 
   return (
     <main className={styles.page}>
-      <header className={styles.header}>
-        <Link href="/works/laboratory" className={styles.back}>← Laboratory</Link>
-        <span className={styles.archive}>GRIMGRIGI / LABORATORY</span>
-        <span className={styles.index}>No. 14</span>
-      </header>
-
-      <div ref={stageRef} className={styles.stage}>
+      <section ref={timelineRef} className={styles.timeline} aria-label="나뭇가지 성장 시간축">
+      <div className={styles.stage}>
+        <header className={styles.header}>
+          <Link href="/works/laboratory" className={styles.back}>← Laboratory</Link>
+          <span className={styles.archive}>GRIMGRIGI / LABORATORY</span>
+          <span className={styles.index}>No. 14</span>
+        </header>
         <canvas
           ref={canvasRef}
           className={styles.canvas}
@@ -190,7 +219,14 @@ export default function BrenchExperience() {
           <h1>Brench<span className={styles.period}>.</span></h1>
           <p>나뭇가지의 결, 갈라짐, 휘어짐.</p>
         </div>
-        <aside className={styles.controls} aria-label="나뭇가지 생성 설정">
+        {progress < .04 && <div className={styles.startPrompt}>SCROLL TO GROW <span>↓</span></div>}
+        <button
+          className={styles.settingsToggle}
+          aria-expanded={controlsOpen}
+          aria-controls="brench-controls"
+          onClick={() => setControlsOpen(open => !open)}
+        >{controlsOpen ? "설정 닫기" : "형태 설정"}</button>
+        <aside id="brench-controls" className={`${styles.controls} ${controlsOpen ? styles.controlsOpen : ""}`} aria-label="나뭇가지 생성 설정">
           <div className={styles.controlHead}>
             <span>FORM STUDY</span>
             <span>001 / ∞</span>
@@ -225,7 +261,17 @@ export default function BrenchExperience() {
           <span>SEED {settings.seed.toString().padStart(8, "0")}</span>
           <span>{branchCount} STEMS · DRAG TO ROTATE</span>
         </div>
+        <div className={styles.timeReadout} aria-live="off">
+          <span>GROWTH / {Math.round(progress * 100).toString().padStart(2, "0")}%</span>
+          <small>{progress >= 1 ? "FULLY GROWN" : "SCROLL TO GROW ↓"}</small>
+        </div>
+        <div className={styles.timelineScale} aria-label={`성장 진행률 ${Math.round(progress * 100)}%`}>
+          <span>0</span>
+          <div className={styles.scaleBar}><div className={styles.scaleFill} style={{ width: `${progress * 100}%` }} /></div>
+          <span>100</span>
+        </div>
       </div>
+      </section>
     </main>
   );
 }
