@@ -5,6 +5,7 @@ import { Download, RefreshCw, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { createBranch, type BranchSettings } from "./core/createBranch";
+import { createBarkSurface, type BarkSurface } from "./core/barkSurface";
 import styles from "./brench.module.css";
 
 const initialSettings: BranchSettings = {
@@ -19,6 +20,12 @@ type Viewer = {
   renderer: THREE.WebGLRenderer;
   model: ReturnType<typeof createBranch> | null;
   rotation: { x: number; y: number };
+  bark: BarkSurface;
+  closeup: boolean;
+  dirty: boolean;
+  shadowsDirty: boolean;
+  setLighting: (contrast: number) => void;
+  setCloseup: (active: boolean) => void;
   lights: {
     ambient: THREE.HemisphereLight;
     key: THREE.DirectionalLight;
@@ -34,6 +41,7 @@ export default function BrenchExperience() {
   const progressRef = useRef(0);
   const [settings, setSettings] = useState(initialSettings);
   const [contrast, setContrast] = useState(1);
+  const [closeup, setCloseup] = useState(false);
   const [progress, setProgress] = useState(0);
   const [controlsOpen, setControlsOpen] = useState(false);
   const [error, setError] = useState(false);
@@ -46,8 +54,8 @@ export default function BrenchExperience() {
     try {
       renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
     } catch {
-      setError(true);
-      return;
+      const errorFrame = requestAnimationFrame(() => setError(true));
+      return () => cancelAnimationFrame(errorFrame);
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(0xf9f8f5, 1);
@@ -56,6 +64,7 @@ export default function BrenchExperience() {
     renderer.toneMappingExposure = 1.1;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.autoUpdate = false;
 
     const scene = new THREE.Scene();
     const camera = new THREE.OrthographicCamera(-6, 6, 6, -6, .1, 100);
@@ -80,7 +89,18 @@ export default function BrenchExperience() {
     fill.position.set(5, -2, -5);
     scene.add(fill);
 
-    const viewer: Viewer = { scene, renderer, model: null, rotation: { x: 0, y: 0 }, lights: { ambient, key, fill } };
+    const bark = createBarkSurface(renderer.capabilities.getMaxAnisotropy());
+    const viewer: Viewer = {
+      scene, renderer, model: null, rotation: { x: 0, y: 0 }, bark,
+      closeup: false, dirty: true, shadowsDirty: true, lights: { ambient, key, fill },
+      setLighting: value => {
+        ambient.intensity = 1.45 - value * .6;
+        key.intensity = 2.2 + value * 1.2;
+        fill.intensity = Math.max(.05, .55 - value * .3);
+        viewer.dirty = true;
+      },
+      setCloseup: active => { viewer.closeup = active; viewer.dirty = true; },
+    };
     viewerRef.current = viewer;
     const resize = () => {
       const width = canvas.clientWidth;
@@ -94,6 +114,7 @@ export default function BrenchExperience() {
       camera.bottom = -viewHeight / 2;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height, false);
+      viewer.dirty = true;
     };
     resize();
     const observer = new ResizeObserver(resize);
@@ -101,11 +122,27 @@ export default function BrenchExperience() {
     let frame = 0;
     const draw = () => {
       frame = requestAnimationFrame(draw);
-      if (viewer.model) {
+      const turning = !!viewer.model && Math.abs(viewer.rotation.x - viewer.model.group.rotation.x)
+        + Math.abs(viewer.rotation.y - viewer.model.group.rotation.y) > .0001;
+      if (viewer.model && turning) {
         viewer.model.group.rotation.x += (viewer.rotation.x - viewer.model.group.rotation.x) * .12;
         viewer.model.group.rotation.y += (viewer.rotation.y - viewer.model.group.rotation.y) * .12;
+        viewer.shadowsDirty = true;
       }
-      renderer.render(scene, camera);
+      const zoom = viewer.closeup ? 3.1 : 1;
+      const focusY = viewer.closeup ? -1.55 : -.22;
+      const movingView = Math.abs(zoom - camera.zoom) + Math.abs(focusY - camera.position.y) > .0001;
+      if (movingView) {
+        camera.zoom += (zoom - camera.zoom) * .12;
+        camera.position.y += (focusY - camera.position.y) * .12;
+        camera.updateProjectionMatrix();
+      }
+      if (viewer.dirty || turning || movingView) {
+        renderer.shadowMap.needsUpdate = viewer.shadowsDirty;
+        renderer.render(scene, camera);
+        viewer.dirty = false;
+        viewer.shadowsDirty = false;
+      }
     };
     draw();
     return () => {
@@ -113,6 +150,8 @@ export default function BrenchExperience() {
       observer.disconnect();
       viewer.model?.dispose();
       if (viewer.model) scene.remove(viewer.model.group);
+      bark.dispose();
+      key.shadow.dispose();
       renderer.dispose();
       if (viewerRef.current === viewer) viewerRef.current = null;
     };
@@ -121,7 +160,7 @@ export default function BrenchExperience() {
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer) return;
-    const next = createBranch(settings);
+    const next = createBranch(settings, viewer.bark);
     next.group.rotation.set(viewer.rotation.x, viewer.rotation.y, 0);
     if (viewer.model) {
       viewer.scene.remove(viewer.model.group);
@@ -130,7 +169,9 @@ export default function BrenchExperience() {
     viewer.model = next;
     viewer.scene.add(next.group);
     next.setGrowth(progressRef.current);
-    setBranchCount(next.count);
+    viewer.dirty = viewer.shadowsDirty = true;
+    const countFrame = requestAnimationFrame(() => setBranchCount(next.count));
+    return () => cancelAnimationFrame(countFrame);
   }, [settings]);
 
   useEffect(() => {
@@ -145,7 +186,8 @@ export default function BrenchExperience() {
         const distance = Math.max(1, bounds.height - window.innerHeight);
         const next = THREE.MathUtils.clamp(-bounds.top / distance, 0, 1);
         progressRef.current = next;
-        viewerRef.current?.model?.setGrowth(next);
+        const viewer = viewerRef.current;
+        if (viewer?.model?.setGrowth(next)) viewer.dirty = viewer.shadowsDirty = true;
         setProgress(Math.round(next * 1000) / 1000);
       });
     };
@@ -160,12 +202,12 @@ export default function BrenchExperience() {
   }, []);
 
   useEffect(() => {
-    const lights = viewerRef.current?.lights;
-    if (!lights) return;
-    lights.ambient.intensity = 1.45 - contrast * .6;
-    lights.key.intensity = 2.2 + contrast * 1.2;
-    lights.fill.intensity = .55 - contrast * .3;
+    viewerRef.current?.setLighting(contrast);
   }, [contrast]);
+
+  useEffect(() => {
+    viewerRef.current?.setCloseup(closeup);
+  }, [closeup]);
 
   const setValue = useCallback((key: "curvature" | "spread" | "texture", value: number) => {
     setSettings(previous => ({ ...previous, [key]: value }));
@@ -173,6 +215,7 @@ export default function BrenchExperience() {
 
   const regenerate = () => setSettings(previous => ({ ...previous, seed: Math.floor(Math.random() * 0xffffffff) }));
   const resetView = () => {
+    setCloseup(false);
     const viewer = viewerRef.current;
     if (viewer) viewer.rotation = { x: 0, y: 0 };
   };
@@ -231,6 +274,9 @@ export default function BrenchExperience() {
             <span>FORM STUDY</span>
             <span>001 / ∞</span>
           </div>
+          <button className={styles.inspectButton} aria-pressed={closeup} onClick={() => setCloseup(value => !value)}>
+            {closeup ? "전체 형태 보기" : "수피 확대 보기"}<span>{closeup ? "−" : "+"}</span>
+          </button>
           <label className={styles.control}>
             <span><b>곡률</b><small>CURVATURE</small></span>
             <input type="range" min="0" max="2" step="0.05" value={settings.curvature} onChange={event => setValue("curvature", Number(event.target.value))} />

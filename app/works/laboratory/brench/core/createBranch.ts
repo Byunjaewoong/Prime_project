@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import type { BarkSurface } from "./barkSurface";
 
 export type BranchSettings = {
   seed: number;
@@ -24,67 +25,16 @@ function randomSource(seed: number) {
   };
 }
 
-function barkTextures(detail: number) {
-  const width = 256;
-  const height = 512;
-  const color = new Uint8Array(width * height * 4);
-  const relief = new Uint8Array(width * height * 4);
-  const fract = (value: number) => value - Math.floor(value);
-  const hash = (x: number, y: number) => fract(Math.sin(x * 127.1 + y * 311.7) * 43758.5453);
-  const noise = (x: number, y: number) => {
-    const ix = Math.floor(x), iy = Math.floor(y);
-    const fx = x - ix, fy = y - iy;
-    const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
-    const a = hash(ix, iy) * (1 - sx) + hash(ix + 1, iy) * sx;
-    const b = hash(ix, iy + 1) * (1 - sx) + hash(ix + 1, iy + 1) * sx;
-    return a * (1 - sy) + b * sy;
-  };
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const broad = noise(x / 38, y / 105);
-      const ridges = noise(x / 9, y / 64);
-      const fibers = noise(x / 2.8, y / 23);
-      const fleck = noise(x / 3.5, y / 3.5);
-      const warpedX = x + (broad - .5) * 22 + (ridges - .5) * 9;
-      const seam = Math.pow(Math.max(0, Math.cos(warpedX * .16)), 9);
-      const pit = Math.max(0, .36 - fleck) * 2.2;
-      const grain = (broad - .5) * 44 + (ridges - .5) * 43 + (fibers - .5) * 23 - seam * 62 - pit * 49;
-      const contrast = .55 + detail * .85;
-      const warmth = noise(x / 73 + 8, y / 112) * 15;
-      const i = (y * width + x) * 4;
-      color[i] = Math.max(0, Math.min(255, 106 + grain * contrast + warmth));
-      color[i + 1] = Math.max(0, Math.min(255, 91 + grain * contrast * .89 + warmth * .7));
-      color[i + 2] = Math.max(0, Math.min(255, 73 + grain * contrast * .76 + warmth * .45));
-      color[i + 3] = 255;
-      const bump = Math.max(0, Math.min(255, 125 + grain * 1.7));
-      relief[i] = bump;
-      relief[i + 1] = bump;
-      relief[i + 2] = bump;
-      relief[i + 3] = 255;
-    }
-  }
-  const map = new THREE.DataTexture(color, width, height, THREE.RGBAFormat);
-  const bumpMap = new THREE.DataTexture(relief, width, height, THREE.RGBAFormat);
-  map.colorSpace = THREE.SRGBColorSpace;
-  for (const texture of [map, bumpMap]) {
-    texture.wrapS = THREE.RepeatWrapping;
-    texture.wrapT = THREE.RepeatWrapping;
-    texture.magFilter = THREE.LinearFilter;
-    texture.minFilter = THREE.LinearMipmapLinearFilter;
-    texture.generateMipmaps = true;
-    texture.needsUpdate = true;
-  }
-  return { map, bumpMap };
-}
-
-function tube(stem: Stem, random: () => number) {
-  const segments = Math.max(14, Math.ceil(stem.length * 20));
-  const sides = 12;
+function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: number) {
+  const segments = Math.max(18, Math.ceil(stem.length * (stem.radius > .08 ? 64 : 32)));
+  const sides = stem.radius > .22 ? 96 : stem.radius > .08 ? 64 : 24;
   const positions: number[] = [];
   const uvs: number[] = [];
+  const colors: number[] = [];
   const indices: number[] = [];
   const phase = random() * Math.PI * 2;
+  const offsetU = random(), offsetV = random();
+  const tileLength = Math.max(.55, stem.radius * Math.PI * 4);
   for (let i = 0; i <= segments; i++) {
     const t = i / segments;
     const center = stem.curve.getPointAt(t);
@@ -93,17 +43,23 @@ function tube(stem: Stem, random: () => number) {
     const binormal = new THREE.Vector3().crossVectors(tangent, normal).normalize();
     const taper = Math.pow(1 - t, .78);
     const radius = stem.radius * (stem.tip + (1 - stem.tip) * taper);
-    const swell = 1 + .105 * Math.sin(t * 27 + phase) + .04 * Math.sin(t * 67 + phase * 1.7);
+    const collar = stem.growthStart > 0 ? .14 * Math.exp(-(((t - .055) / .06) ** 2)) : 0;
+    const swell = 1 + collar + .055 * Math.sin(t * 19 + phase) + .018 * Math.sin(t * 43 + phase * 1.7);
     for (let j = 0; j <= sides; j++) {
-      const a = j / sides * Math.PI * 2;
-      const ridged = 1 + .11 * Math.sin(a * 5 + t * 12 + phase) + .045 * Math.sin(a * 9 - t * 19);
+      const a = j / sides * Math.PI * 2 - Math.PI / 2;
+      const u = j / sides + offsetU;
+      const v = t * stem.length / tileLength + offsetV;
+      const relief = bark.heightAt(u, v) - .5;
+      const ridged = 1 + .045 * Math.sin(a * 5 + t * 3 + phase) + relief * (.1 + detail * .18);
       const r = radius * swell * ridged;
       positions.push(
         center.x + r * (normal.x * Math.cos(a) + binormal.x * Math.sin(a)),
         center.y + r * (normal.y * Math.cos(a) + binormal.y * Math.sin(a)),
         center.z + r * (normal.z * Math.cos(a) + binormal.z * Math.sin(a)),
       );
-      uvs.push(j / sides, t * stem.length * 1.2);
+      uvs.push(u, v);
+      const weather = .92 + .06 * Math.sin(t * 9 + a * 3 + phase);
+      colors.push(weather, weather * .99, weather * .96);
       if (i < segments && j < sides) {
         const k = i * (sides + 1) + j;
         indices.push(k, k + 1, k + sides + 1, k + 1, k + sides + 2, k + sides + 1);
@@ -113,50 +69,103 @@ function tube(stem: Stem, random: () => number) {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
-  return geometry;
+  // The seam has duplicated UV vertices; average their normals to keep lighting smooth.
+  const normals = geometry.getAttribute("normal");
+  for (let i = 0; i <= segments; i++) {
+    const first = i * (sides + 1), last = first + sides;
+    const n = new THREE.Vector3().fromBufferAttribute(normals, first)
+      .add(new THREE.Vector3().fromBufferAttribute(normals, last)).normalize();
+    normals.setXYZ(first, n.x, n.y, n.z);
+    normals.setXYZ(last, n.x, n.y, n.z);
+  }
+  // A few raised strips make chipped bark catch light and cast real shadows.
+  // Their UVs continue the underlying surface, rather than floating unrelated marks.
+  const flakeRandom = randomSource(Math.floor(phase * 1e7) + 241);
+  const flakes = stem.radius > .08 ? Array.from({ length: Math.ceil(stem.length * stem.radius * 38) }, () => {
+    const start = Math.floor((.04 + flakeRandom() * .78) * segments);
+    return { start, end: Math.min(segments - 1, start + 5 + Math.floor(flakeRandom() * 14)), side: Math.floor(flakeRandom() * (sides - 3)), lift: .025 + flakeRandom() * .07 };
+  }).sort((a, b) => a.end - b.end) : [];
+  const flakePositions: number[] = [], flakeUvs: number[] = [], flakeColors: number[] = [], flakeIndices: number[] = [];
+  for (const flake of flakes) {
+    const base = flakePositions.length / 3;
+    for (let row = 0; row < 4; row++) {
+      const ring = Math.round(flake.start + (flake.end - flake.start) * row / 3);
+      const center = stem.curve.getPointAt(ring / segments);
+      for (let column = 0; column < 3; column++) {
+        const vertex = ring * (sides + 1) + flake.side + column;
+        const p = new THREE.Vector3(positions[vertex * 3], positions[vertex * 3 + 1], positions[vertex * 3 + 2]);
+        const radial = p.clone().sub(center);
+        const lift = (row / 3) ** 2 * flake.lift * (column === 1 ? 1 : .75);
+        p.addScaledVector(radial, lift);
+        flakePositions.push(p.x, p.y, p.z);
+        flakeUvs.push(uvs[vertex * 2], uvs[vertex * 2 + 1]);
+        flakeColors.push(.97, .955, .925);
+        if (row < 3 && column < 2) {
+          const k = base + row * 3 + column;
+          flakeIndices.push(k, k + 1, k + 3, k + 1, k + 4, k + 3);
+        }
+      }
+    }
+  }
+  const flakeGeometry = new THREE.BufferGeometry();
+  flakeGeometry.setAttribute("position", new THREE.Float32BufferAttribute(flakePositions, 3));
+  flakeGeometry.setAttribute("uv", new THREE.Float32BufferAttribute(flakeUvs, 2));
+  flakeGeometry.setAttribute("color", new THREE.Float32BufferAttribute(flakeColors, 3));
+  flakeGeometry.setIndex(flakeIndices);
+  flakeGeometry.computeVertexNormals();
+  flakeGeometry.setDrawRange(0, 0);
+  return { geometry, segments, sides, flakeGeometry, flakeEnds: flakes.map(flake => flake.end + 3) };
 }
 
-export function createBranch(settings: BranchSettings) {
+export function createBranch(settings: BranchSettings, bark: BarkSurface) {
   const random = randomSource(settings.seed);
   const vary = (amount: number) => (random() - .5) * 2 * amount;
-  const textures = barkTextures(settings.texture);
-  const material = new THREE.MeshStandardMaterial({
-    map: textures.map,
-    bumpMap: textures.bumpMap,
-    bumpScale: .025 + settings.texture * .065,
-    roughness: .94,
-    side: THREE.FrontSide,
-  });
+  const materials: THREE.MeshStandardMaterial[] = [];
   const group = new THREE.Group();
   const stems: Stem[] = [];
   const growthMeshes: {
     geometry: THREE.BufferGeometry;
     segments: number;
+    sides: number;
     start: number;
     end: number;
     original: Float32Array;
+    originalNormals: Float32Array;
     centers: THREE.Vector3[];
+    flakeGeometry: THREE.BufferGeometry;
+    flakeEnds: number[];
+    lastVisible: number;
+    mature: boolean;
   }[] = [];
   const makeStem = (points: THREE.Vector3[], radius: number, tip = .08, growthStart = 0, growthEnd = 1) => {
     const curve = new THREE.CatmullRomCurve3(points, false, "centripetal");
     const stem = { curve, radius, tip, length: curve.getLength(), growthStart, growthEnd };
     stems.push(stem);
-    const geometry = tube(stem, random);
-    const segments = geometry.index!.count / (6 * 12);
+    const { geometry, segments, sides, flakeGeometry, flakeEnds } = tube(stem, random, bark, settings.texture);
+    const material = bark.material(settings.texture, THREE.MathUtils.clamp(radius / .12, .3, 1));
+    materials.push(material);
     const positions = geometry.getAttribute("position") as THREE.BufferAttribute;
     positions.setUsage(THREE.DynamicDrawUsage);
+    (geometry.getAttribute("normal") as THREE.BufferAttribute).setUsage(THREE.DynamicDrawUsage);
     geometry.setDrawRange(0, 0);
     growthMeshes.push({
-      geometry, segments, start: growthStart, end: growthEnd,
+      geometry, segments, sides, start: growthStart, end: growthEnd,
       original: new Float32Array(positions.array as Float32Array),
+      originalNormals: new Float32Array(geometry.getAttribute("normal").array as Float32Array),
       centers: Array.from({ length: segments + 1 }, (_, i) => curve.getPointAt(i / segments)),
+      flakeGeometry, flakeEnds, lastVisible: -1, mature: false,
     });
     const mesh = new THREE.Mesh(geometry, material);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     group.add(mesh);
+    const flakeMesh = new THREE.Mesh(flakeGeometry, material);
+    flakeMesh.castShadow = true;
+    flakeMesh.receiveShadow = true;
+    group.add(flakeMesh);
     return stem;
   };
   const point = (x: number, y: number, z = 0) => new THREE.Vector3(x, y, z);
@@ -239,34 +248,56 @@ export function createBranch(settings: BranchSettings) {
   return {
     group,
     setGrowth: (progress: number) => {
-      for (const { geometry, segments, start, end, original, centers } of growthMeshes) {
+      let changed = false;
+      for (const growth of growthMeshes) {
+        const { geometry, segments, sides, start, end, original, originalNormals, centers, flakeGeometry, flakeEnds } = growth;
         const fraction = THREE.MathUtils.clamp((progress - start) / (end - start), 0, 1);
         const visible = Math.floor(fraction * segments);
+        const mature = fraction >= 1;
+        if (visible === growth.lastVisible && mature === growth.mature) continue;
+        changed = true;
+        growth.lastVisible = visible;
+        growth.mature = mature;
         const position = geometry.getAttribute("position") as THREE.BufferAttribute;
         const current = position.array as Float32Array;
         current.set(original);
-        if (visible > 0) {
-          const tipRings = Math.min(4, visible);
+        const normal = geometry.getAttribute("normal") as THREE.BufferAttribute;
+        (normal.array as Float32Array).set(originalNormals);
+        if (visible > 0 && fraction < 1) {
+          const tipRings = Math.min(12, visible);
           for (let ring = visible - tipRings; ring <= visible; ring++) {
             const center = centers[ring];
             const taper = .05 + .95 * (visible - ring) / tipRings;
-            for (let side = 0; side <= 12; side++) {
-              const offset = (ring * 13 + side) * 3;
+            for (let side = 0; side <= sides; side++) {
+              const offset = (ring * (sides + 1) + side) * 3;
               current[offset] = center.x + (original[offset] - center.x) * taper;
               current[offset + 1] = center.y + (original[offset + 1] - center.y) * taper;
               current[offset + 2] = center.z + (original[offset + 2] - center.z) * taper;
             }
           }
+          // Rebuild only the growing cap's normals; the detailed mature surface
+          // retains its original normals when scrubbing forwards or backwards.
+          const tangent = centers[visible].clone().sub(centers[Math.max(0, visible - 1)]).normalize();
+          for (let ring = visible - tipRings; ring <= visible; ring++) {
+            const amount = (ring - (visible - tipRings)) / tipRings;
+            for (let side = 0; side <= sides; side++) {
+              const vertex = ring * (sides + 1) + side;
+              const n = new THREE.Vector3().fromBufferAttribute(normal, vertex).addScaledVector(tangent, amount * 1.6).normalize();
+              normal.setXYZ(vertex, n.x, n.y, n.z);
+            }
+          }
         }
         position.needsUpdate = true;
-        geometry.setDrawRange(0, visible * 6 * 12);
+        normal.needsUpdate = true;
+        geometry.setDrawRange(0, visible * 6 * sides);
+        const flakeCount = fraction >= 1 ? flakeEnds.length : flakeEnds.filter(ring => ring <= visible).length;
+        flakeGeometry.setDrawRange(0, flakeCount * 36);
       }
+      return changed;
     },
     dispose: () => {
       group.traverse(object => { if (object instanceof THREE.Mesh) object.geometry.dispose(); });
-      material.dispose();
-      textures.map.dispose();
-      textures.bumpMap.dispose();
+      materials.forEach(material => material.dispose());
     },
     count: stems.length,
   };
