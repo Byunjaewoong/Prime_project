@@ -1,0 +1,47 @@
+.page { min-height: 100svh; background: #f9f8f5; color: #302f2b; font-family: var(--font-courier), monospace; display: flex; flex-direction: column; }
+.header { height: 66px; flex: none; display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: center; padding: 0 32px; border-bottom: 1px solid #dedbd4; font-size: 11px; letter-spacing: .055em; }
+.back { color: inherit; text-decoration: none; width: fit-content; }
+.back:hover { opacity: .55; }
+.archive { text-align: center; color: #8e8a81; }
+.index { text-align: right; color: #8e8a81; }
+.stage { flex: 1; min-height: 640px; position: relative; overflow: hidden; background: radial-gradient(ellipse at 58% 42%, #fffefa 0%, #f9f8f5 68%); }
+.canvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; position: absolute; inset: 0; }
+.canvas:active { cursor: grabbing; }
+.titleBlock { position: absolute; top: 46px; left: 42px; pointer-events: none; }
+.eyebrow { color: #8a8173; font-size: 10px; letter-spacing: .13em; }
+.titleBlock h1 { font-family: Georgia, 'Times New Roman', serif; font-weight: normal; letter-spacing: -.065em; font-size: clamp(52px, 7vw, 98px); line-height: 1.05; margin: 12px 0 8px; }
+.period { color: #a87850; }
+.titleBlock p { font-size: 12px; color: #777268; letter-spacing: -.03em; margin: 0; }
+.controls { position: absolute; top: 48px; right: 42px; width: 232px; padding: 20px 20px 18px; background: rgba(251, 250, 247, .88); border: 1px solid #e4e0d8; box-shadow: 0 10px 35px #5c4b3512; backdrop-filter: blur(10px); }
+.controlHead { display: flex; justify-content: space-between; color: #89847a; font-size: 9px; letter-spacing: .09em; border-bottom: 1px solid #e4e0d8; padding-bottom: 16px; margin-bottom: 19px; }
+.control { display: grid; grid-template-columns: 1fr auto; gap: 9px; align-items: center; margin-bottom: 18px; }
+.control > span { display: flex; justify-content: space-between; grid-column: 1 / -1; align-items: baseline; }
+.control b { font-size: 12px; font-weight: 500; }
+.control small { color: #a09a90; font-size: 9px; letter-spacing: .06em; }
+.control input { width: 100%; height: 2px; margin: 5px 0; appearance: none; background: #d6d0c5; cursor: pointer; }
+.control input::-webkit-slider-thumb { appearance: none; width: 11px; height: 11px; border-radius: 50%; background: #72563f; }
+.control input::-moz-range-thumb { width: 11px; height: 11px; border: none; border-radius: 50%; background: #72563f; }
+.control output { font-size: 10px; color: #877e71; width: 32px; text-align: right; }
+.generate { width: 100%; display: flex; align-items: center; gap: 9px; padding: 12px; border: 0; background: #403b33; color: #fffdf8; cursor: pointer; font: inherit; font-size: 11px; margin-top: 8px; }
+.generate:hover { background: #6a5440; }
+.generate span { margin-left: auto; }
+.secondaryActions { display: flex; justify-content: space-between; gap: 5px; margin-top: 13px; }
+.secondaryActions button { background: none; border: 0; color: #817a70; font: inherit; font-size: 9px; cursor: pointer; padding: 4px 0; display: inline-flex; align-items: center; gap: 4px; }
+.secondaryActions button:hover { color: #3c352f; }
+.caption { position: absolute; bottom: 28px; left: 42px; right: 42px; display: flex; justify-content: space-between; pointer-events: none; color: #999287; font-size: 10px; letter-spacing: .07em; }
+.error { position: absolute; inset: 0; display: grid; place-items: center; font-size: 13px; color: #665e54; background: #f9f8f5; }
+@media (max-width: 760px) {
+  .header { height: 54px; padding: 0 16px; grid-template-columns: 1fr auto; }
+  .archive { display: none; }
+  .stage { min-height: 0; height: auto; flex: none; padding-top: 68svh; padding-bottom: 30px; overflow: visible; }
+  .canvas { height: 68svh; bottom: auto; }
+  .titleBlock { top: 20px; left: 18px; }
+  .titleBlock h1 { font-size: 53px; margin-top: 6px; }
+  .titleBlock p { font-size: 10px; }
+  .controls { position: relative; top: auto; bottom: auto; right: auto; left: auto; width: auto; margin: 0 14px; padding: 12px 14px; }
+  .controlHead { padding-bottom: 8px; margin-bottom: 10px; }
+  .control { margin-bottom: 9px; }
+  .generate { margin-top: 4px; }
+  .secondaryActions { margin-top: 7px; }
+  .caption { top: calc(68svh - 23px); bottom: auto; left: 18px; right: 18px; font-size: 8px; }
+}
