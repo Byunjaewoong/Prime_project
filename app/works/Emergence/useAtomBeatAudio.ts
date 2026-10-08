@@ -53,6 +53,14 @@ function stopTracks(stream: MediaStream | null) {
   stream?.getTracks().forEach((track) => track.stop());
 }
 
+function stopAudioElement(element: HTMLAudioElement | null) {
+  if (!element) return;
+  element.onended = null;
+  element.pause();
+  element.removeAttribute("src");
+  element.load();
+}
+
 function isMobileDevice() {
   return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
     || window.matchMedia("(pointer: coarse)").matches;
@@ -61,10 +69,11 @@ function isMobileDevice() {
 export function useAtomBeatAudio(appRef: RefObject<EmergenceApp | null>, isAtoms: boolean) {
   const [assignments, setAssignments] = useState<BeatAssignments>(initialAssignments);
   const assignmentsRef = useRef(assignments);
-  const [inputKind, setInputKind] = useState<"idle" | "system" | "microphone">("idle");
+  const [inputKind, setInputKind] = useState<"idle" | "system" | "microphone" | "music">("idle");
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const audioElementRef = useRef<HTMLAudioElement | null>(null);
   const contextRef = useRef<AudioContext | null>(null);
   const frameRef = useRef<number | null>(null);
   const requestVersionRef = useRef(0);
@@ -130,6 +139,8 @@ export function useAtomBeatAudio(appRef: RefObject<EmergenceApp | null>, isAtoms
     frameRef.current = null;
     stopTracks(streamRef.current);
     streamRef.current = null;
+    stopAudioElement(audioElementRef.current);
+    audioElementRef.current = null;
     void contextRef.current?.close();
     contextRef.current = null;
     for (const key of PARAMETERS) {
@@ -142,75 +153,91 @@ export function useAtomBeatAudio(appRef: RefObject<EmergenceApp | null>, isAtoms
     setStarting(false);
   }, [appRef]);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (selectedSource: "tab" | "music", musicUrl?: string) => {
     if (starting || inputKind !== "idle" || !isAtoms) return;
     const requestVersion = ++requestVersionRef.current;
     setStarting(true);
     setError(null);
     let stream: MediaStream | null = null;
+    let audioElement: HTMLAudioElement | null = null;
     let audioContext: AudioContext | null = null;
-    let sourceKind: "system" | "microphone" = "microphone";
+    let sourceKind: "system" | "microphone" | "music" = selectedSource === "music" ? "music" : "microphone";
 
     try {
-      if (!isMobileDevice() && typeof navigator.mediaDevices?.getDisplayMedia === "function") {
-        try {
-          const Controller = (window as typeof window & {
-            CaptureController?: new () => CaptureFocusController;
-          }).CaptureController;
-          const controller = Controller && "setFocusBehavior" in Controller.prototype
-            ? new Controller()
-            : undefined;
-          controller?.setFocusBehavior("no-focus-change");
-          const displayStream = await navigator.mediaDevices.getDisplayMedia({
-            video: true,
-            audio: true,
-            ...(controller ? { controller } : {}),
-          });
-          if (displayStream.getAudioTracks().length > 0) {
-            stream = displayStream;
-            sourceKind = "system";
-          } else {
-            stopTracks(displayStream);
+      if (selectedSource === "music") {
+        if (!musicUrl) throw new Error("No music track selected");
+        audioElement = new Audio(musicUrl);
+        audioElement.preload = "auto";
+        audioElementRef.current = audioElement;
+      } else {
+        if (!isMobileDevice() && typeof navigator.mediaDevices?.getDisplayMedia === "function") {
+          try {
+            const Controller = (window as typeof window & {
+              CaptureController?: new () => CaptureFocusController;
+            }).CaptureController;
+            const controller = Controller && "setFocusBehavior" in Controller.prototype
+              ? new Controller()
+              : undefined;
+            controller?.setFocusBehavior("no-focus-change");
+            const displayStream = await navigator.mediaDevices.getDisplayMedia({
+              video: true,
+              audio: true,
+              ...(controller ? { controller } : {}),
+            });
+            if (displayStream.getAudioTracks().length > 0) {
+              stream = displayStream;
+              sourceKind = "system";
+            } else {
+              stopTracks(displayStream);
+            }
+          } catch {
+            // Use the microphone if tab audio was declined or unavailable.
           }
-        } catch {
-          // Use the microphone if tab audio was declined or unavailable.
+        }
+
+        if (requestVersion !== requestVersionRef.current) {
+          stopTracks(stream);
+          return;
+        }
+        if (!stream) {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+          });
+        }
+        if (requestVersion !== requestVersionRef.current) {
+          stopTracks(stream);
+          return;
         }
       }
 
-      if (requestVersion !== requestVersionRef.current) {
-        stopTracks(stream);
-        return;
-      }
-      if (!stream) {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-        });
-      }
-      if (requestVersion !== requestVersionRef.current) {
-        stopTracks(stream);
-        return;
-      }
-
       audioContext = new AudioContext();
-      await audioContext.resume();
-      if (requestVersion !== requestVersionRef.current) {
-        stopTracks(stream);
-        void audioContext.close();
-        return;
-      }
-      const source = audioContext.createMediaStreamSource(stream);
+      const source = audioElement
+        ? audioContext.createMediaElementSource(audioElement)
+        : audioContext.createMediaStreamSource(stream!);
       const analyser = audioContext.createAnalyser();
       analyser.fftSize = BEAT_FFT_SIZE;
       analyser.smoothingTimeConstant = 0.78;
       analyser.minDecibels = -96;
       analyser.maxDecibels = -18;
       source.connect(analyser);
+      if (audioElement) analyser.connect(audioContext.destination);
+      const resume = audioContext.resume();
+      const play = audioElement?.play();
+      await Promise.all([resume, play]);
+      if (requestVersion !== requestVersionRef.current) {
+        stopTracks(stream);
+        stopAudioElement(audioElement);
+        if (audioElementRef.current === audioElement) audioElementRef.current = null;
+        void audioContext.close();
+        return;
+      }
 
       const params = appRef.current?.getSimParams();
       for (const key of PARAMETERS) {
         if (params?.[key] !== undefined) baseRef.current[key] = params[key];
       }
       streamRef.current = stream;
+      audioElementRef.current = audioElement;
       contextRef.current = audioContext;
       setInputKind(sourceKind);
 
@@ -259,12 +286,15 @@ export function useAtomBeatAudio(appRef: RefObject<EmergenceApp | null>, isAtoms
         frameRef.current = requestAnimationFrame(draw);
       };
       frameRef.current = requestAnimationFrame(draw);
-      stream.getTracks().forEach((track) => track.addEventListener("ended", stop, { once: true }));
+      stream?.getTracks().forEach((track) => track.addEventListener("ended", stop, { once: true }));
+      if (audioElement) audioElement.onended = stop;
     } catch {
       stopTracks(stream);
+      stopAudioElement(audioElement);
+      if (audioElementRef.current === audioElement) audioElementRef.current = null;
       if (audioContext) void audioContext.close();
       if (requestVersion === requestVersionRef.current) {
-        setError("Audio permission or input unavailable.");
+        setError(selectedSource === "music" ? "Music file could not be played." : "Audio permission or input unavailable.");
         setInputKind("idle");
       }
     } finally {

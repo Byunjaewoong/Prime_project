@@ -183,7 +183,9 @@ const SIM_ROUTES: Record<string, SimType> = {
   atoms: "atoms",
 };
 
-export default function EmergenceExperience() {
+export default function EmergenceExperience({ musicTracks = [] }: {
+  musicTracks?: { name: string; url: string }[];
+}) {
   const pathname = usePathname();
   const routeName = pathname.split("/").filter(Boolean).at(-1) ?? "";
   const routeSim = SIM_ROUTES[routeName] ?? null;
@@ -197,6 +199,8 @@ export default function EmergenceExperience() {
   const [leniaParams, setLeniaParams] = useState<Record<string, number> | null>(null);
   const [atomParams, setAtomParams] = useState<Record<string, number> | null>(null);
   const [atomPreset, setAtomPreset] = useState<AtomBeatPreset | null>(0);
+  const [audioSource, setAudioSource] = useState<"tab" | "music">("tab");
+  const [selectedTrackUrl, setSelectedTrackUrl] = useState(musicTracks[0]?.url ?? "");
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   const atomAudio = useAtomBeatAudio(appRef, currentSim === "atoms");
   const getAtomDisplayParams = atomAudio.getDisplayParams;
@@ -707,19 +711,54 @@ export default function EmergenceExperience() {
                         </div>
                       </div>
                       <div style={{ padding: "10px 9px", marginBottom: 12, border: "1px solid rgba(255,255,255,0.15)", borderRadius: 6 }}>
+                        <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11, marginBottom: 9 }}>
+                          <span style={{ opacity: 0.7 }}>audio source</span>
+                          <select
+                            aria-label="Audio source"
+                            value={audioSource}
+                            onChange={(event) => {
+                              atomAudio.stop();
+                              setAudioSource(event.target.value as "tab" | "music");
+                            }}
+                            style={{ width: "100%", padding: "6px 4px", background: "#17202a", border: "1px solid rgba(255,255,255,0.24)", borderRadius: 4, color: "#e5e7eb", fontSize: 10 }}
+                          >
+                            <option value="tab">Listening: tab audio</option>
+                            <option value="music">Music library</option>
+                          </select>
+                        </label>
+                        {audioSource === "music" && <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11, marginBottom: 9 }}>
+                          <span style={{ opacity: 0.7 }}>music list</span>
+                          <select
+                            aria-label="Music track"
+                            value={selectedTrackUrl}
+                            onChange={(event) => {
+                              atomAudio.stop();
+                              setSelectedTrackUrl(event.target.value);
+                            }}
+                            disabled={musicTracks.length === 0}
+                            style={{ width: "100%", padding: "6px 4px", background: "#17202a", border: "1px solid rgba(255,255,255,0.24)", borderRadius: 4, color: "#e5e7eb", fontSize: 10 }}
+                          >
+                            {musicTracks.length === 0 && <option value="">No music files</option>}
+                            {musicTracks.map(track => <option key={track.url} value={track.url}>{track.name}</option>)}
+                          </select>
+                        </label>}
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
                           <span style={{ fontSize: 10, letterSpacing: "0.12em", opacity: 0.7, textTransform: "uppercase" }}>audio reaction</span>
                           <button
                             type="button"
                             aria-label={atomAudio.inputKind === "idle" ? "Play audio reaction" : "Stop audio reaction"}
-                            disabled={atomAudio.starting}
-                            onClick={() => { if (atomAudio.inputKind === "idle") void atomAudio.start(); else atomAudio.stop(); }}
+                            disabled={atomAudio.starting || (audioSource === "music" && !selectedTrackUrl)}
+                            onClick={() => { if (atomAudio.inputKind === "idle") void atomAudio.start(audioSource, selectedTrackUrl); else atomAudio.stop(); }}
                             style={{ fontSize: 11, padding: "5px 10px", background: atomAudio.inputKind === "idle" ? "rgba(255,255,255,0.08)" : "rgba(174,238,255,0.18)", border: "1px solid rgba(255,255,255,0.28)", borderRadius: 4, color: "inherit", cursor: "pointer" }}
                           >
                             {atomAudio.starting ? "requesting..." : atomAudio.inputKind === "idle" ? "▶ play" : "■ stop"}
                           </button>
                         </div>
-                        {atomAudio.inputKind !== "idle" && <div style={{ fontSize: 10, opacity: 0.55, marginBottom: 8 }}>listening: {atomAudio.inputKind === "system" ? "tab audio" : "microphone"}</div>}
+                        {atomAudio.inputKind !== "idle" && <div style={{ fontSize: 10, opacity: 0.55, marginBottom: 8 }}>
+                          {atomAudio.inputKind === "music"
+                            ? `playing: ${musicTracks.find(track => track.url === selectedTrackUrl)?.name ?? "music"}`
+                            : `listening: ${atomAudio.inputKind === "system" ? "tab audio" : "microphone"}`}
+                        </div>}
                         {atomAudio.error && <div role="alert" style={{ fontSize: 10, color: "#ff9dab", marginBottom: 8 }}>{atomAudio.error}</div>}
                         {beatRows.map(({ beat, label }) => {
                           const assignment = atomAudio.assignments[beat];
