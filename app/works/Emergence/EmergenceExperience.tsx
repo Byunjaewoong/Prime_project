@@ -204,6 +204,30 @@ export default function EmergenceExperience({ musicTracks = [] }: {
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   const atomAudio = useAtomBeatAudio(appRef, currentSim === "atoms");
   const getAtomDisplayParams = atomAudio.getDisplayParams;
+  const atomAudioInputKind = atomAudio.inputKind;
+  const atomAudioStarting = atomAudio.starting;
+  const startAtomAudio = atomAudio.start;
+  const stopAtomAudio = atomAudio.stop;
+  const atomAudioAvailable = currentSim === "atoms" && !showOverlay && atomParams !== null;
+
+  const toggleAtomAudio = useCallback(() => {
+    if (atomAudioStarting || (audioSource === "music" && !selectedTrackUrl)) return;
+    if (atomAudioInputKind === "idle") void startAtomAudio(audioSource, selectedTrackUrl);
+    else stopAtomAudio();
+  }, [atomAudioInputKind, atomAudioStarting, audioSource, selectedTrackUrl, startAtomAudio, stopAtomAudio]);
+
+  useEffect(() => {
+    if (!atomAudioAvailable) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== "Space" || event.repeat || event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      const target = event.target;
+      if (target instanceof Element && target.closest("input, select, textarea, [contenteditable], [role='slider']")) return;
+      event.preventDefault();
+      toggleAtomAudio();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [atomAudioAvailable, toggleAtomAudio]);
 
   useEffect(() => {
     const media = window.matchMedia("(pointer: coarse)");
@@ -748,7 +772,8 @@ export default function EmergenceExperience({ musicTracks = [] }: {
                             type="button"
                             aria-label={atomAudio.inputKind === "idle" ? "Play audio reaction" : "Stop audio reaction"}
                             disabled={atomAudio.starting || (audioSource === "music" && !selectedTrackUrl)}
-                            onClick={() => { if (atomAudio.inputKind === "idle") void atomAudio.start(audioSource, selectedTrackUrl); else atomAudio.stop(); }}
+                            onClick={toggleAtomAudio}
+                            title="Space · play / stop"
                             style={{ fontSize: 11, padding: "5px 10px", background: atomAudio.inputKind === "idle" ? "rgba(255,255,255,0.08)" : "rgba(174,238,255,0.18)", border: "1px solid rgba(255,255,255,0.28)", borderRadius: 4, color: "inherit", cursor: "pointer" }}
                           >
                             {atomAudio.starting ? "requesting..." : atomAudio.inputKind === "idle" ? "▶ play" : "■ stop"}
