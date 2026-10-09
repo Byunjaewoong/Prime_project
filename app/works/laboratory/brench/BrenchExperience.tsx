@@ -7,6 +7,7 @@ import * as THREE from "three";
 import { createBranch, type BranchSettings } from "./core/createBranch";
 import { createBarkSurface, type BarkSurface } from "./core/barkSurface";
 import { growthTime } from "./core/treeFoliage";
+import { DEFAULT_WIND_SETTINGS, type WindSettings } from "./core/treeWind";
 import { DEFAULT_BRANCH_SETTINGS } from "./core/branchSkeleton";
 import DragOnlyRange from "../Painted/DragOnlyRange";
 import LeafSelector from "./LeafSelector";
@@ -42,6 +43,7 @@ type Viewer = {
   bark: BarkSurface;
   zoom: number;
   progress: number;
+  wind: WindSettings;
   fit: () => void;
   dirty: boolean;
   shadowsDirty: boolean;
@@ -61,6 +63,7 @@ export default function BrenchExperience() {
   const progressRef = useRef(INITIAL_GROWTH);
   const [settings, setSettings] = useState(DEFAULT_BRANCH_SETTINGS);
   const [contrast, setContrast] = useState(1);
+  const [wind, setWind] = useState(DEFAULT_WIND_SETTINGS);
   const [zoom, setZoom] = useState(1);
   const [progress, setProgress] = useState(INITIAL_GROWTH);
   const [controlsOpen, setControlsOpen] = useState(false);
@@ -112,7 +115,7 @@ export default function BrenchExperience() {
     const bark = createBarkSurface(renderer.capabilities.getMaxAnisotropy());
     const viewer: Viewer = {
       scene, renderer, model: null, rotation: { x: 0, y: 0 }, bark,
-      zoom: 1, progress: INITIAL_GROWTH, fit: () => {}, dirty: true, shadowsDirty: true, lights: { ambient, key, fill },
+      wind: { ...DEFAULT_WIND_SETTINGS }, zoom: 1, progress: INITIAL_GROWTH, fit: () => {}, dirty: true, shadowsDirty: true, lights: { ambient, key, fill },
       setLighting: value => {
         ambient.intensity = 1.45 - value * .6;
         key.intensity = 2.2 + value * 1.2;
@@ -142,9 +145,15 @@ export default function BrenchExperience() {
     resize();
     const observer = new ResizeObserver(resize);
     observer.observe(canvas);
-    let frame = 0;
-    const draw = () => {
+    let frame = 0, previousFrame = performance.now(), windPhase = 0;
+    const resetWindClock = () => { previousFrame = performance.now(); };
+    document.addEventListener("visibilitychange", resetWindClock);
+    const draw = (now: number) => {
+      const elapsed = Math.max(0, (now - previousFrame) / 1000);
+      previousFrame = now;
       frame = requestAnimationFrame(draw);
+      if (document.hidden) return;
+      windPhase = (windPhase + elapsed * Math.PI * 2 / viewer.wind.period) % (Math.PI * 2);
       const turning = !!viewer.model && Math.abs(viewer.rotation.x - viewer.model.group.rotation.x)
         + Math.abs(viewer.rotation.y - viewer.model.group.rotation.y) > .0001;
       if (viewer.model && turning) {
@@ -154,6 +163,9 @@ export default function BrenchExperience() {
       }
       if (viewer.model?.setGrowth(viewer.progress)) viewer.dirty = viewer.shadowsDirty = true;
       const time = growthTime(viewer.progress);
+      if (viewer.model?.updateWind(windPhase, viewer.wind, time) && viewer.progress > 0) {
+        viewer.dirty = viewer.shadowsDirty = true;
+      }
       const growingHeight = Math.min(1, time / .52);
       const growthZoom = viewer.zoom / Math.min(1, Math.max(.16, growingHeight + .12));
       const bounds = viewer.model?.bounds;
@@ -171,9 +183,10 @@ export default function BrenchExperience() {
         viewer.shadowsDirty = false;
       }
     };
-    draw();
+    frame = requestAnimationFrame(draw);
     return () => {
       cancelAnimationFrame(frame);
+      document.removeEventListener("visibilitychange", resetWindClock);
       observer.disconnect();
       viewer.model?.dispose();
       if (viewer.model) scene.remove(viewer.model.group);
@@ -212,6 +225,10 @@ export default function BrenchExperience() {
   useEffect(() => {
     viewerRef.current?.setZoom(zoom);
   }, [zoom]);
+
+  useEffect(() => {
+    if (viewerRef.current) { viewerRef.current.wind = wind; viewerRef.current.dirty = true; }
+  }, [wind]);
 
   const updateGrowth = (value: number) => {
     const next = value / 100;
@@ -269,6 +286,17 @@ export default function BrenchExperience() {
           <Link href="/works/laboratory" aria-label="Laboratory"><FlaskConical size={16} /></Link>
         </nav></div>
         <div className={styles.controls}>
+          <span className={styles.sectionTitle}>WIND</span>
+          <div className={styles.control}><span className={styles.controlLabel}><span>바람 주기</span><output>{wind.period.toFixed(2)}초</output></span>
+            <DragOnlyRange label="바람 주기" min={1} max={12} step={.25} value={wind.period}
+              onChange={period => setWind(current => ({ ...current, period }))} /></div>
+          <div className={styles.control}><span className={styles.controlLabel}><span>바람 방향</span><output>{wind.direction}°</output></span>
+            <DragOnlyRange label="바람 방향" min={0} max={360} step={5} value={wind.direction}
+              onChange={direction => setWind(current => ({ ...current, direction }))} /></div>
+          <div className={styles.control}><span className={styles.controlLabel}><span>바람 세기</span><output>{Math.round(wind.strength * 100)}%</output></span>
+            <DragOnlyRange label="바람 세기" min={0} max={100} step={1} value={wind.strength * 100}
+              onChange={strength => setWind(current => ({ ...current, strength: strength / 100 }))} /></div>
+          <p className={styles.leafHint}>기본 시점 기준 · 0° 오른쪽 / 90° 뒤 / 180° 왼쪽 / 270° 앞<br />주기가 짧을수록 자주 불고, 세기 0%에서는 멈춥니다.</p>
           <LeafSelector value={settings.leafType} onChange={leafType => setSettings(current => ({ ...current, leafType }))} />
           <span className={styles.sectionTitle}>TREE FORM</span>
           <div className={styles.presets}>{presets.map(preset => <button type="button" key={preset.name}
@@ -286,7 +314,7 @@ export default function BrenchExperience() {
           <div className={styles.control}><span className={styles.controlLabel}><span>확대</span><output>{zoom.toFixed(2)}×</output></span>
             <DragOnlyRange label="확대" min={.7} max={3.5} step={.05} value={zoom} onChange={setZoom} /></div>
           <button type="button" className={styles.action} onClick={resetView}><RotateCcw size={14} /> 시점 초기화</button>
-          <button type="button" className={styles.action} onClick={() => { setSettings(DEFAULT_BRANCH_SETTINGS); setContrast(1); resetView(); updateGrowth(INITIAL_GROWTH * 100); }}>모든 설정 초기화</button>
+          <button type="button" className={styles.action} onClick={() => { setSettings(DEFAULT_BRANCH_SETTINGS); setWind(DEFAULT_WIND_SETTINGS); setContrast(1); resetView(); updateGrowth(INITIAL_GROWTH * 100); }}>모든 설정 초기화</button>
           <button type="button" className={styles.action} onClick={download}><Download size={14} /> PNG 저장</button>
         </div>
       </aside>}

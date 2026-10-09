@@ -4,6 +4,7 @@ import { BARK_TILE_LENGTH, BARK_TILE_WIDTH, type BarkSurface } from "./barkSurfa
 import { createBranchSkeleton, randomSource, type BranchSettings, type Stem } from "./branchSkeleton";
 import { createTreeFoliage, growthTime } from "./treeFoliage";
 import { createStemSections } from "./stemSections";
+import { createTreeWind } from "./treeWind";
 export type { BranchSettings } from "./branchSkeleton";
 
 function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: number, irregularity: number) {
@@ -210,10 +211,11 @@ export function createBranch(settings: BranchSettings, bark: BarkSurface) {
   const bounds = new THREE.Box3().setFromObject(group).expandByScalar(settings.leafSize);
   const foliage = createTreeFoliage(stems, settings);
   group.add(foliage.group);
+  const wind = createTreeWind(group, settings.height, stems[0].curve.getPointAt(0).y);
   const shootColor = new THREE.Color(0xb9cd78), woodColor = new THREE.Color(0xffffff);
   let lastProgress = -1;
   return {
-    group, bounds,
+    group, bounds, updateWind: wind.update,
     setGrowth: (progress: number) => {
       const p = THREE.MathUtils.clamp(progress, 0, 1);
       if (p === lastProgress) return false;
@@ -231,6 +233,7 @@ export function createBranch(settings: BranchSettings, bark: BarkSurface) {
       group.traverse(object => { if (object instanceof THREE.Mesh) object.geometry.dispose(); });
       materials.forEach(material => material.dispose());
       foliage.dispose();
+      wind.dispose();
     },
     count: stems.length,
   };

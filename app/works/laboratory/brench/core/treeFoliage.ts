@@ -53,6 +53,16 @@ export function createTreeFoliage(stems: Stem[], settings: BranchSettings) {
     mesh.frustumCulled = false;
     mesh.castShadow = mesh.receiveShadow = true;
   });
+  // Matching pivots on blades, compound rachises and petioles keep the entire
+  // leaf connected while fluttering. Phase comes from its immutable attachment.
+  const attachWind = (mesh: THREE.InstancedMesh, entries: typeof sites) => {
+    const data = new Float32Array(entries.length * 4);
+    entries.forEach((site, i) => data.set([site.origin.x, site.origin.y, site.origin.z,
+      site.origin.x * 13.7 + site.origin.y * 5.3 + site.origin.z * 9.1 + site.twist * 7], i * 4));
+    mesh.geometry.setAttribute("windAttachment", new THREE.InstancedBufferAttribute(data, 4));
+  };
+  attachWind(leaves, adultSites); attachWind(cotyledons, seedSites); attachWind(stalks, sites);
+  if (rachises) attachWind(rachises, adultSites);
   const group = new THREE.Group(); group.name = "foliage"; group.add(...meshes);
   const object = new THREE.Object3D(), up = new THREE.Vector3(0, 1, 0);
   const color = new THREE.Color(), youngColor = new THREE.Color(0xd2e7a1);
