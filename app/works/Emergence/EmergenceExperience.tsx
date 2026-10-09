@@ -227,7 +227,7 @@ export default function EmergenceExperience({ musicTracks = [] }: {
       repel: preset === 2 || preset >= 4 ? 0.9 : 1,
       forceFactor: preset >= 4 ? 1.01 : 0.18,
       friction: preset === 0 ? defaults.friction : preset === 1 ? 0.3 : 0.2,
-      particleSize: preset >= 4 ? 4.5 : 4,
+      particleSize: 5,
     };
     selectAtomPreset(preset);
     for (const [key, value] of Object.entries(values)) {

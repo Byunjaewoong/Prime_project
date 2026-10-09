@@ -32,7 +32,7 @@ export class AtomsCPU implements Simulation {
   private repel = 1;
   private forceFactor = 0.18;
   private friction = 0.08;
-  private particleSize = 4;
+  private particleSize = 5;
   private depthMode = false;
   private focusLayer = 1;
   private focusMix = 1;
