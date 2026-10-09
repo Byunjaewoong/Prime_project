@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { randomSource, type BranchSettings, type Stem } from "./branchSkeleton";
+import { createLeafGeometry, createLeafRachis, createLeafSurface } from "./leafSurface";
 
 export function growthTime(progress: number) {
   const p = THREE.MathUtils.clamp(progress, 0, 1);
@@ -8,43 +9,14 @@ export function growthTime(progress: number) {
 
 export function createTreeFoliage(stems: Stem[], settings: BranchSettings) {
   const random = randomSource(settings.seed ^ 0x73ad918);
-  const geometry = new THREE.BufferGeometry();
-  const positions: number[] = [], uvs: number[] = [], indices: number[] = [];
-  for (let row = 0; row <= 16; row++) {
-    const v = row / 16, width = Math.pow(Math.sin(v * Math.PI), .8) * .36;
-    for (let col = 0; col <= 6; col++) {
-      const u = col / 6, x = (u * 2 - 1) * width;
-      positions.push(x, v, .10 * Math.sin(v * Math.PI) - Math.abs(x) * .23);
-      uvs.push(u, v);
-      if (row < 16 && col < 6) {
-        const k = row * 7 + col;
-        indices.push(k, k + 1, k + 7, k + 1, k + 8, k + 7);
-      }
-    }
-  }
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
-  geometry.setIndex(indices); geometry.computeVertexNormals();
-  const pixels = new Uint8Array(128 * 256 * 4);
-  for (let y = 0; y < 256; y++) for (let x = 0; x < 128; x++) {
-    const u = x / 127, v = y / 255;
-    const rib = Math.exp(-Math.abs(u - .5) * 110);
-    const branch = Math.pow(Math.max(0, Math.cos((v * 11 - Math.abs(u - .5) * 2.5) * Math.PI * 2)), 22);
-    const grain = random() * 9;
-    const i = (y * 128 + x) * 4;
-    pixels[i] = 72 + rib * 44 + branch * 17 + grain;
-    pixels[i + 1] = 111 + rib * 42 + branch * 19 + grain;
-    pixels[i + 2] = 35 + rib * 15 + grain;
-    pixels[i + 3] = 255;
-  }
-  const map = new THREE.DataTexture(pixels, 128, 256);
-  map.colorSpace = THREE.SRGBColorSpace;
-  map.magFilter = THREE.LinearFilter; map.minFilter = THREE.LinearMipmapLinearFilter;
-  map.generateMipmaps = true; map.needsUpdate = true;
-  const material = new THREE.MeshStandardMaterial({ map, side: THREE.DoubleSide, roughness: .76 });
+  const geometry = createLeafGeometry(settings.leafType, "canopy");
+  const surface = createLeafSurface(settings.leafType);
+  const cotyledonGeometry = createLeafGeometry("cotyledon");
+  const cotyledonSurface = createLeafSurface("cotyledon");
+  const rachisGeometry = createLeafRachis(settings.leafType);
   const stalkMaterial = new THREE.MeshStandardMaterial({ color: 0x728448, roughness: .9 });
   const stalkGeometry = new THREE.CylinderGeometry(.006, .009, 1, 5);
-  const sites: { origin: THREE.Vector3; direction: THREE.Vector3; twist: number; length: number; birth: number; end: number; cotyledon: boolean }[] = [];
+  const sites: { origin: THREE.Vector3; direction: THREE.Vector3; twist: number; length: number; birth: number; end: number; cotyledon: boolean; tint: number }[] = [];
   const add = (stem: Stem, at: number, azimuth: number, cotyledon = false, temporary = false) => {
     const tangent = stem.curve.getTangentAt(at);
     const radial = new THREE.Vector3(Math.cos(azimuth), .18, Math.sin(azimuth));
@@ -52,7 +24,7 @@ export function createTreeFoliage(stems: Stem[], settings: BranchSettings) {
     sites.push({ origin: stem.curve.getPointAt(at), direction, twist: (random() - .5) * 1.2,
       length: (cotyledon ? .38 : .36 + random() * .26) * settings.leafSize,
       birth: stem.growthStart + (stem.growthEnd - stem.growthStart) * at + .005,
-      end: cotyledon ? .19 : temporary ? .48 : 2, cotyledon });
+      end: cotyledon ? .19 : temporary ? .48 : 2, cotyledon, tint: .86 + random() * .14 });
   };
   if (settings.leafDensity > 0) {
     add(stems[0], .027, 0, true); add(stems[0], .027, Math.PI, true);
@@ -67,20 +39,31 @@ export function createTreeFoliage(stems: Stem[], settings: BranchSettings) {
       }
     });
   }
-  const leaves = new THREE.InstancedMesh(geometry, material, sites.length);
+  const adultSites = sites.filter(site => !site.cotyledon);
+  const seedSites = sites.filter(site => site.cotyledon);
+  const leaves = new THREE.InstancedMesh(geometry, surface.material, adultSites.length);
+  const cotyledons = new THREE.InstancedMesh(cotyledonGeometry, cotyledonSurface.material, seedSites.length);
+  const rachises = rachisGeometry ? new THREE.InstancedMesh(rachisGeometry, stalkMaterial, adultSites.length) : null;
+  leaves.name = "true-leaves"; cotyledons.name = "cotyledons";
+  if (rachises) rachises.name = "leaf-rachises";
   const stalks = new THREE.InstancedMesh(stalkGeometry, stalkMaterial, sites.length);
-  leaves.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  stalks.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  leaves.frustumCulled = stalks.frustumCulled = false;
-  leaves.castShadow = leaves.receiveShadow = stalks.castShadow = true;
-  const group = new THREE.Group(); group.add(leaves, stalks);
+  const meshes = [leaves, cotyledons, stalks, ...(rachises ? [rachises] : [])];
+  meshes.forEach(mesh => {
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.frustumCulled = false;
+    mesh.castShadow = mesh.receiveShadow = true;
+  });
+  const group = new THREE.Group(); group.name = "foliage"; group.add(...meshes);
   const object = new THREE.Object3D(), up = new THREE.Vector3(0, 1, 0);
-  const color = new THREE.Color();
+  const color = new THREE.Color(), youngColor = new THREE.Color(0xd2e7a1);
   let previous = -1;
   const update = (time: number) => {
     if (time === previous) return false;
     previous = time;
+    let adultIndex = 0, seedIndex = 0;
     sites.forEach((site, i) => {
+      const leaf = site.cotyledon ? cotyledons : leaves;
+      const index = site.cotyledon ? seedIndex++ : adultIndex++;
       const opening = THREE.MathUtils.smoothstep(time, site.birth, site.birth + (site.cotyledon ? .025 : .065));
       const fading = 1 - THREE.MathUtils.smoothstep(time, site.end - .065, site.end);
       const scale = opening * fading;
@@ -90,20 +73,23 @@ export function createTreeFoliage(stems: Stem[], settings: BranchSettings) {
       object.rotateY(site.twist);
       object.position.copy(site.origin).addScaledVector(direction, petiole);
       object.scale.set(site.length * scale * (.12 + .88 * opening) * (site.cotyledon ? 1.35 : 1), site.length * scale, site.length * scale);
-      object.updateMatrix(); leaves.setMatrixAt(i, object.matrix);
-      color.set(site.cotyledon ? 0xe0efaa : 0xffffff).lerp(new THREE.Color(0xb3c88b), 1 - opening);
-      leaves.setColorAt(i, color);
+      object.updateMatrix(); leaf.setMatrixAt(index, object.matrix);
+      if (!site.cotyledon) rachises?.setMatrixAt(index, object.matrix);
+      color.setRGB(site.tint, site.tint, site.tint).lerp(youngColor, (1 - opening) * .4);
+      leaf.setColorAt(index, color);
       object.position.copy(site.origin).addScaledVector(direction, petiole * .5);
       object.scale.set(scale, petiole, scale);
       object.updateMatrix(); stalks.setMatrixAt(i, object.matrix);
     });
-    leaves.instanceMatrix.needsUpdate = stalks.instanceMatrix.needsUpdate = true;
-    if (leaves.instanceColor) leaves.instanceColor.needsUpdate = true;
+    meshes.forEach(mesh => {
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    });
     return true;
   };
   update(0);
   return { group, update, count: sites.length, dispose: () => {
-    leaves.dispose(); stalks.dispose();
-    material.dispose(); stalkMaterial.dispose(); map.dispose();
+    meshes.forEach(mesh => mesh.dispose());
+    surface.dispose(); cotyledonSurface.dispose(); stalkMaterial.dispose();
   } };
 }

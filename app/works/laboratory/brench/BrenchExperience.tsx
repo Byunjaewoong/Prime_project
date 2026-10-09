@@ -9,6 +9,7 @@ import { createBarkSurface, type BarkSurface } from "./core/barkSurface";
 import { growthTime } from "./core/treeFoliage";
 import { DEFAULT_BRANCH_SETTINGS } from "./core/branchSkeleton";
 import DragOnlyRange from "../Painted/DragOnlyRange";
+import LeafSelector from "./LeafSelector";
 import styles from "./brench.module.css";
 
 const INITIAL_GROWTH = .14;
@@ -218,7 +219,7 @@ export default function BrenchExperience() {
     if (viewerRef.current) viewerRef.current.progress = next;
     setProgress(next);
   };
-  const setValue = (key: keyof BranchSettings, value: number) => {
+  const setValue = (key: Exclude<keyof BranchSettings, "leafType">, value: number) => {
     setSettings(previous => ({ ...previous, [key]: value }));
   };
   const regenerate = () => setSettings(previous => ({ ...previous, seed: Math.floor(Math.random() * 0xffffffff) }));
@@ -268,6 +269,7 @@ export default function BrenchExperience() {
           <Link href="/works/laboratory" aria-label="Laboratory"><FlaskConical size={16} /></Link>
         </nav></div>
         <div className={styles.controls}>
+          <LeafSelector value={settings.leafType} onChange={leafType => setSettings(current => ({ ...current, leafType }))} />
           <span className={styles.sectionTitle}>TREE FORM</span>
           <div className={styles.presets}>{presets.map(preset => <button type="button" key={preset.name}
             onClick={() => setSettings(current => ({ ...current, ...preset.values }))}>{preset.name}</button>)}</div>

@@ -207,7 +207,7 @@ export function createBranch(settings: BranchSettings, bark: BarkSurface) {
     group.add(flakeMesh);
   }
 
-  const bounds = new THREE.Box3().setFromObject(group).expandByScalar(.65 * settings.leafSize);
+  const bounds = new THREE.Box3().setFromObject(group).expandByScalar(settings.leafSize);
   const foliage = createTreeFoliage(stems, settings);
   group.add(foliage.group);
   const shootColor = new THREE.Color(0xb9cd78), woodColor = new THREE.Color(0xffffff);
