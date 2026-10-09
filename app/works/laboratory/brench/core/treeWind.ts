@@ -14,20 +14,6 @@ uniform float treeWindYouth;
 uniform vec3 treeWindDirection;
 #ifdef TREE_LEAF_WIND
 attribute vec4 windAttachment;
-vec3 leafWindAxis() {
-  return normalize(cross(vec3(0.0, 1.0, 0.0), treeWindDirection)
-    + vec3(0.0, .35 * sin(windAttachment.w), 0.0));
-}
-float leafWindAngle() {
-  return treeWindStrength * (.14 * sin(treeWindPhase * 7.0 + windAttachment.w)
-    + .055 * sin(treeWindPhase * 11.0 + windAttachment.w * 1.7))
-    * (.7 + .3 * sin(treeWindPhase));
-}
-vec3 leafWindRotate(vec3 value) {
-  vec3 axis = leafWindAxis(); float angle = leafWindAngle();
-  return value * cos(angle) + cross(axis, value) * sin(angle)
-    + axis * dot(axis, value) * (1.0 - cos(angle));
-}
 #endif
 void treeWindField(vec3 p, out float amount, out vec3 gradient) {
   float h = max(0.0, (p.y - treeWindBase - .12) / treeWindHeight);
@@ -35,24 +21,52 @@ void treeWindField(vec3 p, out float amount, out vec3 gradient) {
   float phase = treeWindPhase * 2.0 + dot(p, wave);
   float gust = .62 + .32 * sin(treeWindPhase) + .06 * sin(treeWindPhase * 2.0 + .8);
   float pressure = gust + .14 * sin(phase);
-  float amplitude = treeWindStrength * treeWindHeight * (.02 * h + .045 * h * h) * treeWindYouth;
+  float amplitude = treeWindStrength * treeWindHeight * (.04 * h + .10 * h * h) * treeWindYouth;
   amount = amplitude * pressure;
   gradient = amplitude * .14 * cos(phase) * wave;
-  if (h > 0.0) gradient.y += treeWindStrength * (.02 + .09 * h) * treeWindYouth * pressure;
+  if (h > 0.0) gradient.y += treeWindStrength * (.04 + .20 * h) * treeWindYouth * pressure;
 }
+#ifdef TREE_LEAF_WIND
+vec3 leafWindAxis() {
+  return normalize(cross(vec3(0.0, 1.0, 0.0), treeWindDirection));
+}
+float leafWindAngle(vec3 attachment) {
+  float h = max(0.0, (attachment.y - treeWindBase - .12) / treeWindHeight);
+  float gust = .62 + .32 * sin(treeWindPhase) + .06 * sin(treeWindPhase * 2.0 + .8)
+    + .14 * sin(treeWindPhase * 2.0 + dot(attachment, vec3(.73, .32, .51)));
+  // The whole leaf and petiole lean with their branch. The small higher-frequency
+  // remainder adds life without looking like an independently flapping card.
+  float lean = treeWindStrength * (.025 + .10 * h) * treeWindYouth * gust;
+  float flutter = treeWindStrength * (.012 * sin(treeWindPhase * 7.0 + windAttachment.w)
+    + .006 * sin(treeWindPhase * 11.0 + windAttachment.w * 1.7));
+  return lean + flutter;
+}
+vec3 leafWindRotate(vec3 value, vec3 attachment) {
+  vec3 axis = leafWindAxis(); float angle = leafWindAngle(attachment);
+  return value * cos(angle) + cross(axis, value) * sin(angle)
+    + axis * dot(axis, value) * (1.0 - cos(angle));
+}
+#endif
 vec3 treeWindPosition(vec3 p) {
   if (treeWindStrength == 0.0) return p;
   #ifdef TREE_LEAF_WIND
-    p = windAttachment.xyz + leafWindRotate(p - windAttachment.xyz);
+    // Evaluate the branch field at the attachment, then carry its slope through
+    // the entire leaf. At the pivot this is exactly the branch's deformation.
+    float atAmount; vec3 atGradient;
+    treeWindField(windAttachment.xyz, atAmount, atGradient);
+    vec3 offset = leafWindRotate(p - windAttachment.xyz, windAttachment.xyz);
+    return windAttachment.xyz + treeWindDirection * atAmount + offset
+      + treeWindDirection * dot(atGradient, offset);
+  #else
+    float amount; vec3 gradient; treeWindField(p, amount, gradient);
+    return p + treeWindDirection * amount;
   #endif
-  float amount; vec3 gradient; treeWindField(p, amount, gradient);
-  return p + treeWindDirection * amount;
 }
 vec3 treeWindNormal(vec3 p, vec3 n) {
   if (treeWindStrength == 0.0) return n;
   #ifdef TREE_LEAF_WIND
-    p = windAttachment.xyz + leafWindRotate(p - windAttachment.xyz);
-    n = leafWindRotate(n);
+    p = windAttachment.xyz;
+    n = leafWindRotate(n, p);
   #endif
   float amount; vec3 gradient; treeWindField(p, amount, gradient);
   // Exact inverse-transpose of I + direction * gradient^T (rank-one bending).
