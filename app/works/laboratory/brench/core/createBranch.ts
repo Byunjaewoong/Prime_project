@@ -1,29 +1,8 @@
 import * as THREE from "three";
 import { BARK_TILE_LENGTH, BARK_TILE_WIDTH, type BarkSurface } from "./barkSurface";
 
-export type BranchSettings = {
-  seed: number;
-  curvature: number;
-  spread: number;
-  texture: number;
-};
-
-type Stem = {
-  curve: THREE.CatmullRomCurve3;
-  radius: number;
-  tip: number;
-  length: number;
-  growthStart: number;
-  growthEnd: number;
-};
-
-function randomSource(seed: number) {
-  let state = seed >>> 0;
-  return () => {
-    state = (Math.imul(1664525, state) + 1013904223) >>> 0;
-    return state / 4294967296;
-  };
-}
+import { createBranchSkeleton, randomSource, type BranchSettings, type Stem } from "./branchSkeleton";
+export type { BranchSettings } from "./branchSkeleton";
 
 function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: number) {
   const segments = Math.max(18, Math.ceil(stem.length * (stem.radius > .08 ? 64 : 32)));
@@ -35,11 +14,11 @@ function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: numbe
   const phase = random() * Math.PI * 2;
   const offsetU = random(), offsetV = random();
   const centers = Array.from({ length: segments + 1 }, (_, i) => stem.curve.getPointAt(i / segments));
-  const frames = centers.map((_, i) => {
-    const tangent = stem.curve.getTangentAt(i / segments).normalize();
-    const normal = new THREE.Vector3(-tangent.y, tangent.x, 0).normalize();
-    return { normal, binormal: new THREE.Vector3().crossVectors(tangent, normal).normalize(), tangent };
-  });
+  // Parallel transport avoids frame flips on branches pointing along the depth axis.
+  const transported = stem.curve.computeFrenetFrames(segments, false);
+  const frames = centers.map((_, i) => ({
+    normal: transported.normals[i], binormal: transported.binormals[i], tangent: transported.tangents[i],
+  }));
   const angles = Array.from({ length: stride }, (_, j) => {
     const a = (j % sides) / sides * Math.PI * 2 - Math.PI / 2;
     return { cos: Math.cos(a), sin: Math.sin(a), a };
@@ -190,16 +169,12 @@ function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: numbe
 }
 
 export function createBranch(settings: BranchSettings, bark: BarkSurface) {
-  const random = randomSource(settings.seed);
-  const vary = (amount: number) => (random() - .5) * 2 * amount;
+  const random = randomSource(settings.seed ^ 0x6a09e667);
   const materials: THREE.MeshStandardMaterial[] = [];
   const group = new THREE.Group();
-  const stems: Stem[] = [];
+  const stems = createBranchSkeleton(settings);
   const growthMeshes: ReturnType<typeof tube>[] = [];
-  const makeStem = (points: THREE.Vector3[], radius: number, tip = .08, growthStart = 0, growthEnd = 1) => {
-    const curve = new THREE.CatmullRomCurve3(points, false, "centripetal");
-    const stem = { curve, radius, tip, length: curve.getLength(), growthStart, growthEnd };
-    stems.push(stem);
+  for (const stem of stems) {
     const growth = tube(stem, random, bark, settings.texture);
     const { geometry, flakeGeometry } = growth;
     const material = bark.material(settings.texture, growth.offsetU);
@@ -213,83 +188,6 @@ export function createBranch(settings: BranchSettings, bark: BarkSurface) {
     flakeMesh.castShadow = true;
     flakeMesh.receiveShadow = true;
     group.add(flakeMesh);
-    return stem;
-  };
-  const point = (x: number, y: number, z = 0) => new THREE.Vector3(x, y, z);
-  const trunkPoints = [
-    [-1.65, -5.2], [-1.18, -4.65], [-.42, -4.0], [.12, -3.3], [.35, -2.52],
-    [.19, -1.71], [.43, -.96], [.24, -.2], [-.17, .51], [-.51, 1.27],
-    [-.61, 2.09], [-.43, 2.88], [-.48, 3.62], [-.29, 4.38],
-  ].map(([x, y], i) => point(x + vary((i === 0 ? .035 : .13) * settings.curvature), y + vary(.07 * settings.curvature), vary(.13)));
-  const guideCurve = new THREE.CatmullRomCurve3(trunkPoints, false, "centripetal");
-  const trunkGuide: Stem = {
-    curve: guideCurve, radius: .31, tip: .08, length: guideCurve.getLength(),
-    growthStart: .09, growthEnd: .68,
-  };
-  // Extend the main mesh below the frame while retaining the original attachment positions.
-  makeStem([
-    point(-2.42, -6.43, trunkPoints[0].z - .08),
-    point(-1.97, -5.63, trunkPoints[0].z - .02),
-    ...trunkPoints,
-  ], .33, .08, 0, .68);
-
-  // Large limbs are deliberately sparse. Random perturbations change each silhouette
-  // while keeping the broad, asymmetric branching rhythm of the reference.
-  const limbs: { parent: Stem; at: number; offsets: [number, number, number?][]; radius: number }[] = [
-    { parent: trunkGuide, at: .30, radius: .165, offsets: [[-.7, .10], [-1.55, .5], [-2.34, 1.08], [-3.10, 1.34], [-3.58, 1.25], [-3.65, 1.72], [-3.52, 2.47], [-3.72, 3.01], [-4.04, 3.14]] },
-    { parent: trunkGuide, at: .24, radius: .17, offsets: [[.52, .55], [1.13, 1.29], [1.54, 2.11], [1.69, 2.95], [2.15, 3.73], [2.49, 4.55], [2.62, 5.40], [2.87, 6.12]] },
-    { parent: trunkGuide, at: .65, radius: .125, offsets: [[-.58, .53], [-1.30, 1.02], [-2.02, 1.57], [-2.57, 2.05], [-2.85, 2.12]] },
-    { parent: trunkGuide, at: .55, radius: .12, offsets: [[.42, .7], [1.00, 1.39], [1.35, 2.09], [1.47, 2.86], [1.66, 3.59], [1.95, 4.21]] },
-  ];
-
-  const grown: Stem[] = [];
-  for (const limb of limbs) {
-    const start = limb.parent.curve.getPointAt(limb.at);
-    const points = [start];
-    for (let i = 0; i < limb.offsets.length; i++) {
-      const [dx, dy, dz = 0] = limb.offsets[i];
-      const variation = i === 0 ? .035 : .16 * settings.curvature;
-      points.push(point(start.x + dx * settings.spread + vary(variation), start.y + dy + vary(variation), start.z + dz + vary(.22)));
-    }
-    const birth = limb.parent.growthStart + (limb.parent.growthEnd - limb.parent.growthStart) * limb.at;
-    const reach = new THREE.CatmullRomCurve3(points, false, "centripetal").getLength();
-    const finish = Math.min(.94, birth + .17 + reach * .055);
-    grown.push(makeStem(points, limb.radius * (.9 + random() * .22), .075, birth, finish));
-  }
-
-  const addTwig = (parent: Stem, at: number, side: number, length: number, radius: number, hook = false) => {
-    const start = parent.curve.getPointAt(at);
-    const tangent = parent.curve.getTangentAt(at).normalize();
-    const outward = new THREE.Vector3(-tangent.y * side, tangent.x * side, vary(.38)).normalize();
-    const direction = tangent.clone().multiplyScalar(.35).addScaledVector(outward, .9).normalize();
-    const first = start.clone().addScaledVector(direction, length * .32);
-    const middle = start.clone().addScaledVector(direction, length * .69).add(point(vary(.13) * settings.curvature, vary(.13) * settings.curvature, vary(.12)));
-    const end = start.clone().addScaledVector(direction, length).add(point(
-      hook ? -direction.x * length * .25 : vary(.22) * settings.curvature,
-      hook ? -length * .18 : vary(.18) * settings.curvature,
-      vary(.17),
-    ));
-    const birth = parent.growthStart + (parent.growthEnd - parent.growthStart) * at;
-    return makeStem([start, first, middle, end], radius, .035, birth, Math.min(.94, birth + .10 + length * .09));
-  };
-
-  const [left, right, upperLeft, upperRight] = grown;
-  addTwig(left, .62, 1, .55, .045, true);
-  addTwig(left, .83, -1, .42, .032, true);
-  addTwig(right, .46, -1, .82, .055);
-  addTwig(right, .67, 1, .59, .042);
-  addTwig(right, .84, -1, .66, .037, true);
-  addTwig(upperLeft, .58, -1, .94, .043);
-  addTwig(upperLeft, .87, 1, .42, .026);
-  addTwig(upperRight, .53, -1, .62, .045);
-  addTwig(upperRight, .79, 1, .57, .035);
-  addTwig(trunkGuide, .81, 1, .82, .046);
-  addTwig(trunkGuide, .96, -1, .44, .025);
-  for (const parent of grown) {
-    const count = 1 + Math.floor(random() * 2);
-    for (let i = 0; i < count; i++) {
-      addTwig(parent, .2 + random() * .65, random() < .5 ? -1 : 1, .25 + random() * .4, .022 + random() * .018);
-    }
   }
 
   return {
