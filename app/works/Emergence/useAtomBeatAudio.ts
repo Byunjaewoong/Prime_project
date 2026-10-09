@@ -6,7 +6,7 @@ import type { App as EmergenceApp } from "./core/App";
 export type AtomBeat = "kick" | "snare" | "hiHat";
 export type AtomBeatParameter = "repel" | "forceFactor" | "friction" | "particleSize";
 export type AtomBeatAction = "off" | "matrix" | "palette" | AtomBeatParameter;
-export type AtomBeatPreset = 0 | 1 | 2;
+export type AtomBeatPreset = 0 | 1 | 2 | 3 | 4 | 5;
 
 export const ATOM_BEAT_RANGES: Record<AtomBeatParameter, {
   label: string; min: number; max: number; step: number; decimals: number;
@@ -37,11 +37,12 @@ function initialAssignments(): BeatAssignments {
 
 function presetAssignments(preset: AtomBeatPreset): BeatAssignments {
   const assignments = initialAssignments();
-  if (preset !== 0) assignments.snare.action = "forceFactor";
-  if (preset === 2) {
+  if (preset === 1 || preset === 2) assignments.snare.action = "forceFactor";
+  if (preset === 2 || preset === 4 || preset === 5) {
     assignments.hiHat.action = "repel";
     assignments.hiHat.targets.repel = 12;
   }
+  if (preset === 5) assignments.kick.action = "palette";
   return assignments;
 }
 

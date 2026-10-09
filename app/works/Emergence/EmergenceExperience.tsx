@@ -208,6 +208,9 @@ export default function EmergenceExperience({ musicTracks = [] }: {
   const atomAudioStarting = atomAudio.starting;
   const startAtomAudio = atomAudio.start;
   const stopAtomAudio = atomAudio.stop;
+  const selectAtomPreset = atomAudio.selectPreset;
+  const setAtomBaseParameter = atomAudio.setBaseParameter;
+  const setAtomParticleSetting = atomAudio.setParticleSetting;
   const atomAudioAvailable = currentSim === "atoms" && !showOverlay && atomParams !== null;
 
   const toggleAtomAudio = useCallback(() => {
@@ -216,18 +219,48 @@ export default function EmergenceExperience({ musicTracks = [] }: {
     else stopAtomAudio();
   }, [atomAudioInputKind, atomAudioStarting, audioSource, selectedTrackUrl, startAtomAudio, stopAtomAudio]);
 
+  const applyAtomPreset = useCallback((preset: AtomBeatPreset) => {
+    const defaults = isTouchDevice ? MOBILE_ATOM_DEFAULTS : DESKTOP_ATOM_DEFAULTS;
+    const values = {
+      particles: preset === 0 ? defaults.particleCount : 15000,
+      colors: DEFAULT_COLOR_TYPES,
+      repel: preset === 2 || preset >= 4 ? 0.9 : 1,
+      forceFactor: preset >= 4 ? 1.01 : 0.18,
+      friction: preset === 0 ? defaults.friction : preset === 1 ? 0.3 : 0.2,
+      particleSize: preset >= 4 ? 4.5 : 4,
+    };
+    selectAtomPreset(preset);
+    for (const [key, value] of Object.entries(values)) {
+      if (key in ATOM_BEAT_RANGES) setAtomBaseParameter(key as AtomBeatParameter, value);
+      else setAtomParticleSetting(key as "particles" | "colors", value);
+    }
+    setAtomParams(prev => prev ? { ...prev, ...values } : prev);
+    setAtomPreset(preset);
+  }, [isTouchDevice, selectAtomPreset, setAtomBaseParameter, setAtomParticleSetting]);
+
+  const randomizeAtom = useCallback((kind: "matrix" | "palette") => {
+    if (kind === "matrix") appRef.current?.randomiseParams();
+    else appRef.current?.randomiseColors();
+    setAtomParams(appRef.current?.getSimParams() ?? null);
+  }, []);
+
   useEffect(() => {
     if (!atomAudioAvailable) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.code !== "Space" || event.repeat || event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      if (event.repeat || event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
       const target = event.target;
       if (target instanceof Element && target.closest("input, select, textarea, [contenteditable], [role='slider']")) return;
+      const presetMatch = /^(?:Digit|Numpad)([0-5])$/.exec(event.code);
+      if (event.code !== "Space" && event.code !== "KeyQ" && event.code !== "KeyW" && !presetMatch) return;
       event.preventDefault();
-      toggleAtomAudio();
+      if (event.code === "Space") toggleAtomAudio();
+      else if (event.code === "KeyQ") randomizeAtom("matrix");
+      else if (event.code === "KeyW") randomizeAtom("palette");
+      else if (presetMatch) applyAtomPreset(Number(presetMatch[1]) as AtomBeatPreset);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [atomAudioAvailable, toggleAtomAudio]);
+  }, [atomAudioAvailable, applyAtomPreset, randomizeAtom, toggleAtomAudio]);
 
   useEffect(() => {
     const media = window.matchMedia("(pointer: coarse)");
@@ -703,31 +736,14 @@ export default function EmergenceExperience({ musicTracks = [] }: {
                       </div>
                       <div style={{ marginBottom: 12 }}>
                         <div style={{ fontSize: 10, letterSpacing: "0.12em", opacity: 0.55, textTransform: "uppercase", marginBottom: 7 }}>presets</div>
-                        <div role="group" aria-label="Atoms presets" style={{ display: "flex", gap: 7 }}>
-                          {([0, 1, 2] as const).map(preset => (
+                        <div role="group" aria-label="Atoms presets" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 7 }}>
+                          {([0, 1, 2, 3, 4, 5] as const).map(preset => (
                             <button
                               key={preset}
                               type="button"
                               aria-pressed={atomPreset === preset}
-                              onClick={() => {
-                                const defaults = isTouchDevice ? MOBILE_ATOM_DEFAULTS : DESKTOP_ATOM_DEFAULTS;
-                                const values = {
-                                  particles: preset === 0 ? defaults.particleCount : 15000,
-                                  colors: DEFAULT_COLOR_TYPES,
-                                  repel: preset === 2 ? 0.9 : 1,
-                                  forceFactor: 0.18,
-                                  friction: preset === 0 ? defaults.friction : preset === 1 ? 0.3 : 0.2,
-                                  particleSize: 4,
-                                };
-                                atomAudio.selectPreset(preset);
-                                for (const [key, value] of Object.entries(values)) {
-                                  if (key in ATOM_BEAT_RANGES) atomAudio.setBaseParameter(key as AtomBeatParameter, value);
-                                  else atomAudio.setParticleSetting(key as "particles" | "colors", value);
-                                }
-                                setAtomParams(prev => prev ? { ...prev, ...values } : prev);
-                                setAtomPreset(preset);
-                              }}
-                              style={{ flex: 1, minHeight: 32, border: `1px solid ${atomPreset === preset ? "#aef" : "rgba(255,255,255,0.25)"}`, borderRadius: 4, background: atomPreset === preset ? "rgba(174,238,255,0.16)" : "rgba(255,255,255,0.06)", color: "#e5e7eb", fontSize: 11, cursor: "pointer" }}
+                              onClick={() => applyAtomPreset(preset)}
+                              style={{ minWidth: 0, minHeight: 32, border: `1px solid ${atomPreset === preset ? "#aef" : "rgba(255,255,255,0.25)"}`, borderRadius: 4, background: atomPreset === preset ? "rgba(174,238,255,0.16)" : "rgba(255,255,255,0.06)", color: "#e5e7eb", fontSize: 11, cursor: "pointer" }}
                             >
                               Preset {preset}
                             </button>
@@ -865,8 +881,7 @@ export default function EmergenceExperience({ musicTracks = [] }: {
                           style={{ fontSize: 10, padding: "3px 7px", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 4, color: "inherit", cursor: "pointer" }}
                           onClick={(e) => {
                             e.stopPropagation();
-                            appRef.current?.randomiseColors();
-                            setAtomParams(appRef.current?.getSimParams() ?? null);
+                            randomizeAtom("palette");
                           }}
                         >
                           randomize colors
@@ -878,8 +893,7 @@ export default function EmergenceExperience({ musicTracks = [] }: {
                           style={{ fontSize: 10, padding: "3px 7px", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 4, color: "inherit", cursor: "pointer" }}
                           onClick={(e) => {
                             e.stopPropagation();
-                            appRef.current?.randomiseParams();
-                            setAtomParams(appRef.current?.getSimParams() ?? null);
+                            randomizeAtom("matrix");
                           }}
                         >
                           randomize
