@@ -98,7 +98,10 @@ function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: numbe
       const shootRadius = Math.min(.009, matureRadius * .13);
       const thickness = shootRadius + (matureRadius - shootRadius) * Math.pow(age, 1.4);
       const tipDistance = (fraction - t) * stem.length;
-      const tipTaper = THREE.MathUtils.smoothstep(tipDistance, 0, .12);
+      // Short arrested shoots finish with a compact, irregular cap rather than
+      // inheriting the long needle-like taper of a live extending shoot.
+      const capLength = stem.kind === "stub" ? Math.min(.035, stem.length * .08) : .12;
+      const tipTaper = THREE.MathUtils.smoothstep(tipDistance, 0, capLength);
       const collar = stem.growthStart > 0 ? .14 * Math.exp(-(((t - .055) / .06) ** 2)) : 0;
       const swell = 1 + collar + .055 * Math.sin(t * 19 + phase) + .018 * Math.sin(t * 43 + phase * 1.7);
       const radius = thickness * tipTaper * swell;
@@ -114,6 +117,13 @@ function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: numbe
         positions[k] = center.x + r * (frame.normal.x * cos + frame.binormal.x * sin);
         positions[k + 1] = center.y + r * (frame.normal.y * cos + frame.binormal.y * sin);
         positions[k + 2] = center.z + r * (frame.normal.z * cos + frame.binormal.z * sin);
+        if (stem.kind === "stub") {
+          const cap = THREE.MathUtils.smoothstep(t, .72, .91) * (1 - THREE.MathUtils.smoothstep(t, .96, 1));
+          const splinter = Math.sin(a * 3 + phase) * Math.min(.035, stem.radius * .45) * cap * age;
+          positions[k] += frame.tangent.x * splinter;
+          positions[k + 1] += frame.tangent.y * splinter;
+          positions[k + 2] += frame.tangent.z * splinter;
+        }
         uvs[vertex * 2] = j / sides;
         uvs[vertex * 2 + 1] = v;
         repeats[vertex] = repeat;

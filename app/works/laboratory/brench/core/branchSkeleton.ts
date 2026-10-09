@@ -16,6 +16,7 @@ export type Stem = {
   growthEnd: number;
   parent: number | null;
   attachment: number;
+  kind: "shoot" | "stub";
 };
 
 export function randomSource(seed: number) {
@@ -32,9 +33,20 @@ export function createBranchSkeleton(settings: BranchSettings): Stem[] {
   const vary = (amount: number) => (random() - .5) * 2 * amount;
   const integer = (min: number, max: number) => min + Math.floor(random() * (max - min + 1));
   const stems: Stem[] = [];
-  const add = (points: THREE.Vector3[], radius: number, tip: number, start: number, end: number, parent: number | null, attachment = 0) => {
-    const curve = new THREE.CatmullRomCurve3(points, false, "centripetal");
-    stems.push({ curve, radius, tip, length: curve.getLength(), growthStart: start, growthEnd: end, parent, attachment });
+  const add = (points: THREE.Vector3[], radius: number, tip: number, start: number, end: number, parent: number | null, attachment = 0, kind: Stem["kind"] = "shoot") => {
+    // Keep long runs between elbows; round only the immediate neighbourhood of a
+    // joint instead of smoothing each bend into one broad, sweeping arc.
+    const controls = [points[0]];
+    for (let i = 1; i < points.length - 1; i++) {
+      const corner = points[i];
+      const rounding = Math.min(corner.distanceTo(points[i - 1]), corner.distanceTo(points[i + 1])) * .2;
+      controls.push(corner.clone().addScaledVector(points[i - 1].clone().sub(corner).normalize(), rounding),
+        corner, corner.clone().addScaledVector(points[i + 1].clone().sub(corner).normalize(), rounding));
+    }
+    controls.push(points[points.length - 1]);
+    const curve = new THREE.CatmullRomCurve3(controls, false, "centripetal");
+    curve.arcLengthDivisions = Math.max(400, controls.length * 32);
+    stems.push({ curve, radius, tip, length: curve.getLength(), growthStart: start, growthEnd: end, parent, attachment, kind });
     return stems.length - 1;
   };
   const trunkPoints = [
@@ -52,7 +64,7 @@ export function createBranchSkeleton(settings: BranchSettings): Stem[] {
     return Array.from({ length: count }, () => random()).sort((a, b) => a - b)
       .map((value, i) => min + i * gap + value * room);
   };
-  const grow = (parentIndex: number, at: number, azimuth: number, major: boolean) => {
+  const grow = (parentIndex: number, at: number, azimuth: number, major: boolean, stopped = false) => {
     const parent = stems[parentIndex];
     const start = parent.curve.getPointAt(at);
     const tangent = parent.curve.getTangentAt(at).normalize();
@@ -64,32 +76,44 @@ export function createBranchSkeleton(settings: BranchSettings): Stem[] {
     const opening = THREE.MathUtils.degToRad((major ? 32 : 26) + random() * (major ? 46 : 58));
     const angle = Math.atan(Math.tan(opening) * settings.spread);
     const direction = tangent.clone().multiplyScalar(Math.cos(angle)).addScaledVector(outward, Math.sin(angle));
-    const desiredLength = major ? 2.5 + random() * 3.6 : .35 + random() * Math.min(1.25, parent.length * .36);
+    const desiredLength = stopped ? .17 + random() * .48 : major ? 2.5 + random() * 3.6 : .35 + random() * Math.min(1.25, parent.length * .36);
     // Keep random crowns within the existing inspection camera, including depth.
     const rise = Math.max(.35, direction.y + .38);
     const radial = Math.hypot(start.x, start.z);
     const horizontal = Math.max(.25, Math.hypot(direction.x, direction.z));
     const reach = Math.max(.18, Math.min(desiredLength, (4.65 - start.y) / rise,
       Math.max(.35, 4.3 - radial) / horizontal));
-    const phase = random() * Math.PI * 2;
-    const curl = vary(.16) * settings.curvature;
-    const bend = vary(.12) * settings.curvature;
-    const divisions = major ? 8 : 5;
+    const divisions = stopped ? integer(2, 3) : major ? integer(5, 8) : integer(3, 5);
+    const steps = Array.from({ length: divisions }, () => .45 + random());
+    const total = steps.reduce((sum, step) => sum + step, 0);
+    const roughness = .35 + settings.curvature * .65;
     const points = [start];
-    for (let i = 1; i <= divisions; i++) {
-      const t = i / divisions;
-      const wave = Math.sin(t * Math.PI * 2 + phase) - Math.sin(phase);
-      points.push(start.clone().addScaledVector(direction, reach * t)
-        .addScaledVector(outward, reach * curl * t * t)
-        .addScaledVector(lateral, reach * (bend * t * t + wave * .065 * t * settings.curvature))
-        .add(new THREE.Vector3(0, reach * .25 * t * t, 0)));
+    let turn = random() < .5 ? -1 : 1;
+    const previousHeading = direction.clone();
+    for (let i = 0; i < divisions; i++) {
+      // Unequal internodes and independent turns in two planes make crooked
+      // elbows, with occasional changes of direction rather than a sine wave.
+      if (random() < .72) turn *= -1;
+      const deflection = i === 0 ? 0 : turn * (.22 + random() * .55) * roughness;
+      const twist = i === 0 ? 0 : vary(.42) * roughness;
+      const heading = direction.clone().applyAxisAngle(lateral, deflection).applyAxisAngle(outward, twist)
+        .add(new THREE.Vector3(0, .12 * i / divisions, 0)).normalize();
+      const change = previousHeading.angleTo(heading);
+      const maxTurn = .8 + Math.min(2, settings.curvature) * .22;
+      if (change > maxTurn) {
+        const rotation = new THREE.Quaternion().setFromUnitVectors(previousHeading, heading);
+        heading.copy(previousHeading).applyQuaternion(new THREE.Quaternion().slerp(rotation, maxTurn / change));
+      }
+      points.push(points[points.length - 1].clone().addScaledVector(heading, reach * steps[i] / total));
+      previousHeading.copy(heading);
     }
     const parentRadius = parent.radius * (parent.tip + (1 - parent.tip) * Math.pow(1 - at, .78));
-    const radius = parentRadius * (major ? .48 + random() * .16 : .3 + random() * .23);
+    const radius = parentRadius * (stopped ? .24 + random() * .22 : major ? .48 + random() * .16 : .3 + random() * .23);
     // Buds emerge only after the parent's growing tip has passed their actual node.
     const birth = parent.growthStart + (parent.growthEnd - parent.growthStart) * at + .018;
-    const end = Math.min(.96, birth + (major ? .17 : .10) + reach * .06);
-    return add(points, radius, major ? .065 : .035, birth, end, parentIndex, at);
+    const end = Math.min(.96, birth + (stopped ? .065 : major ? .17 : .10) + reach * .06);
+    return add(points, radius, stopped ? .28 + random() * .28 : major ? .065 : .035,
+      birth, end, parentIndex, at, stopped ? "stub" : "shoot");
   };
 
   const mainCount = integer(3, 7);
@@ -108,6 +132,15 @@ export function createBranchSkeleton(settings: BranchSettings): Stem[] {
   }
   for (const at of attachments(integer(0, 3), .45, .93, .08)) {
     grow(0, at, random() * Math.PI * 2, false);
+  }
+  // Arrested side shoots keep a short, weathered silhouette while older wood
+  // thickens. They are born on the growth timeline just like the longer limbs.
+  for (const parent of [0, ...limbs]) {
+    const count = parent === 0 ? integer(6, 10) : integer(1, 3);
+    const phase = random() * Math.PI * 2;
+    for (const [i, at] of attachments(count, parent === 0 ? .15 : .16, .86, .04).entries()) {
+      grow(parent, at, phase + i * 2.399963 + vary(.7), false, true);
+    }
   }
   return stems;
 }
