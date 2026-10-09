@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { BARK_TILE_LENGTH, BARK_TILE_WIDTH, type BarkSurface } from "./barkSurface";
 
 import { createBranchSkeleton, randomSource, type BranchSettings, type Stem } from "./branchSkeleton";
+import { createTreeFoliage, growthTime } from "./treeFoliage";
 import { createStemSections } from "./stemSections";
 export type { BranchSettings } from "./branchSkeleton";
 
@@ -206,19 +207,30 @@ export function createBranch(settings: BranchSettings, bark: BarkSurface) {
     group.add(flakeMesh);
   }
 
-  const bounds = new THREE.Box3().setFromObject(group);
+  const bounds = new THREE.Box3().setFromObject(group).expandByScalar(.65 * settings.leafSize);
+  const foliage = createTreeFoliage(stems, settings);
+  group.add(foliage.group);
+  const shootColor = new THREE.Color(0xb9cd78), woodColor = new THREE.Color(0xffffff);
+  let lastProgress = -1;
   return {
     group, bounds,
     setGrowth: (progress: number) => {
-      let changed = false;
-      for (const growth of growthMeshes) {
-        changed = growth.update(progress) || changed;
-      }
+      const p = THREE.MathUtils.clamp(progress, 0, 1);
+      if (p === lastProgress) return false;
+      lastProgress = p;
+      const time = growthTime(p);
+      let changed = foliage.update(time);
+      growthMeshes.forEach((growth, i) => {
+        changed = growth.update(time) || changed;
+        const maturity = THREE.MathUtils.smoothstep(time, stems[i].growthStart + .04, stems[i].growthStart + .28);
+        materials[i].color.copy(shootColor).lerp(woodColor, maturity);
+      });
       return changed;
     },
     dispose: () => {
       group.traverse(object => { if (object instanceof THREE.Mesh) object.geometry.dispose(); });
       materials.forEach(material => material.dispose());
+      foliage.dispose();
     },
     count: stems.length,
   };

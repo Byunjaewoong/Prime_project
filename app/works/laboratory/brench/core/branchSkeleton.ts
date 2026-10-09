@@ -12,11 +12,13 @@ export type BranchSettings = {
   irregularity: number;
   stubs: number;
   texture: number;
+  leafDensity: number;
+  leafSize: number;
 };
 
 export const DEFAULT_BRANCH_SETTINGS: BranchSettings = {
   seed: 24659, height: 10, thickness: .38, branches: 8, depth: 3,
-  angle: 58, curvature: 1, spread: 1.1, irregularity: 1, stubs: .7, texture: 1,
+  angle: 58, curvature: 1, spread: 1.1, irregularity: 1, stubs: .7, texture: 1, leafDensity: 1, leafSize: 1,
 };
 
 export type Stem = {

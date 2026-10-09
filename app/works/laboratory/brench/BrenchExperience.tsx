@@ -6,9 +6,12 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { createBranch, type BranchSettings } from "./core/createBranch";
 import { createBarkSurface, type BarkSurface } from "./core/barkSurface";
+import { growthTime } from "./core/treeFoliage";
 import { DEFAULT_BRANCH_SETTINGS } from "./core/branchSkeleton";
 import DragOnlyRange from "../Painted/DragOnlyRange";
 import styles from "./brench.module.css";
+
+const INITIAL_GROWTH = .14;
 
 const controls = [
   { key: "height", label: "나무 높이", min: 6, max: 14, step: .25 },
@@ -20,6 +23,8 @@ const controls = [
   { key: "curvature", label: "곡률 · 꺾임", min: 0, max: 2, step: .05 },
   { key: "irregularity", label: "단면 · 굵기 요철", min: 0, max: 1.6, step: .05 },
   { key: "stubs", label: "멈춘 곁가지", min: 0, max: 1.5, step: .1 },
+  { key: "leafDensity", label: "잎 밀도", min: 0, max: 1.5, step: .1 },
+  { key: "leafSize", label: "잎 크기", min: .5, max: 1.5, step: .05 },
   { key: "texture", label: "수피 디테일", min: 0, max: 2, step: .05 },
 ] as const;
 const presets = [
@@ -52,11 +57,11 @@ export default function BrenchExperience() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewerRef = useRef<Viewer | null>(null);
   const dragRef = useRef<{ x: number; y: number } | null>(null);
-  const progressRef = useRef(1);
+  const progressRef = useRef(INITIAL_GROWTH);
   const [settings, setSettings] = useState(DEFAULT_BRANCH_SETTINGS);
   const [contrast, setContrast] = useState(1);
   const [zoom, setZoom] = useState(1);
-  const [progress, setProgress] = useState(1);
+  const [progress, setProgress] = useState(INITIAL_GROWTH);
   const [controlsOpen, setControlsOpen] = useState(false);
   const [error, setError] = useState(false);
   const [branchCount, setBranchCount] = useState(0);
@@ -106,7 +111,7 @@ export default function BrenchExperience() {
     const bark = createBarkSurface(renderer.capabilities.getMaxAnisotropy());
     const viewer: Viewer = {
       scene, renderer, model: null, rotation: { x: 0, y: 0 }, bark,
-      zoom: 1, progress: 1, fit: () => {}, dirty: true, shadowsDirty: true, lights: { ambient, key, fill },
+      zoom: 1, progress: INITIAL_GROWTH, fit: () => {}, dirty: true, shadowsDirty: true, lights: { ambient, key, fill },
       setLighting: value => {
         ambient.intensity = 1.45 - value * .6;
         key.intensity = 2.2 + value * 1.2;
@@ -147,9 +152,15 @@ export default function BrenchExperience() {
         viewer.shadowsDirty = true;
       }
       if (viewer.model?.setGrowth(viewer.progress)) viewer.dirty = viewer.shadowsDirty = true;
-      const movingView = Math.abs(viewer.zoom - camera.zoom) > .0001;
+      const time = growthTime(viewer.progress);
+      const growingHeight = Math.min(1, time / .52);
+      const growthZoom = viewer.zoom / Math.min(1, Math.max(.16, growingHeight + .12));
+      const bounds = viewer.model?.bounds;
+      const focusY = bounds ? THREE.MathUtils.lerp(bounds.min.y + .7, (bounds.min.y + bounds.max.y) * .5, growingHeight) : 0;
+      const movingView = Math.abs(growthZoom - camera.zoom) + Math.abs(focusY - camera.position.y) > .0001;
       if (movingView) {
-        camera.zoom += (viewer.zoom - camera.zoom) * .15;
+        camera.zoom += (growthZoom - camera.zoom) * .15;
+        camera.position.y += (focusY - camera.position.y) * .15;
         camera.updateProjectionMatrix();
       }
       if (viewer.dirty || turning || movingView) {
@@ -247,7 +258,7 @@ export default function BrenchExperience() {
     {error && <div className={styles.error}>이 브라우저에서는 3D 장면을 표시할 수 없습니다.</div>}
     {progress === 0 && <div className={styles.emptyHint}>아래 성장 손잡이를 오른쪽으로 드래그하세요</div>}
     <section className={styles.growth} aria-label="나무 성장 시간축">
-      <div className={styles.controlLabel}><span>성장 · DRAG</span><output>{Math.round(progress * 100)}%</output></div>
+      <div className={styles.controlLabel}><span>{progress === 0 ? "발아 전" : progress < .17 ? "새싹 · 떡잎" : progress < .43 ? "묘목" : progress < .76 ? "어린 나무" : "성목"} · DRAG</span><output>{Math.round(progress * 100)}%</output></div>
       <DragOnlyRange label="성장 시간" min={0} max={100} step={.1} value={progress * 100} onChange={updateGrowth} />
     </section>
     <div className={styles.menuRoot}>
@@ -273,7 +284,7 @@ export default function BrenchExperience() {
           <div className={styles.control}><span className={styles.controlLabel}><span>확대</span><output>{zoom.toFixed(2)}×</output></span>
             <DragOnlyRange label="확대" min={.7} max={3.5} step={.05} value={zoom} onChange={setZoom} /></div>
           <button type="button" className={styles.action} onClick={resetView}><RotateCcw size={14} /> 시점 초기화</button>
-          <button type="button" className={styles.action} onClick={() => { setSettings(DEFAULT_BRANCH_SETTINGS); setContrast(1); resetView(); updateGrowth(100); }}>모든 설정 초기화</button>
+          <button type="button" className={styles.action} onClick={() => { setSettings(DEFAULT_BRANCH_SETTINGS); setContrast(1); resetView(); updateGrowth(INITIAL_GROWTH * 100); }}>모든 설정 초기화</button>
           <button type="button" className={styles.action} onClick={download}><Download size={14} /> PNG 저장</button>
         </div>
       </aside>}
