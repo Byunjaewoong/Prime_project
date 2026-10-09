@@ -5,7 +5,7 @@ import { createBranchSkeleton, randomSource, type BranchSettings, type Stem } fr
 import { createStemSections } from "./stemSections";
 export type { BranchSettings } from "./branchSkeleton";
 
-function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: number) {
+function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: number, irregularity: number) {
   const segments = Math.max(18, Math.ceil(stem.length * (stem.radius > .08 ? 64 : 32)));
   const sides = stem.radius > .22 ? 96 : stem.radius > .08 ? 64 : 24;
   const stride = sides + 1, vertices = (segments + 1) * stride;
@@ -14,7 +14,7 @@ function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: numbe
   const colors = new Float32Array(vertices * 3), indices: number[] = [];
   const phase = random() * Math.PI * 2;
   const offsetU = random(), offsetV = random();
-  const sections = createStemSections(stem.length, stem.radius, segments, sides, Math.floor(phase * 1e8));
+  const sections = createStemSections(stem.length, stem.radius, segments, sides, Math.floor(phase * 1e8), irregularity);
   const centers = Array.from({ length: segments + 1 }, (_, i) => stem.curve.getPointAt(i / segments));
   // Parallel transport avoids frame flips on branches pointing along the depth axis.
   const transported = stem.curve.computeFrenetFrames(segments, false);
@@ -105,7 +105,8 @@ function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: numbe
       const capLength = stem.kind === "stub" ? Math.min(.035, stem.length * .08) : .12;
       const tipTaper = THREE.MathUtils.smoothstep(tipDistance, 0, capLength);
       const collar = stem.growthStart > 0 ? .14 * Math.exp(-(((t - .055) / .06) ** 2)) : 0;
-      const swell = (1 + collar) * sections.girth[i];
+      const rootFlare = stem.parent === null ? .65 * Math.exp(-t / .035) : 0;
+      const swell = (1 + collar + rootFlare) * sections.girth[i];
       const radius = thickness * tipTaper * swell;
       const repeat = sections.perimeter[i] * radius / BARK_TILE_WIDTH;
       const v = t * stem.length / BARK_TILE_LENGTH + offsetV;
@@ -177,6 +178,7 @@ function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: numbe
   // Bounds must encompass every age, including when initialized at the seed stage.
   update(1);
   geometry.computeBoundingSphere();
+  geometry.computeBoundingBox();
   flakeGeometry.computeBoundingSphere();
   update(0);
   return { geometry, flakeGeometry, offsetU, update };
@@ -189,7 +191,7 @@ export function createBranch(settings: BranchSettings, bark: BarkSurface) {
   const stems = createBranchSkeleton(settings);
   const growthMeshes: ReturnType<typeof tube>[] = [];
   for (const stem of stems) {
-    const growth = tube(stem, random, bark, settings.texture);
+    const growth = tube(stem, random, bark, settings.texture, settings.irregularity);
     const { geometry, flakeGeometry } = growth;
     const material = bark.material(settings.texture, growth.offsetU);
     materials.push(material);
@@ -204,8 +206,9 @@ export function createBranch(settings: BranchSettings, bark: BarkSurface) {
     group.add(flakeMesh);
   }
 
+  const bounds = new THREE.Box3().setFromObject(group);
   return {
-    group,
+    group, bounds,
     setGrowth: (progress: number) => {
       let changed = false;
       for (const growth of growthMeshes) {

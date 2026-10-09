@@ -13,7 +13,7 @@ function noise(x: number, seed: number) {
 
 /** Unit-radius cross sections, cached once per stem. Their true perimeter also
  * drives UVs, retaining physical bark density on oval, lobed and swollen wood. */
-export function createStemSections(length: number, radius: number, segments: number, sides: number, seed: number) {
+export function createStemSections(length: number, radius: number, segments: number, sides: number, seed: number, amount = 1) {
   const stride = sides + 1;
   const x = new Float32Array((segments + 1) * stride);
   const y = new Float32Array(x.length);
@@ -29,18 +29,18 @@ export function createStemSections(length: number, radius: number, segments: num
     const lobe = .10 + noise(distance * .83 + 7, seed + 37) * .045;
     const offsetX = noise(distance * .74 + 29, seed + 59) * .065;
     const offsetY = noise(distance * .68 + 41, seed + 71) * .065;
-    girth[i] = 1 + noise(distance * .72 + 3, seed + 83) * .18
+    girth[i] = 1 + amount * (noise(distance * .72 + 3, seed + 83) * .18
       + noise(distance * 1.83 + 17, seed + 97) * .085
-      + noise(distance * 4.1 + 31, seed + 109) * .03;
+      + noise(distance * 4.1 + 31, seed + 109) * .03);
     const base = i * stride;
     for (let j = 0; j < sides; j++) {
       const angle = j / sides * Math.PI * 2 - Math.PI / 2;
       const relative = angle - twist;
-      const profile = 1 + oval * Math.cos(relative * 2)
+      const profile = 1 + amount * (oval * Math.cos(relative * 2)
         + lobe * Math.cos(relative * 3 + noise(distance * .51, seed + 127))
-        + .035 * Math.cos(relative * 5 + noise(distance * 1.3 + 2, seed + 149));
-      x[base + j] = profile * Math.cos(angle) + offsetX;
-      y[base + j] = profile * Math.sin(angle) + offsetY;
+        + .035 * Math.cos(relative * 5 + noise(distance * 1.3 + 2, seed + 149)));
+      x[base + j] = profile * Math.cos(angle) + offsetX * amount;
+      y[base + j] = profile * Math.sin(angle) + offsetY * amount;
     }
     x[base + sides] = x[base];
     y[base + sides] = y[base];
