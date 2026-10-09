@@ -34,18 +34,10 @@ export function createBranchSkeleton(settings: BranchSettings): Stem[] {
   const integer = (min: number, max: number) => min + Math.floor(random() * (max - min + 1));
   const stems: Stem[] = [];
   const add = (points: THREE.Vector3[], radius: number, tip: number, start: number, end: number, parent: number | null, attachment = 0, kind: Stem["kind"] = "shoot") => {
-    // Keep long runs between elbows; round only the immediate neighbourhood of a
-    // joint instead of smoothing each bend into one broad, sweeping arc.
-    const controls = [points[0]];
-    for (let i = 1; i < points.length - 1; i++) {
-      const corner = points[i];
-      const rounding = Math.min(corner.distanceTo(points[i - 1]), corner.distanceTo(points[i + 1])) * .2;
-      controls.push(corner.clone().addScaledVector(points[i - 1].clone().sub(corner).normalize(), rounding),
-        corner, corner.clone().addScaledVector(points[i + 1].clone().sub(corner).normalize(), rounding));
-    }
-    controls.push(points[points.length - 1]);
-    const curve = new THREE.CatmullRomCurve3(controls, false, "centripetal");
-    curve.arcLengthDivisions = Math.max(400, controls.length * 32);
+    // Let tangents flow across whole internodes. The irregular heading changes
+    // remain, but neighbouring bends connect through bowed, continuous curves.
+    const curve = new THREE.CatmullRomCurve3(points, false, "centripetal");
+    curve.arcLengthDivisions = Math.max(400, points.length * 48);
     stems.push({ curve, radius, tip, length: curve.getLength(), growthStart: start, growthEnd: end, parent, attachment, kind });
     return stems.length - 1;
   };
@@ -93,7 +85,7 @@ export function createBranchSkeleton(settings: BranchSettings): Stem[] {
     for (let i = 0; i < divisions; i++) {
       // Unequal internodes and independent turns in two planes make crooked
       // elbows, with occasional changes of direction rather than a sine wave.
-      if (random() < .72) turn *= -1;
+      if (random() < .48) turn *= -1;
       const deflection = i === 0 ? 0 : turn * (.22 + random() * .55) * roughness;
       const twist = i === 0 ? 0 : vary(.42) * roughness;
       const heading = direction.clone().applyAxisAngle(lateral, deflection).applyAxisAngle(outward, twist)

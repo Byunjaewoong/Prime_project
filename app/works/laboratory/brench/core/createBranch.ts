@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { BARK_TILE_LENGTH, BARK_TILE_WIDTH, type BarkSurface } from "./barkSurface";
 
 import { createBranchSkeleton, randomSource, type BranchSettings, type Stem } from "./branchSkeleton";
+import { createStemSections } from "./stemSections";
 export type { BranchSettings } from "./branchSkeleton";
 
 function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: number) {
@@ -13,6 +14,7 @@ function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: numbe
   const colors = new Float32Array(vertices * 3), indices: number[] = [];
   const phase = random() * Math.PI * 2;
   const offsetU = random(), offsetV = random();
+  const sections = createStemSections(stem.length, stem.radius, segments, sides, Math.floor(phase * 1e8));
   const centers = Array.from({ length: segments + 1 }, (_, i) => stem.curve.getPointAt(i / segments));
   // Parallel transport avoids frame flips on branches pointing along the depth axis.
   const transported = stem.curve.computeFrenetFrames(segments, false);
@@ -103,20 +105,22 @@ function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: numbe
       const capLength = stem.kind === "stub" ? Math.min(.035, stem.length * .08) : .12;
       const tipTaper = THREE.MathUtils.smoothstep(tipDistance, 0, capLength);
       const collar = stem.growthStart > 0 ? .14 * Math.exp(-(((t - .055) / .06) ** 2)) : 0;
-      const swell = 1 + collar + .055 * Math.sin(t * 19 + phase) + .018 * Math.sin(t * 43 + phase * 1.7);
+      const swell = (1 + collar) * sections.girth[i];
       const radius = thickness * tipTaper * swell;
-      const repeat = Math.PI * 2 * radius / BARK_TILE_WIDTH;
+      const repeat = sections.perimeter[i] * radius / BARK_TILE_WIDTH;
       const v = t * stem.length / BARK_TILE_LENGTH + offsetV;
       for (let j = 0; j <= sides; j++) {
         const { cos, sin, a } = angles[j];
-        const relief = bark.reliefAt(j / sides, v, repeat, offsetU) - .5;
-        // Bound displacement on young shoots while retaining full-resolution PBR detail.
-        const r = radius * (1 + .045 * Math.sin(a * 5 + t * 3 + phase))
-          + Math.min(radius * (.1 + detail * .18), .035 + detail * .025) * relief;
         const vertex = i * stride + j, k = vertex * 3;
-        positions[k] = center.x + r * (frame.normal.x * cos + frame.binormal.x * sin);
-        positions[k + 1] = center.y + r * (frame.normal.y * cos + frame.binormal.y * sin);
-        positions[k + 2] = center.z + r * (frame.normal.z * cos + frame.binormal.z * sin);
+        const u = sections.u[vertex];
+        const relief = bark.reliefAt(u, v, repeat, offsetU) - .5;
+        // Bound displacement on young shoots while retaining full-resolution PBR detail.
+        const displacement = Math.min(radius * (.1 + detail * .18), .035 + detail * .025) * relief;
+        const rx = radius * sections.x[vertex] + displacement * cos;
+        const ry = radius * sections.y[vertex] + displacement * sin;
+        positions[k] = center.x + frame.normal.x * rx + frame.binormal.x * ry;
+        positions[k + 1] = center.y + frame.normal.y * rx + frame.binormal.y * ry;
+        positions[k + 2] = center.z + frame.normal.z * rx + frame.binormal.z * ry;
         if (stem.kind === "stub") {
           const cap = THREE.MathUtils.smoothstep(t, .72, .91) * (1 - THREE.MathUtils.smoothstep(t, .96, 1));
           const splinter = Math.sin(a * 3 + phase) * Math.min(.035, stem.radius * .45) * cap * age;
@@ -124,7 +128,7 @@ function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: numbe
           positions[k + 1] += frame.tangent.y * splinter;
           positions[k + 2] += frame.tangent.z * splinter;
         }
-        uvs[vertex * 2] = j / sides;
+        uvs[vertex * 2] = u;
         uvs[vertex * 2 + 1] = v;
         repeats[vertex] = repeat;
       }
