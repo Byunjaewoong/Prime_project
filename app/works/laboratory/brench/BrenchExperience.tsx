@@ -166,17 +166,12 @@ export default function BrenchExperience() {
       if (viewer.model?.updateWind(windPhase, viewer.wind, time) && viewer.progress > 0) {
         viewer.dirty = viewer.shadowsDirty = true;
       }
-      const growingHeight = Math.min(1, time / .52);
-      const growthZoom = viewer.zoom / Math.min(1, Math.max(.16, growingHeight + .12));
-      const bounds = viewer.model?.bounds;
-      const focusY = bounds ? THREE.MathUtils.lerp(bounds.min.y + .7, (bounds.min.y + bounds.max.y) * .5, growingHeight) : 0;
-      const movingView = Math.abs(growthZoom - camera.zoom) + Math.abs(focusY - camera.position.y) > .0001;
-      if (movingView) {
-        camera.zoom += (growthZoom - camera.zoom) * .15;
-        camera.position.y += (focusY - camera.position.y) * .15;
+      const zooming = Math.abs(viewer.zoom - camera.zoom) > .0001;
+      if (zooming) {
+        camera.zoom += (viewer.zoom - camera.zoom) * .15;
         camera.updateProjectionMatrix();
       }
-      if (viewer.dirty || turning || movingView) {
+      if (viewer.dirty || turning || zooming) {
         renderer.shadowMap.needsUpdate = viewer.shadowsDirty;
         renderer.render(scene, camera);
         viewer.dirty = false;

@@ -115,12 +115,12 @@ export function createBranchSkeleton(settings: BranchSettings): Stem[] {
     }
     const parentRadius = parent.radius * (parent.tip + (1 - parent.tip) * Math.pow(1 - at, .78));
     const radius = parentRadius * (stub ? .25 + random() * .2 : .52 + random() * .16);
-    const birth = Math.min(.955, parentIndex === 0 ? Math.max(.42, trunkTimeAt(at) + .014)
+    const birth = Math.min(.955, parentIndex === 0 ? Math.max(.315, trunkTimeAt(at) + .014)
       : parent.growthStart + (parent.growthEnd - parent.growthStart) * at + .014);
-    const duration = stub ? .07 : .12 + .13 / level;
+    const duration = stub ? .07 : .07 + .025 / level;
     return add(points, radius, birth, Math.min(.97, birth + duration), parentIndex, at, level, stub);
   };
-  const primary = nodes(Math.max(3, settings.branches + integer(-1, 1)), .28, .86)
+  const primary = nodes(Math.max(3, settings.branches + integer(-1, 1)), .12, .82)
     .map((at, i) => grow(0, at, phase + i * 2.399963 + vary(.6)));
   let generation = primary;
   for (let level = 2; level <= settings.depth; level++) {
