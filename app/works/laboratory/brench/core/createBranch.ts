@@ -4,6 +4,9 @@ import { BARK_TILE_LENGTH, BARK_TILE_WIDTH, type BarkSurface } from "./barkSurfa
 import { createBranchSkeleton, randomSource, type BranchSettings, type Stem } from "./branchSkeleton";
 import { createTreeFoliage, growthTime } from "./treeFoliage";
 import { createStemSections } from "./stemSections";
+import { sproutPoint, sproutPose, trunkFrontier, trunkTimeAt } from "./sproutGrowth";
+import { createSeedbed } from "./seedbed";
+import { createSproutCap } from "./sproutCap";
 import { createTreeWind } from "./treeWind";
 export type { BranchSettings } from "./branchSkeleton";
 
@@ -12,7 +15,7 @@ function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: numbe
   const sides = stem.radius > .22 ? 96 : stem.radius > .08 ? 64 : 24;
   const stride = sides + 1, vertices = (segments + 1) * stride;
   const positions = new Float32Array(vertices * 3), normals = new Float32Array(vertices * 3);
-  const uvs = new Float32Array(vertices * 2), repeats = new Float32Array(vertices);
+  const uvs = new Float32Array(vertices * 2), repeats = new Float32Array(vertices), stemV = new Float32Array(vertices);
   const colors = new Float32Array(vertices * 3), indices: number[] = [];
   const phase = random() * Math.PI * 2;
   const offsetU = random(), offsetV = random();
@@ -30,6 +33,7 @@ function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: numbe
   for (let i = 0; i <= segments; i++) {
     for (let j = 0; j <= sides; j++) {
       const vertex = i * stride + j;
+      stemV[vertex] = i / segments;
       const weather = .92 + .06 * Math.sin(i / segments * 9 + angles[j].a * 3 + phase);
       colors.set([weather, weather * .99, weather * .96], vertex * 3);
       if (i < segments && j < sides) {
@@ -43,6 +47,7 @@ function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: numbe
   geometry.setAttribute("normal", dynamic(normals, 3));
   geometry.setAttribute("uv", dynamic(uvs, 2));
   geometry.setAttribute("barkRepeat", dynamic(repeats, 1));
+  geometry.setAttribute("stemV", new THREE.BufferAttribute(stemV, 1));
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
   geometry.setIndex(indices);
 
@@ -70,6 +75,7 @@ function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: numbe
   flakeGeometry.setAttribute("position", dynamic(new Float32Array(sources.length * 3), 3));
   flakeGeometry.setAttribute("uv", dynamic(new Float32Array(sources.length * 2), 2));
   flakeGeometry.setAttribute("barkRepeat", dynamic(new Float32Array(sources.length), 1));
+  flakeGeometry.setAttribute("stemV", new THREE.Float32BufferAttribute(sources.map(source => stemV[source]), 1));
   flakeGeometry.setAttribute("color", new THREE.Float32BufferAttribute(sources.flatMap(() => [.97, .955, .925]), 3));
   flakeGeometry.setIndex(flakeIndices);
   const ringAge = new Float32Array(segments + 1);
@@ -80,7 +86,8 @@ function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: numbe
     if (progress === previous) return false;
     const wasHidden = previous <= stem.growthStart;
     previous = progress;
-    const fraction = THREE.MathUtils.clamp((progress - stem.growthStart) / (stem.growthEnd - stem.growthStart), 0, 1);
+    const fraction = stem.parent === null ? trunkFrontier(progress)
+      : THREE.MathUtils.clamp((progress - stem.growthStart) / (stem.growthEnd - stem.growthStart), 0, 1);
     const frontier = fraction * segments;
     const visible = Math.ceil(frontier);
     geometry.setDrawRange(0, visible * 6 * sides);
@@ -89,18 +96,31 @@ function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: numbe
       return !wasHidden;
     }
     // The growing apex moves continuously between rings; it never exposes a cut end.
-    tipCenter.copy(centers[Math.floor(frontier)]).lerp(centers[Math.min(segments, Math.ceil(frontier))], frontier % 1);
+    const hooking = stem.parent === null && progress < .14;
+    const centerAt = (t: number) => hooking ? sproutPoint(stem, progress, t, fraction) : stem.curve.getPointAt(t);
+    tipCenter.copy(centerAt(fraction));
+    const activeFrames = hooking ? Array.from({ length: visible + 1 }, (_, i) => {
+      const t = Math.min(i / segments, fraction);
+      const lower = centerAt(Math.max(0, t - 1 / segments));
+      const upper = centerAt(Math.min(fraction, t + 1 / segments));
+      const tangent = upper.sub(lower).normalize();
+      const rotation = new THREE.Quaternion().setFromUnitVectors(frames[i].tangent, tangent);
+      return { tangent, normal: frames[i].normal.clone().applyQuaternion(rotation),
+        binormal: frames[i].binormal.clone().applyQuaternion(rotation) };
+    }) : null;
     for (let i = 0; i <= visible; i++) {
       const t = Math.min(i / segments, fraction);
-      const center = i === visible ? tipCenter : centers[i];
-      const frame = frames[i];
-      const birth = stem.growthStart + (stem.growthEnd - stem.growthStart) * t;
+      const center = i === visible ? tipCenter : hooking ? centerAt(t) : centers[i];
+      const frame = activeFrames?.[i] ?? frames[i];
+      const birth = stem.parent === null ? trunkTimeAt(t)
+        : stem.growthStart + (stem.growthEnd - stem.growthStart) * t;
       const age = THREE.MathUtils.clamp((progress - birth) / Math.max(.001, 1 - birth), 0, 1);
       ringAge[i] = age;
       const matureRadius = stem.radius * (stem.tip + (1 - stem.tip) * Math.pow(1 - t, .78));
       // Primary elongation precedes secondary growth. Every ring has its own age.
-      const shootRadius = Math.min(.009, matureRadius * .13);
-      const thickness = shootRadius + (matureRadius - shootRadius) * Math.pow(age, 1.4);
+      const shootRadius = Math.min(stem.parent === null ? .028 : .009, matureRadius * .13);
+      const secondaryGrowth = stem.parent === null ? THREE.MathUtils.smoothstep(progress, .24, .82) : 1;
+      const thickness = shootRadius + (matureRadius - shootRadius) * Math.pow(age, 1.4) * secondaryGrowth;
       const tipDistance = (fraction - t) * stem.length;
       // Short arrested shoots finish with a compact, irregular cap rather than
       // inheriting the long needle-like taper of a live extending shoot.
@@ -149,7 +169,7 @@ function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: numbe
         let nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
         let length = Math.hypot(nx, ny, nz);
         if (length < 1e-12) {
-          const tangent = frames[i].tangent;
+          const tangent = activeFrames?.[i].tangent ?? frames[i].tangent;
           nx = tangent.x; ny = tangent.y; nz = tangent.z; length = 1;
         }
         normals[k] = nx / length; normals[k + 1] = ny / length; normals[k + 2] = nz / length;
@@ -162,7 +182,8 @@ function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: numbe
     const fu = flakeGeometry.getAttribute("uv") as THREE.BufferAttribute;
     const fr = flakeGeometry.getAttribute("barkRepeat") as THREE.BufferAttribute;
     for (let i = 0; i < flakeCount * 12; i++) {
-      const source = sources[i], ring = Math.floor(source / stride), center = centers[ring];
+      const source = sources[i], ring = Math.floor(source / stride);
+      const center = hooking ? centerAt(ring / segments) : centers[ring];
       const k = source * 3;
       // Peeling develops with age; chips always stay attached to the growing surface.
       const lift = lifts[i] * ringAge[ring];
@@ -189,6 +210,8 @@ function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: numbe
 export function createBranch(settings: BranchSettings, bark: BarkSurface) {
   const random = randomSource(settings.seed ^ 0x6a09e667);
   const materials: THREE.MeshStandardMaterial[] = [];
+  const shootUniforms: { wood: { value: number }; front: { value: number };
+    base: { value: THREE.Color }; tip: { value: THREE.Color } }[] = [];
   const group = new THREE.Group();
   const stems = createBranchSkeleton(settings);
   const growthMeshes: ReturnType<typeof tube>[] = [];
@@ -196,6 +219,24 @@ export function createBranch(settings: BranchSettings, bark: BarkSurface) {
     const growth = tube(stem, random, bark, settings.texture, settings.irregularity);
     const { geometry, flakeGeometry } = growth;
     const material = bark.material(settings.texture, growth.offsetU);
+    const shoot = { wood: { value: 0 }, front: { value: 1 },
+      base: { value: new THREE.Color(0xe6dcaa) }, tip: { value: new THREE.Color(0xd5e84d) } };
+    const previousCompile = material.onBeforeCompile, previousKey = material.customProgramCacheKey();
+    material.onBeforeCompile = (shader, renderer) => {
+      previousCompile.call(material, shader, renderer);
+      Object.assign(shader.uniforms, {
+        shootWood: shoot.wood, shootFront: shoot.front, shootBase: shoot.base, shootTip: shoot.tip,
+      });
+      shader.vertexShader = `attribute float stemV; varying float vStemV;\n${shader.vertexShader}`
+        .replace("#include <uv_vertex>", "#include <uv_vertex>\nvStemV = stemV;");
+      shader.fragmentShader = `uniform float shootWood; uniform float shootFront;
+        uniform vec3 shootBase; uniform vec3 shootTip; varying float vStemV;\n${shader.fragmentShader}`
+        .replace("#include <color_fragment>", `#include <color_fragment>
+          float shootTipBlend = smoothstep(.06, .95, vStemV / max(.015, shootFront));
+          diffuseColor.rgb = mix(mix(shootBase, shootTip, shootTipBlend), diffuseColor.rgb, shootWood);`);
+    };
+    material.customProgramCacheKey = () => `${previousKey}:sprout-wood-v1`;
+    shootUniforms.push(shoot);
     materials.push(material);
     growthMeshes.push(growth);
     const mesh = new THREE.Mesh(geometry, material);
@@ -209,10 +250,15 @@ export function createBranch(settings: BranchSettings, bark: BarkSurface) {
   }
 
   const bounds = new THREE.Box3().setFromObject(group).expandByScalar(settings.leafSize);
+  const seedbed = createSeedbed(stems[0].curve.getPointAt(0), settings.seed);
+  group.add(seedbed.group);
+  const sproutCap = createSproutCap(stems[0], settings.leafSize, settings.leafDensity > 0);
+  group.add(sproutCap.mesh);
   const foliage = createTreeFoliage(stems, settings);
   group.add(foliage.group);
   const wind = createTreeWind(group, settings.height, stems[0].curve.getPointAt(0).y);
-  const shootColor = new THREE.Color(0xb9cd78), woodColor = new THREE.Color(0xffffff);
+  const paleBase = new THREE.Color(0xe6dcaa), greenBase = new THREE.Color(0x71ab4e);
+  const limeTip = new THREE.Color(0xd5e84d), greenTip = new THREE.Color(0x469d35);
   let lastProgress = -1;
   return {
     group, bounds, updateWind: wind.update,
@@ -221,11 +267,19 @@ export function createBranch(settings: BranchSettings, bark: BarkSurface) {
       if (p === lastProgress) return false;
       lastProgress = p;
       const time = growthTime(p);
-      let changed = foliage.update(time);
+      seedbed.update(time);
+      sproutCap.update(time);
+      let changed = foliage.update(time, sproutPose(stems[0], time));
       growthMeshes.forEach((growth, i) => {
         changed = growth.update(time) || changed;
-        const maturity = THREE.MathUtils.smoothstep(time, stems[i].growthStart + .04, stems[i].growthStart + .28);
-        materials[i].color.copy(shootColor).lerp(woodColor, maturity);
+        const green = THREE.MathUtils.smoothstep(time, .055, .3);
+        shootUniforms[i].base.value.copy(paleBase).lerp(greenBase, green);
+        shootUniforms[i].tip.value.copy(limeTip).lerp(greenTip, green);
+        shootUniforms[i].front.value = stems[i].parent === null ? Math.max(.001, trunkFrontier(time))
+          : THREE.MathUtils.clamp((time - stems[i].growthStart)
+            / Math.max(.001, stems[i].growthEnd - stems[i].growthStart), .001, 1);
+        shootUniforms[i].wood.value = THREE.MathUtils.smoothstep(time,
+          Math.max(.3, stems[i].growthStart + .1), Math.max(.72, stems[i].growthStart + .34));
       });
       return changed;
     },
@@ -233,6 +287,8 @@ export function createBranch(settings: BranchSettings, bark: BarkSurface) {
       group.traverse(object => { if (object instanceof THREE.Mesh) object.geometry.dispose(); });
       materials.forEach(material => material.dispose());
       foliage.dispose();
+      seedbed.dispose();
+      sproutCap.dispose();
       wind.dispose();
     },
     count: stems.length,

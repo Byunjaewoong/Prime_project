@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { LeafType } from "./leafShapes";
+import { trunkTimeAt } from "./sproutGrowth";
 
 export type BranchSettings = {
   seed: number;
@@ -114,7 +115,8 @@ export function createBranchSkeleton(settings: BranchSettings): Stem[] {
     }
     const parentRadius = parent.radius * (parent.tip + (1 - parent.tip) * Math.pow(1 - at, .78));
     const radius = parentRadius * (stub ? .25 + random() * .2 : .52 + random() * .16);
-    const birth = parent.growthStart + (parent.growthEnd - parent.growthStart) * at + .014;
+    const birth = Math.min(.955, parentIndex === 0 ? Math.max(.42, trunkTimeAt(at) + .014)
+      : parent.growthStart + (parent.growthEnd - parent.growthStart) * at + .014);
     const duration = stub ? .07 : .12 + .13 / level;
     return add(points, radius, birth, Math.min(.97, birth + duration), parentIndex, at, level, stub);
   };

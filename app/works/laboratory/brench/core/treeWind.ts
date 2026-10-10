@@ -112,6 +112,7 @@ export function createTreeWind(group: THREE.Group, height: number, base: number)
   patch(woodDepth, false); patch(leafDepth, true);
   group.traverse(object => {
     if (!(object instanceof THREE.Mesh)) return;
+    if (object.parent?.name === "seedbed") return;
     const leaf = object.geometry.hasAttribute("windAttachment");
     const materials = Array.isArray(object.material) ? object.material : [object.material];
     materials.forEach(material => patch(material, leaf));

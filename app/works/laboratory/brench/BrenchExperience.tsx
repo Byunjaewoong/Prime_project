@@ -276,7 +276,7 @@ export default function BrenchExperience() {
     {error && <div className={styles.error}>이 브라우저에서는 3D 장면을 표시할 수 없습니다.</div>}
     {progress === 0 && <div className={styles.emptyHint}>아래 성장 손잡이를 오른쪽으로 드래그하세요</div>}
     <section className={styles.growth} aria-label="나무 성장 시간축">
-      <div className={styles.controlLabel}><span>{progress === 0 ? "발아 전" : progress < .17 ? "새싹 · 떡잎" : progress < .43 ? "묘목" : progress < .76 ? "어린 나무" : "성목"} · DRAG</span><output>{Math.round(progress * 100)}%</output></div>
+      <div className={styles.controlLabel}><span>{progress === 0 ? "발아 전" : progress < .1 ? "발아" : progress < .23 ? "고개 숙인 새싹" : progress < .35 ? "떡잎 펼침" : progress < .54 ? "첫 본잎" : progress < .76 ? "어린 나무" : "성목"} · DRAG</span><output>{Math.round(progress * 100)}%</output></div>
       <DragOnlyRange label="성장 시간" min={0} max={100} step={.1} value={progress * 100} onChange={updateGrowth} />
     </section>
     <div className={styles.menuRoot}>

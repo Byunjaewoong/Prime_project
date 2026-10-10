@@ -60,7 +60,7 @@ function createMaps(type: LeafSurfaceType) {
   const autumn = type === "oval" || type === "pinnate" || type === "round";
   const glossy = type === "lance" || type === "palmate" || type === "variegated";
   const base = type === "oval" ? [151, 57, 23] : type === "round" ? [157, 112, 37] : type === "pinnate" ? [128, 86, 41]
-    : type === "cotyledon" ? [135, 165, 62] : glossy ? [33, 77, 25] : [69, 111, 30];
+    : type === "cotyledon" ? [179, 207, 55] : glossy ? [33, 77, 25] : [69, 111, 30];
   const veinBases = [.055, .145, .245, .34, .445, .55, .65, .74, .825, .9];
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
     const u = x / (width - 1) - .5, v = y / (height - 1), side = u < 0 ? -1 : 1;
