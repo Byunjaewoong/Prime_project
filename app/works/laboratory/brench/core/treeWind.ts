@@ -3,82 +3,57 @@ import * as THREE from "three";
 export type WindSettings = { period: number; direction: number; strength: number };
 export const DEFAULT_WIND_SETTINGS: WindSettings = { period: 5, direction: 0, strength: .35 };
 
-// A continuous deformation field keeps branch junctions, peeling bark and leaf
-// attachment points together. The base stays fixed; compliance increases upwards.
+// One elastic cantilever field moves wood and leaf attachments together. Its
+// slope is zero at the fixed base and increases smoothly toward the crown.
 const windShader = /* glsl */`
-uniform float treeWindPhase;
-uniform float treeWindStrength;
 uniform float treeWindHeight;
 uniform float treeWindBase;
-uniform float treeWindYouth;
-uniform vec3 treeWindDirection;
+uniform vec3 treeWindDeflection;
 #ifdef TREE_LEAF_WIND
 attribute vec4 windAttachment;
 #endif
-void treeWindField(vec3 p, out float amount, out vec3 gradient) {
+vec3 treeWindField(vec3 p, out vec3 slope) {
   float h = max(0.0, (p.y - treeWindBase - .12) / treeWindHeight);
-  vec3 wave = vec3(.73, .32, .51);
-  float phase = treeWindPhase * 2.0 + dot(p, wave);
-  float gust = .62 + .32 * sin(treeWindPhase) + .06 * sin(treeWindPhase * 2.0 + .8);
-  float pressure = gust + .14 * sin(phase);
-  float amplitude = treeWindStrength * treeWindHeight * (.04 * h + .10 * h * h) * treeWindYouth;
-  amount = amplitude * pressure;
-  gradient = amplitude * .14 * cos(phase) * wave;
-  if (h > 0.0) gradient.y += treeWindStrength * (.04 + .20 * h) * treeWindYouth * pressure;
+  slope = treeWindDeflection * (3.0 * h - 1.5 * h * h) / treeWindHeight;
+  return treeWindDeflection * (.5 * h * h * (3.0 - h));
 }
 #ifdef TREE_LEAF_WIND
-vec3 leafWindAxis() {
-  return normalize(cross(vec3(0.0, 1.0, 0.0), treeWindDirection));
-}
-float leafWindAngle(vec3 attachment) {
-  float h = max(0.0, (attachment.y - treeWindBase - .12) / treeWindHeight);
-  float gust = .62 + .32 * sin(treeWindPhase) + .06 * sin(treeWindPhase * 2.0 + .8)
-    + .14 * sin(treeWindPhase * 2.0 + dot(attachment, vec3(.73, .32, .51)));
-  // The whole leaf and petiole lean with their branch. The small higher-frequency
-  // remainder adds life without looking like an independently flapping card.
-  float lean = treeWindStrength * (.025 + .10 * h) * treeWindYouth * gust;
-  float flutter = treeWindStrength * (.012 * sin(treeWindPhase * 7.0 + windAttachment.w)
-    + .006 * sin(treeWindPhase * 11.0 + windAttachment.w * 1.7));
-  return lean + flutter;
-}
-vec3 leafWindRotate(vec3 value, vec3 attachment) {
-  vec3 axis = leafWindAxis(); float angle = leafWindAngle(attachment);
-  return value * cos(angle) + cross(axis, value) * sin(angle)
-    + axis * dot(axis, value) * (1.0 - cos(angle));
+vec3 treeWindRotate(vec3 value, vec3 slope) {
+  float tilt = atan(length(slope));
+  if (tilt < .00001) return value;
+  vec3 axis = normalize(cross(vec3(0.0, 1.0, 0.0), slope));
+  return value * cos(tilt) + cross(axis, value) * sin(tilt)
+    + axis * dot(axis, value) * (1.0 - cos(tilt));
 }
 #endif
 vec3 treeWindPosition(vec3 p) {
-  if (treeWindStrength == 0.0) return p;
   #ifdef TREE_LEAF_WIND
-    // Evaluate the branch field at the attachment, then carry its slope through
-    // the entire leaf. At the pivot this is exactly the branch's deformation.
-    float atAmount; vec3 atGradient;
-    treeWindField(windAttachment.xyz, atAmount, atGradient);
-    vec3 offset = leafWindRotate(p - windAttachment.xyz, windAttachment.xyz);
-    return windAttachment.xyz + treeWindDirection * atAmount + offset
-      + treeWindDirection * dot(atGradient, offset);
+    // Translate and rigidly tilt the entire leaf with its branch attachment.
+    vec3 slope;
+    vec3 shift = treeWindField(windAttachment.xyz, slope);
+    return windAttachment.xyz + shift + treeWindRotate(p - windAttachment.xyz, slope);
   #else
-    float amount; vec3 gradient; treeWindField(p, amount, gradient);
-    return p + treeWindDirection * amount;
+    vec3 slope;
+    return p + treeWindField(p, slope);
   #endif
 }
 vec3 treeWindNormal(vec3 p, vec3 n) {
-  if (treeWindStrength == 0.0) return n;
   #ifdef TREE_LEAF_WIND
-    p = windAttachment.xyz;
-    n = leafWindRotate(n, p);
+    vec3 leafSlope;
+    treeWindField(windAttachment.xyz, leafSlope);
+    return treeWindRotate(n, leafSlope);
+  #else
+    vec3 slope;
+    treeWindField(p, slope);
+    return n - vec3(0.0, dot(slope, n), 0.0);
   #endif
-  float amount; vec3 gradient; treeWindField(p, amount, gradient);
-  // Exact inverse-transpose of I + direction * gradient^T (rank-one bending).
-  return n - gradient * dot(treeWindDirection, n) / max(.25, 1.0 + dot(gradient, treeWindDirection));
 }
 `;
 
 export function createTreeWind(group: THREE.Group, height: number, base: number) {
   const uniforms = {
-    treeWindPhase: { value: 0 }, treeWindStrength: { value: 0 },
     treeWindHeight: { value: height }, treeWindBase: { value: base },
-    treeWindYouth: { value: 1 }, treeWindDirection: { value: new THREE.Vector3(1, 0, 0) },
+    treeWindDeflection: { value: new THREE.Vector3() },
   };
   const patched = new Set<THREE.Material>();
   const patch = (material: THREE.Material, leaf: boolean) => {
@@ -104,7 +79,7 @@ export function createTreeWind(group: THREE.Group, height: number, base: number)
           transformedNormal = normalMatrix * treeWindNormal(windRestPosition, transformedNormal);
         `));
     };
-    material.customProgramCacheKey = () => `${cacheKey}:tree-wind-v1:${leaf}`;
+    material.customProgramCacheKey = () => `${cacheKey}:tree-wind-v2:${leaf}`;
     material.needsUpdate = true;
   };
   const woodDepth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
@@ -121,17 +96,24 @@ export function createTreeWind(group: THREE.Group, height: number, base: number)
     object.frustumCulled = false;
   });
   const inverseRotation = new THREE.Quaternion();
+  const deflection = new THREE.Vector3(), velocity = new THREE.Vector3();
+  const target = new THREE.Vector3(), previous = new THREE.Vector3(), acceleration = new THREE.Vector3();
   return {
-    update: (phase: number, settings: WindSettings, growth: number) => {
-      const wasMoving = uniforms.treeWindStrength.value > 0;
-      uniforms.treeWindPhase.value = phase;
-      uniforms.treeWindStrength.value = THREE.MathUtils.clamp(settings.strength, 0, 1) * 1.5;
-      uniforms.treeWindYouth.value = 1 + 2.5 * (1 - THREE.MathUtils.smoothstep(growth, 0, .4));
-      // Direction is fixed in the scene even while the user rotates the specimen.
+    update: (phase: number, settings: WindSettings, growth: number, elapsed: number) => {
+      previous.copy(deflection);
       const angle = THREE.MathUtils.degToRad(settings.direction);
+      const gust = .7 + .3 * Math.sin(phase);
+      const youth = 1.25 - .25 * THREE.MathUtils.smoothstep(growth, .1, .75);
+      target.set(Math.cos(angle), 0, -Math.sin(angle))
+        .multiplyScalar(height * .16 * THREE.MathUtils.clamp(settings.strength, 0, 1) * gust * youth);
+      const step = THREE.MathUtils.clamp(elapsed, 0, .05);
+      velocity.addScaledVector(acceleration.copy(target).sub(deflection), 12 * step);
+      velocity.multiplyScalar(Math.exp(-5.5 * step));
+      deflection.addScaledVector(velocity, step);
+      // Keep the wind in world space while the specimen is rotated by dragging.
       group.getWorldQuaternion(inverseRotation).invert();
-      uniforms.treeWindDirection.value.set(Math.cos(angle), 0, -Math.sin(angle)).applyQuaternion(inverseRotation);
-      return wasMoving || uniforms.treeWindStrength.value > 0;
+      uniforms.treeWindDeflection.value.copy(deflection).applyQuaternion(inverseRotation);
+      return deflection.distanceToSquared(previous) > 1e-9 || velocity.lengthSq() > 1e-8;
     },
     dispose: () => { woodDepth.dispose(); leafDepth.dispose(); },
   };

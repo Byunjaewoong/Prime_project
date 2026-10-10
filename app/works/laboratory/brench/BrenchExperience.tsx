@@ -174,7 +174,7 @@ export default function BrenchExperience() {
       }
       if (viewer.model?.setGrowth(viewer.progress)) viewer.dirty = viewer.shadowsDirty = true;
       const time = growthTime(viewer.progress);
-      if (viewer.model?.updateWind(windPhase, viewer.wind, time) && viewer.progress > 0) {
+      if (viewer.model?.updateWind(windPhase, viewer.wind, time, elapsed) && viewer.progress > 0) {
         viewer.dirty = viewer.shadowsDirty = true;
       }
       const zooming = Math.abs(viewer.zoom - camera.zoom) > .0001;
