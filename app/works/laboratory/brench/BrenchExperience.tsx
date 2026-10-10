@@ -302,7 +302,7 @@ export default function BrenchExperience() {
           <div className={styles.control}><span className={styles.controlLabel}><span>바람 세기</span><output>{Math.round(wind.strength * 100)}%</output></span>
             <DragOnlyRange label="바람 세기" min={0} max={100} step={1} value={wind.strength * 100}
               onChange={strength => setWind(current => ({ ...current, strength: strength / 100 }))} /></div>
-          <p className={styles.leafHint}>기본 시점 기준 · 0° 오른쪽 / 90° 뒤 / 180° 왼쪽 / 270° 앞<br />주기가 짧을수록 자주 불고, 세기 0%에서는 멈춥니다.</p>
+          <p className={styles.leafHint}>기본 시점 기준 · 0° 오른쪽 / 90° 뒤 / 180° 왼쪽 / 270° 앞<br />주기가 짧을수록 자주 불고, 세기 0%에서는 멈춥니다.<br />줄기 굵기가 클수록 덜 휘고 더 빨리 복원됩니다.</p>
           <LeafSelector value={settings.leafType} onChange={leafType => setSettings(current => ({ ...current, leafType }))} />
           <span className={styles.sectionTitle}>TREE FORM</span>
           <div className={styles.presets}>{presets.map(preset => <button type="button" key={preset.name}

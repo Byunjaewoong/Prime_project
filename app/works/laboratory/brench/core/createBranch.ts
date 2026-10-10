@@ -271,7 +271,7 @@ export function createBranch(settings: BranchSettings, bark: BarkSurface) {
   content.add(sproutCap.mesh);
   const foliage = createTreeFoliage(stems, settings);
   content.add(foliage.group);
-  const wind = createTreeWind(group, settings.height, base.y);
+  const wind = createTreeWind(group, settings.height, base.y, settings.thickness);
   const paleBase = new THREE.Color(0xe6dcaa), greenBase = new THREE.Color(0x71ab4e);
   const limeTip = new THREE.Color(0xd5e84d), greenTip = new THREE.Color(0x469d35);
   let lastProgress = -1;

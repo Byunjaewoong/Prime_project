@@ -1,7 +1,14 @@
 import * as THREE from "three";
+import { DEFAULT_BRANCH_SETTINGS } from "./branchSkeleton";
 
 export type WindSettings = { period: number; direction: number; strength: number };
 export const DEFAULT_WIND_SETTINGS: WindSettings = { period: 5, direction: 0, strength: .35 };
+
+export function windFlexibility(thickness: number) {
+  // Beam bending drops steeply as diameter increases; cap the visual range.
+  return THREE.MathUtils.clamp(
+    Math.pow(DEFAULT_BRANCH_SETTINGS.thickness / Math.max(.05, thickness), 1.6), .45, 2.2);
+}
 
 // One elastic cantilever field moves wood and leaf attachments together. Its
 // slope is zero at the fixed base and increases smoothly toward the crown.
@@ -50,7 +57,10 @@ vec3 treeWindNormal(vec3 p, vec3 n) {
 }
 `;
 
-export function createTreeWind(group: THREE.Group, height: number, base: number) {
+export function createTreeWind(group: THREE.Group, height: number, base: number, thickness: number) {
+  const flexibility = windFlexibility(thickness);
+  const stiffness = 12 / Math.sqrt(flexibility);
+  const damping = 1.6 * Math.sqrt(stiffness);
   const uniforms = {
     treeWindHeight: { value: height }, treeWindBase: { value: base },
     treeWindDeflection: { value: new THREE.Vector3() },
@@ -105,10 +115,10 @@ export function createTreeWind(group: THREE.Group, height: number, base: number)
       const gust = .7 + .3 * Math.sin(phase);
       const youth = 1.25 - .25 * THREE.MathUtils.smoothstep(growth, .1, .75);
       target.set(Math.cos(angle), 0, -Math.sin(angle))
-        .multiplyScalar(height * .16 * THREE.MathUtils.clamp(settings.strength, 0, 1) * gust * youth);
+        .multiplyScalar(height * .16 * flexibility * THREE.MathUtils.clamp(settings.strength, 0, 1) * gust * youth);
       const step = THREE.MathUtils.clamp(elapsed, 0, .05);
-      velocity.addScaledVector(acceleration.copy(target).sub(deflection), 12 * step);
-      velocity.multiplyScalar(Math.exp(-5.5 * step));
+      velocity.addScaledVector(acceleration.copy(target).sub(deflection), stiffness * step);
+      velocity.multiplyScalar(Math.exp(-damping * step));
       deflection.addScaledVector(velocity, step);
       // Keep the wind in world space while the specimen is rotated by dragging.
       group.getWorldQuaternion(inverseRotation).invert();
