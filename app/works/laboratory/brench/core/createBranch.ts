@@ -10,6 +10,13 @@ import { createSproutCap } from "./sproutCap";
 import { createTreeWind } from "./treeWind";
 export type { BranchSettings } from "./branchSkeleton";
 
+const SPROUT_SCALE = 1 / 3;
+const MATURE_SCALE = 10;
+
+export function treeScale(time: number) {
+  return SPROUT_SCALE + (MATURE_SCALE - SPROUT_SCALE) * THREE.MathUtils.smoothstep(time, .08, .95);
+}
+
 function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: number, irregularity: number) {
   const segments = Math.max(18, Math.ceil(stem.length * (stem.radius > .08 ? 64 : 32)));
   const sides = stem.radius > .22 ? 96 : stem.radius > .08 ? 64 : 24;
@@ -212,8 +219,15 @@ export function createBranch(settings: BranchSettings, bark: BarkSurface) {
   const materials: THREE.MeshStandardMaterial[] = [];
   const shootUniforms: { wood: { value: number }; front: { value: number };
     base: { value: THREE.Color }; tip: { value: THREE.Color } }[] = [];
-  const group = new THREE.Group();
   const stems = createBranchSkeleton(settings);
+  const group = new THREE.Group();
+  const base = stems[0].curve.getPointAt(0);
+  const scalePivot = new THREE.Group();
+  const content = new THREE.Group();
+  scalePivot.position.copy(base);
+  content.position.copy(base).multiplyScalar(-1);
+  scalePivot.add(content);
+  group.add(scalePivot);
   const growthMeshes: ReturnType<typeof tube>[] = [];
   for (const stem of stems) {
     const growth = tube(stem, random, bark, settings.texture, settings.irregularity);
@@ -242,21 +256,22 @@ export function createBranch(settings: BranchSettings, bark: BarkSurface) {
     const mesh = new THREE.Mesh(geometry, material);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    group.add(mesh);
+    content.add(mesh);
     const flakeMesh = new THREE.Mesh(flakeGeometry, material);
     flakeMesh.castShadow = true;
     flakeMesh.receiveShadow = true;
-    group.add(flakeMesh);
+    content.add(flakeMesh);
   }
 
-  const bounds = new THREE.Box3().setFromObject(group).expandByScalar(settings.leafSize);
-  const seedbed = createSeedbed(stems[0].curve.getPointAt(0), settings.seed);
-  group.add(seedbed.group);
+  scalePivot.scale.setScalar(MATURE_SCALE);
+  const bounds = new THREE.Box3().setFromObject(group).expandByScalar(settings.leafSize * MATURE_SCALE);
+  const seedbed = createSeedbed(base, settings.seed);
+  content.add(seedbed.group);
   const sproutCap = createSproutCap(stems[0], settings.leafSize, settings.leafDensity > 0);
-  group.add(sproutCap.mesh);
+  content.add(sproutCap.mesh);
   const foliage = createTreeFoliage(stems, settings);
-  group.add(foliage.group);
-  const wind = createTreeWind(group, settings.height, stems[0].curve.getPointAt(0).y);
+  content.add(foliage.group);
+  const wind = createTreeWind(group, settings.height, base.y);
   const paleBase = new THREE.Color(0xe6dcaa), greenBase = new THREE.Color(0x71ab4e);
   const limeTip = new THREE.Color(0xd5e84d), greenTip = new THREE.Color(0x469d35);
   let lastProgress = -1;
@@ -267,6 +282,7 @@ export function createBranch(settings: BranchSettings, bark: BarkSurface) {
       if (p === lastProgress) return false;
       lastProgress = p;
       const time = growthTime(p);
+      scalePivot.scale.setScalar(treeScale(time));
       seedbed.update(time);
       sproutCap.update(time);
       let changed = foliage.update(time, sproutPose(stems[0], time));
