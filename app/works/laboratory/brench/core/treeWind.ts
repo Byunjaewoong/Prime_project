@@ -5,9 +5,9 @@ export type WindSettings = { period: number; direction: number; strength: number
 export const DEFAULT_WIND_SETTINGS: WindSettings = { period: 5, direction: 0, strength: .35 };
 
 export function windFlexibility(thickness: number) {
-  // Beam bending drops steeply as diameter increases; cap the visual range.
+  // Beam bending drops steeply as diameter increases; slider ends span 10x.
   return THREE.MathUtils.clamp(
-    Math.pow(DEFAULT_BRANCH_SETTINGS.thickness / Math.max(.05, thickness), 1.6), .45, 2.2);
+    Math.pow(DEFAULT_BRANCH_SETTINGS.thickness / Math.max(.05, thickness), 2.85), .22, 2.2);
 }
 
 // One elastic cantilever field moves wood and leaf attachments together. Its
