@@ -68,7 +68,7 @@ export function createBranchSkeleton(settings: BranchSettings): Stem[] {
     const sway = settings.curvature * settings.height * .045 * Math.sin(t * Math.PI / 2);
     trunk.push(new THREE.Vector3(
       sway * (Math.sin(t * 7 + phase) + vary(.3)),
-      settings.height * (t - .5),
+      settings.height * (.68 * t - .5),
       sway * (.6 * Math.sin(t * 5 + phase * .7) + vary(.2))));
   }
   add(trunk, settings.thickness, 0, .52, null, 0, 0);
@@ -79,7 +79,7 @@ export function createBranchSkeleton(settings: BranchSettings): Stem[] {
     return Array.from({ length: count }, () => random()).sort((a, b) => a - b)
       .map((value, i) => min + i * gap + value * room);
   };
-  const grow = (parentIndex: number, at: number, azimuth: number, stub = false) => {
+  const grow = (parentIndex: number, at: number, azimuth: number, stub = false, leader = false) => {
     const parent = stems[parentIndex], level = parent.level + 1;
     const start = parent.curve.getPointAt(at), tangent = parent.curve.getTangentAt(at).normalize();
     const axis = Math.abs(tangent.z) < .85 ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0);
@@ -87,9 +87,11 @@ export function createBranchSkeleton(settings: BranchSettings): Stem[] {
     const binormal = new THREE.Vector3().crossVectors(tangent, normal).normalize();
     const outward = normal.clone().multiplyScalar(Math.cos(azimuth)).addScaledVector(binormal, Math.sin(azimuth));
     const lateral = new THREE.Vector3().crossVectors(tangent, outward).normalize();
-    const opening = THREE.MathUtils.degToRad(THREE.MathUtils.clamp(settings.angle + vary(17) - (level > 1 ? 7 : 0), 15, 85));
+    const opening = THREE.MathUtils.degToRad(leader ? 20 + vary(11)
+      : THREE.MathUtils.clamp(settings.angle + vary(17) - (level > 1 ? 7 : 0), 15, 85));
     const direction = tangent.clone().multiplyScalar(Math.cos(opening)).addScaledVector(outward, Math.sin(opening));
     const reach = stub ? (.16 + random() * .46) * settings.height / 10
+      : leader ? settings.height * (.4 + random() * .12)
       : level === 1 ? settings.height * (.23 + (1 - at) * .24) * (.8 + random() * .35)
         : parent.length * (.40 + random() * .20) * (1.15 - at * .28);
     const divisions = stub ? integer(2, 3) : level === 1 ? integer(5, 7) : integer(3, 5);
@@ -114,15 +116,20 @@ export function createBranchSkeleton(settings: BranchSettings): Stem[] {
       previousHeading.copy(heading);
     }
     const parentRadius = parent.radius * (parent.tip + (1 - parent.tip) * Math.pow(1 - at, .78));
-    const radius = parentRadius * (stub ? .25 + random() * .2 : .52 + random() * .16);
+    const radius = parentRadius * (stub ? .25 + random() * .2 : leader ? .72 + random() * .1 : .52 + random() * .16);
     const birth = Math.min(.955, parentIndex === 0 ? Math.max(.315, trunkTimeAt(at) + .014)
       : parent.growthStart + (parent.growthEnd - parent.growthStart) * at + .014);
     const duration = stub ? .07 : .07 + .025 / level;
     return add(points, radius, birth, Math.min(.97, birth + duration), parentIndex, at, level, stub);
   };
-  const primary = nodes(Math.max(3, settings.branches + integer(-1, 1)), .12, .82)
+  const primary = nodes(Math.max(3, settings.branches + integer(-1, 1)), .12, .76)
     .map((at, i) => grow(0, at, phase + i * 2.399963 + vary(.6)));
-  let generation = primary;
+  // The central trunk ends below the crown; upward leaders carry the canopy.
+  const leaderCount = 2 + Number(random() < .45);
+  const leaders = Array.from({ length: leaderCount }, (_, i) =>
+    grow(0, .76 + i / (leaderCount - 1) * .18 + vary(.025),
+      phase + i * Math.PI * 2 / leaderCount + vary(.35), false, true));
+  let generation = [...primary, ...leaders];
   for (let level = 2; level <= settings.depth; level++) {
     const next: number[] = [];
     for (const parent of generation) {
@@ -135,7 +142,7 @@ export function createBranchSkeleton(settings: BranchSettings): Stem[] {
     }
     generation = next;
   }
-  for (const parent of [0, ...primary]) {
+  for (const parent of [0, ...primary, ...leaders]) {
     const count = Math.round((parent === 0 ? integer(5, 9) : integer(1, 3)) * settings.stubs);
     for (const at of nodes(count, .14, .87)) grow(parent, at, random() * Math.PI * 2, true);
   }
