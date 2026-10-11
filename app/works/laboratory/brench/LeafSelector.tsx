@@ -11,7 +11,7 @@ function LeafSpecimen({ type }: { type: LeafType }) {
   const [unavailable, setUnavailable] = useState(false);
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || window.matchMedia("(max-width: 800px), (pointer: coarse)").matches) return;
     let renderer: THREE.WebGLRenderer;
     try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true }); }
     catch { const frame = requestAnimationFrame(() => setUnavailable(true)); return () => cancelAnimationFrame(frame); }
@@ -49,8 +49,23 @@ function LeafSpecimen({ type }: { type: LeafType }) {
       stalkMaterial.dispose(); surface.dispose(); renderer.dispose();
     };
   }, [type]);
+  const leaf = LEAF_TYPES.find(option => option.id === type)!;
   return <div className={styles.specimen}>
-    <canvas ref={canvasRef} role="img" aria-label={`${LEAF_TYPES.find(leaf => leaf.id === type)?.label} 잎 표면 확대 미리보기`} />
+    <canvas ref={canvasRef} role="img" aria-label={`${leaf.label} 잎 표면 확대 미리보기`} />
+    <svg viewBox="-.8 -1.32 1.6 1.7" role="img" aria-label={`${leaf.label} 잎 모양 미리보기`}>
+      <defs>
+        <linearGradient id="brench-specimen-fill" x1="0" y1="0" x2="1" y2="1">
+          <stop stopColor="#dae59b" /><stop offset=".48" stopColor={leaf.color} /><stop offset="1" stopColor="#263e21" />
+        </linearGradient>
+      </defs>
+      <path d={type === "pinnate" ? "M0,.14L0,-.94" : "M0,.14L0,-.28"} stroke="#596a38" strokeWidth=".018" fill="none" />
+      {leaflets(type).map((blade, index) => <g key={index}
+        transform={`translate(${blade.x} ${-blade.y}) rotate(${-blade.angle * 180 / Math.PI}) scale(${blade.length * blade.width} ${blade.length})`}>
+        <path d={bladeOutline(blade.shape)} fill="url(#brench-specimen-fill)" stroke="#324b27" strokeWidth=".008" />
+        <path d="M0,0Q.025,-.4 0,-1 M0,-.25L-.18,-.42 M0,-.4L.2,-.58 M0,-.55L-.19,-.74 M0,-.7L.13,-.83"
+          fill="none" stroke="#e5d99e" strokeWidth=".012" opacity=".75" />
+      </g>)}
+    </svg>
     {unavailable && <span>잎 미리보기를 표시할 수 없습니다.</span>}
   </div>;
 }

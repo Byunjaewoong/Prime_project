@@ -65,6 +65,8 @@ export default function BrenchExperience() {
   const viewerRef = useRef<Viewer | null>(null);
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const progressRef = useRef(INITIAL_GROWTH);
+  const recoveryAttemptsRef = useRef(0);
+  const [canvasVersion, setCanvasVersion] = useState(0);
   const [settings, setSettings] = useState(DEFAULT_BRANCH_SETTINGS);
   const [contrast, setContrast] = useState(1);
   const [wind, setWind] = useState(DEFAULT_WIND_SETTINGS);
@@ -78,21 +80,21 @@ export default function BrenchExperience() {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const compact = window.matchMedia("(max-width: 800px), (pointer: coarse)").matches;
-    const budget = compact ? { maxStems: 140, maxLeaves: 1600 }
+    const budget = compact ? { maxStems: 90, maxLeaves: 900 }
       : { maxStems: 420, maxLeaves: 7000 };
     let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: !compact });
     } catch {
       const errorFrame = requestAnimationFrame(() => setError("이 브라우저에서는 3D 장면을 표시할 수 없습니다."));
       return () => cancelAnimationFrame(errorFrame);
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, compact ? 1.5 : 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, compact ? 1.25 : 2));
     renderer.setClearColor(0xf9f8f5, 1);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.1;
-    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.enabled = !compact;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.shadowMap.autoUpdate = false;
 
@@ -104,7 +106,7 @@ export default function BrenchExperience() {
     scene.add(ambient);
     const key = new THREE.DirectionalLight(0xfff6e9, 3.4);
     key.position.set(-10, 14, 18);
-    key.castShadow = true;
+    key.castShadow = !compact;
     key.shadow.mapSize.set(compact ? 1024 : 2048, compact ? 1024 : 2048);
     key.shadow.camera.left = -14;
     key.shadow.camera.right = 14;
@@ -123,7 +125,7 @@ export default function BrenchExperience() {
     const bark = createBarkSurface(renderer.capabilities.getMaxAnisotropy());
     const viewer: Viewer = {
       scene, renderer, model: null, rotation: { x: 0, y: 0 }, bark, budget,
-      wind: { ...DEFAULT_WIND_SETTINGS }, zoom: 1, progress: INITIAL_GROWTH,
+      wind: { ...DEFAULT_WIND_SETTINGS }, zoom: 1, progress: progressRef.current,
       fit: () => {}, capture: () => "", dirty: true, shadowsDirty: true, lights: { ambient, key, fill },
       setLighting: value => {
         ambient.intensity = 1.45 - value * .6;
@@ -169,25 +171,41 @@ export default function BrenchExperience() {
     resize();
     const observer = new ResizeObserver(resize);
     observer.observe(canvas);
+    let contextLost = false;
+    let recoveryTimer: number | null = null;
     const onContextLost = (event: Event) => {
       event.preventDefault();
+      contextLost = true;
       setError("3D 렌더링이 중단되었습니다. 복구 중입니다.");
+      if (recoveryAttemptsRef.current === 0) {
+        recoveryTimer = window.setTimeout(() => {
+          if (!contextLost) return;
+          recoveryAttemptsRef.current = 1;
+          setCanvasVersion(version => version + 1);
+        }, 2500);
+      } else {
+        setError("3D 렌더링을 복구하지 못했습니다. 페이지를 다시 열어 주세요.");
+      }
     };
     const onContextRestored = () => {
+      contextLost = false;
+      if (recoveryTimer !== null) window.clearTimeout(recoveryTimer);
       viewer.fit();
       viewer.dirty = viewer.shadowsDirty = true;
       setError(null);
     };
     canvas.addEventListener("webglcontextlost", onContextLost);
     canvas.addEventListener("webglcontextrestored", onContextRestored);
-    let frame = 0, previousFrame = performance.now(), windPhase = 0;
-    const resetWindClock = () => { previousFrame = performance.now(); };
+    let frame = 0, previousFrame = performance.now(), lastRender = 0, windPhase = 0;
+    const resetWindClock = () => { previousFrame = performance.now(); lastRender = 0; };
     document.addEventListener("visibilitychange", resetWindClock);
     const draw = (now: number) => {
+      frame = requestAnimationFrame(draw);
+      if (document.hidden || contextLost) { previousFrame = now; return; }
+      if (compact && now - lastRender < 1000 / 30) return;
+      lastRender = now;
       const elapsed = Math.max(0, (now - previousFrame) / 1000);
       previousFrame = now;
-      frame = requestAnimationFrame(draw);
-      if (document.hidden) return;
       windPhase = (windPhase + elapsed * Math.PI * 2 / viewer.wind.period) % (Math.PI * 2);
       const turning = !!viewer.model && Math.abs(viewer.rotation.x - viewer.model.group.rotation.x)
         + Math.abs(viewer.rotation.y - viewer.model.group.rotation.y) > .0001;
@@ -216,6 +234,7 @@ export default function BrenchExperience() {
     frame = requestAnimationFrame(draw);
     return () => {
       cancelAnimationFrame(frame);
+      if (recoveryTimer !== null) window.clearTimeout(recoveryTimer);
       document.removeEventListener("visibilitychange", resetWindClock);
       canvas.removeEventListener("webglcontextlost", onContextLost);
       canvas.removeEventListener("webglcontextrestored", onContextRestored);
@@ -227,7 +246,7 @@ export default function BrenchExperience() {
       renderer.dispose();
       if (viewerRef.current === viewer) viewerRef.current = null;
     };
-  }, []);
+  }, [canvasVersion]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -257,19 +276,19 @@ export default function BrenchExperience() {
       if (!viewer.renderer.getContext().isContextLost()) setError(null);
     }, viewer.budget.maxStems < 420 ? 250 : 100);
     return () => window.clearTimeout(timer);
-  }, [settings]);
+  }, [settings, canvasVersion]);
 
   useEffect(() => {
     viewerRef.current?.setLighting(contrast);
-  }, [contrast]);
+  }, [contrast, canvasVersion]);
 
   useEffect(() => {
     viewerRef.current?.setZoom(zoom);
-  }, [zoom]);
+  }, [zoom, canvasVersion]);
 
   useEffect(() => {
     if (viewerRef.current) { viewerRef.current.wind = wind; viewerRef.current.dirty = true; }
-  }, [wind]);
+  }, [wind, canvasVersion]);
 
   const updateGrowth = (value: number) => {
     const next = value / 100;
@@ -310,7 +329,7 @@ export default function BrenchExperience() {
   };
 
   return <main className={styles.page}>
-    <canvas ref={canvasRef} className={styles.canvas} role="img"
+    <canvas key={canvasVersion} ref={canvasRef} className={styles.canvas} role="img"
       aria-label="절차적으로 생성된 전체 나무. 드래그하면 시점이 회전합니다."
       onPointerDown={event => {
         if (event.button !== 0) return;
