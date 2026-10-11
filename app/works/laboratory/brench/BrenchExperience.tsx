@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Download, RefreshCw, RotateCcw, Home, FlaskConical } from "lucide-react";
+import { Download, RefreshCw, RotateCcw, Home, FlaskConical, Dices } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { createBranch, type BranchSettings, type BranchRenderBudget } from "./core/createBranch";
@@ -9,6 +9,7 @@ import { createBarkSurface, type BarkSurface } from "./core/barkSurface";
 import { growthTime } from "./core/treeFoliage";
 import { DEFAULT_WIND_SETTINGS, type WindSettings } from "./core/treeWind";
 import { DEFAULT_BRANCH_SETTINGS } from "./core/branchSkeleton";
+import { LEAF_TYPES } from "./core/leafShapes";
 import DragOnlyRange from "../Painted/DragOnlyRange";
 import LeafSelector from "./LeafSelector";
 import styles from "./brench.module.css";
@@ -280,6 +281,20 @@ export default function BrenchExperience() {
     setSettings(previous => ({ ...previous, [key]: value }));
   };
   const regenerate = () => setSettings(previous => ({ ...previous, seed: Math.floor(Math.random() * 0xffffffff) }));
+  const randomizeModel = () => setSettings(previous => {
+    let seed = Math.floor(Math.random() * 0x100000000);
+    if (seed === previous.seed) seed = (seed + 1) >>> 0;
+    const next: BranchSettings = {
+      ...previous,
+      seed,
+      leafType: LEAF_TYPES[Math.floor(Math.random() * LEAF_TYPES.length)].id,
+    };
+    for (const control of controls) {
+      const steps = Math.round((control.max - control.min) / control.step);
+      next[control.key] = Number((control.min + Math.floor(Math.random() * (steps + 1)) * control.step).toFixed(2));
+    }
+    return next;
+  });
   const resetView = () => {
     setZoom(1);
     const viewer = viewerRef.current;
@@ -342,6 +357,7 @@ export default function BrenchExperience() {
           <div className={styles.presets}>{presets.map(preset => <button type="button" key={preset.name}
             onClick={() => setSettings(current => ({ ...current, ...preset.values }))}>{preset.name}</button>)}</div>
           <button type="button" className={styles.action} onClick={regenerate}><RefreshCw size={14} /> 새 나무 생성</button>
+          <button type="button" className={styles.action} onClick={randomizeModel}><Dices size={14} /> 모델 랜덤 생성</button>
           <span className={styles.seed}>SEED {settings.seed}</span>
           {controls.map(control => <div className={styles.control} key={control.key}>
             <span className={styles.controlLabel}><span>{control.label}</span><output>{settings[control.key].toFixed(control.step >= 1 ? 0 : 2)}</output></span>
