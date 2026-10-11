@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { randomSource, type BranchSettings, type Stem } from "./branchSkeleton";
 import { createLeafGeometry, createLeafRachis, createLeafSurface } from "./leafSurface";
+import { leaflets } from "./leafShapes";
 import type { SproutPose } from "./sproutGrowth";
 import { trunkFrontier } from "./sproutGrowth";
 
@@ -42,10 +43,15 @@ export function createTreeFoliage(stems: Stem[], settings: BranchSettings, maxLe
       }
     });
   }
+  // Compound and deeply lobed leaves spend more triangles per instance. Keep the
+  // canopy's GPU cost comparable when random generation changes leaf type.
+  const bladeCost = settings.leafType === "lobed" ? 2
+    : Math.max(1, leaflets(settings.leafType).length / 2);
+  const leafLimit = Number.isFinite(maxLeaves) ? Math.max(1, Math.floor(maxLeaves / bladeCost)) : Infinity;
   const adultCandidates = sites.filter(site => !site.cotyledon);
-  if (adultCandidates.length > maxLeaves) {
-    const selected = new Set(Array.from({ length: maxLeaves }, (_, i) =>
-      adultCandidates[Math.floor((i + .5) * adultCandidates.length / maxLeaves)]));
+  if (adultCandidates.length > leafLimit) {
+    const selected = new Set(Array.from({ length: leafLimit }, (_, i) =>
+      adultCandidates[Math.floor((i + .5) * adultCandidates.length / leafLimit)]));
     sites.splice(0, sites.length, ...sites.filter(site => site.cotyledon || selected.has(site)));
   }
   const adultSites = sites.filter(site => !site.cotyledon);
