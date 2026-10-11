@@ -294,8 +294,9 @@ export function createBranch(settings: BranchSettings, bark: BarkSurface) {
         shootUniforms[i].front.value = stems[i].parent === null ? Math.max(.001, trunkFrontier(time))
           : THREE.MathUtils.clamp((time - stems[i].growthStart)
             / Math.max(.001, stems[i].growthEnd - stems[i].growthStart), .001, 1);
-        shootUniforms[i].wood.value = THREE.MathUtils.smoothstep(time,
-          Math.max(.3, stems[i].growthStart + .1), Math.max(.72, stems[i].growthStart + .34));
+        // Cotyledons finish fading at .42; woody bark takes over by then.
+        shootUniforms[i].wood.value = settings.leafDensity > 0
+          ? THREE.MathUtils.smoothstep(time, .355, .42) : 1;
       });
       return changed;
     },

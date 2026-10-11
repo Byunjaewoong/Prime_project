@@ -7,6 +7,7 @@ export type BranchSettings = {
   height: number;
   thickness: number;
   branches: number;
+  sideBranchDensity: number;
   depth: number;
   angle: number;
   curvature: number;
@@ -20,7 +21,7 @@ export type BranchSettings = {
 };
 
 export const DEFAULT_BRANCH_SETTINGS: BranchSettings = {
-  seed: 24659, height: 10, thickness: .38, branches: 8, depth: 3,
+  seed: 24659, height: 10, thickness: .38, branches: 8, sideBranchDensity: 1, depth: 3,
   angle: 58, curvature: 1, spread: 1.1, irregularity: 1, stubs: .7, texture: 1, leafDensity: 1, leafSize: 1, leafType: "lance",
 };
 
@@ -132,14 +133,23 @@ export function createBranchSkeleton(settings: BranchSettings): Stem[] {
   let generation = [...primary, ...leaders];
   for (let level = 2; level <= settings.depth; level++) {
     const next: number[] = [];
+    const candidates: { parent: number; at: number; azimuth: number }[] = [];
     for (const parent of generation) {
       const azimuth = random() * Math.PI * 2;
-      for (const [i, at] of nodes(integer(2, 3), .38, .88).entries()) {
-        // Bound geometry cost at the most complex menu settings.
-        if (stems.length >= 220) break;
-        next.push(grow(parent, at, azimuth + i * 2.399963 + vary(.5)));
-      }
+      const expected = (2 + random()) * settings.sideBranchDensity;
+      const count = Math.min(9, Math.floor(expected + random()));
+      for (const [i, at] of nodes(count, .38, .88).entries())
+        candidates.push({ parent, at, azimuth: azimuth + i * 2.399963 + vary(.5) });
     }
+    // Reserve capacity for later generations so depth 8 is visible even when
+    // early branches generate more candidates than the renderer can afford.
+    const budget = Math.max(0, Math.floor((420 - stems.length) / (settings.depth - level + 1)));
+    for (let i = candidates.length - 1; i > 0; i--) {
+      const j = Math.floor(random() * (i + 1));
+      [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+    }
+    for (const candidate of candidates.slice(0, budget))
+      next.push(grow(candidate.parent, candidate.at, candidate.azimuth));
     generation = next;
   }
   for (const parent of [0, ...primary, ...leaders]) {
