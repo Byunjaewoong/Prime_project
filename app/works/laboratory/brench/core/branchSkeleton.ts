@@ -48,7 +48,7 @@ export function randomSource(seed: number) {
 
 /** Recursive, apically biased branching. Each daughter inherits its parent's
  * tangent, taper and birth time, with seeded three-dimensional divergence. */
-export function createBranchSkeleton(settings: BranchSettings): Stem[] {
+export function createBranchSkeleton(settings: BranchSettings, maxStems = 420): Stem[] {
   const random = randomSource(settings.seed);
   const vary = (amount: number) => (random() - .5) * 2 * amount;
   const integer = (min: number, max: number) => min + Math.floor(random() * (max - min + 1));
@@ -131,6 +131,9 @@ export function createBranchSkeleton(settings: BranchSettings): Stem[] {
     grow(0, .76 + i / (leaderCount - 1) * .18 + vary(.025),
       phase + i * Math.PI * 2 / leaderCount + vary(.35), false, true));
   let generation = [...primary, ...leaders];
+  const rootReserve = 7;
+  const stubReserve = Math.min(30,
+    Math.ceil((primary.length + leaders.length + 7) * settings.stubs * 1.2));
   for (let level = 2; level <= settings.depth; level++) {
     const next: number[] = [];
     const candidates: { parent: number; at: number; azimuth: number }[] = [];
@@ -143,7 +146,8 @@ export function createBranchSkeleton(settings: BranchSettings): Stem[] {
     }
     // Reserve capacity for later generations so depth 8 is visible even when
     // early branches generate more candidates than the renderer can afford.
-    const budget = Math.max(0, Math.floor((420 - stems.length) / (settings.depth - level + 1)));
+    const budget = Math.max(0, Math.floor((maxStems - rootReserve - stubReserve - stems.length)
+      / (settings.depth - level + 1)));
     for (let i = candidates.length - 1; i > 0; i--) {
       const j = Math.floor(random() * (i + 1));
       [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
@@ -153,8 +157,12 @@ export function createBranchSkeleton(settings: BranchSettings): Stem[] {
     generation = next;
   }
   for (const parent of [0, ...primary, ...leaders]) {
+    if (stems.length >= maxStems - rootReserve) break;
     const count = Math.round((parent === 0 ? integer(5, 9) : integer(1, 3)) * settings.stubs);
-    for (const at of nodes(count, .14, .87)) grow(parent, at, random() * Math.PI * 2, true);
+    for (const at of nodes(count, .14, .87)) {
+      if (stems.length >= maxStems - rootReserve) break;
+      grow(parent, at, random() * Math.PI * 2, true);
+    }
   }
   // Radial buttress roots complete the base, visible within the full-tree frame.
   const rootCount = integer(5, 7), rootAt = .018;

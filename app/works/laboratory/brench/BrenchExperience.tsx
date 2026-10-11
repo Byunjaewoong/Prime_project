@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Download, RefreshCw, RotateCcw, Home, FlaskConical } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { createBranch, type BranchSettings } from "./core/createBranch";
+import { createBranch, type BranchSettings, type BranchRenderBudget } from "./core/createBranch";
 import { createBarkSurface, type BarkSurface } from "./core/barkSurface";
 import { growthTime } from "./core/treeFoliage";
 import { DEFAULT_WIND_SETTINGS, type WindSettings } from "./core/treeWind";
@@ -42,10 +42,12 @@ type Viewer = {
   model: ReturnType<typeof createBranch> | null;
   rotation: { x: number; y: number };
   bark: BarkSurface;
+  budget: BranchRenderBudget;
   zoom: number;
   progress: number;
   wind: WindSettings;
   fit: () => void;
+  capture: () => string;
   dirty: boolean;
   shadowsDirty: boolean;
   setLighting: (contrast: number) => void;
@@ -68,20 +70,23 @@ export default function BrenchExperience() {
   const [zoom, setZoom] = useState(1);
   const [progress, setProgress] = useState(INITIAL_GROWTH);
   const [controlsOpen, setControlsOpen] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [branchCount, setBranchCount] = useState(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    const compact = window.matchMedia("(max-width: 800px), (pointer: coarse)").matches;
+    const budget = compact ? { maxStems: 140, maxLeaves: 1600 }
+      : { maxStems: 420, maxLeaves: 7000 };
     let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     } catch {
-      const errorFrame = requestAnimationFrame(() => setError(true));
+      const errorFrame = requestAnimationFrame(() => setError("이 브라우저에서는 3D 장면을 표시할 수 없습니다."));
       return () => cancelAnimationFrame(errorFrame);
     }
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, compact ? 1.5 : 2));
     renderer.setClearColor(0xf9f8f5, 1);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -99,7 +104,7 @@ export default function BrenchExperience() {
     const key = new THREE.DirectionalLight(0xfff6e9, 3.4);
     key.position.set(-10, 14, 18);
     key.castShadow = true;
-    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.mapSize.set(compact ? 1024 : 2048, compact ? 1024 : 2048);
     key.shadow.camera.left = -14;
     key.shadow.camera.right = 14;
     key.shadow.camera.top = 14;
@@ -116,8 +121,9 @@ export default function BrenchExperience() {
 
     const bark = createBarkSurface(renderer.capabilities.getMaxAnisotropy());
     const viewer: Viewer = {
-      scene, renderer, model: null, rotation: { x: 0, y: 0 }, bark,
-      wind: { ...DEFAULT_WIND_SETTINGS }, zoom: 1, progress: INITIAL_GROWTH, fit: () => {}, dirty: true, shadowsDirty: true, lights: { ambient, key, fill },
+      scene, renderer, model: null, rotation: { x: 0, y: 0 }, bark, budget,
+      wind: { ...DEFAULT_WIND_SETTINGS }, zoom: 1, progress: INITIAL_GROWTH,
+      fit: () => {}, capture: () => "", dirty: true, shadowsDirty: true, lights: { ambient, key, fill },
       setLighting: value => {
         ambient.intensity = 1.45 - value * .6;
         key.intensity = 2.2 + value * 1.2;
@@ -154,9 +160,25 @@ export default function BrenchExperience() {
       viewer.dirty = viewer.shadowsDirty = true;
     };
     viewer.fit = resize;
+    viewer.capture = () => {
+      renderer.shadowMap.needsUpdate = true;
+      renderer.render(scene, camera);
+      return canvas.toDataURL("image/png");
+    };
     resize();
     const observer = new ResizeObserver(resize);
     observer.observe(canvas);
+    const onContextLost = (event: Event) => {
+      event.preventDefault();
+      setError("3D 렌더링이 중단되었습니다. 복구 중입니다.");
+    };
+    const onContextRestored = () => {
+      viewer.fit();
+      viewer.dirty = viewer.shadowsDirty = true;
+      setError(null);
+    };
+    canvas.addEventListener("webglcontextlost", onContextLost);
+    canvas.addEventListener("webglcontextrestored", onContextRestored);
     let frame = 0, previousFrame = performance.now(), windPhase = 0;
     const resetWindClock = () => { previousFrame = performance.now(); };
     document.addEventListener("visibilitychange", resetWindClock);
@@ -194,6 +216,8 @@ export default function BrenchExperience() {
     return () => {
       cancelAnimationFrame(frame);
       document.removeEventListener("visibilitychange", resetWindClock);
+      canvas.removeEventListener("webglcontextlost", onContextLost);
+      canvas.removeEventListener("webglcontextrestored", onContextRestored);
       observer.disconnect();
       viewer.model?.dispose();
       if (viewer.model) scene.remove(viewer.model.group);
@@ -209,19 +233,28 @@ export default function BrenchExperience() {
     if (!viewer) return;
     // Coalesce expensive geometry changes while menu sliders are being dragged.
     const timer = window.setTimeout(() => {
-      const next = createBranch(settings, viewer.bark);
-      next.group.rotation.set(viewer.rotation.x, viewer.rotation.y, 0);
+      let next: ReturnType<typeof createBranch> | null = null;
+      try {
+        next = createBranch(settings, viewer.bark, viewer.budget);
+        next.group.rotation.set(viewer.rotation.x, viewer.rotation.y, 0);
+        next.setGrowth(progressRef.current);
+      } catch (cause) {
+        next?.dispose();
+        console.error("Brench tree generation failed", cause);
+        setError("새 나무를 만들지 못했습니다. 설정을 낮추거나 다시 시도해 주세요.");
+        return;
+      }
       if (viewer.model) {
         viewer.scene.remove(viewer.model.group);
         viewer.model.dispose();
       }
       viewer.model = next;
       viewer.scene.add(next.group);
-      next.setGrowth(progressRef.current);
       viewer.fit();
       viewer.dirty = viewer.shadowsDirty = true;
       setBranchCount(next.count);
-    }, 80);
+      if (!viewer.renderer.getContext().isContextLost()) setError(null);
+    }, viewer.budget.maxStems < 420 ? 250 : 100);
     return () => window.clearTimeout(timer);
   }, [settings]);
 
@@ -253,11 +286,11 @@ export default function BrenchExperience() {
     if (viewer) viewer.rotation = { x: 0, y: 0 };
   };
   const download = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const viewer = viewerRef.current;
+    if (!viewer) return;
     const link = document.createElement("a");
     link.download = `brench-${settings.seed}.png`;
-    link.href = canvas.toDataURL("image/png");
+    link.href = viewer.capture();
     link.click();
   };
 
@@ -280,7 +313,7 @@ export default function BrenchExperience() {
       onPointerCancel={() => { dragRef.current = null; }}
       onLostPointerCapture={() => { dragRef.current = null; }} />
     <div className={styles.caption}><span>BRENCH / TREE STUDY</span><span>{branchCount} STEMS · DRAG TO ROTATE</span></div>
-    {error && <div className={styles.error}>이 브라우저에서는 3D 장면을 표시할 수 없습니다.</div>}
+    {error && <div className={styles.error}>{error}</div>}
     {progress === 0 && <div className={styles.emptyHint}>아래 성장 손잡이를 오른쪽으로 드래그하세요</div>}
     <section className={styles.growth} aria-label="나무 성장 시간축">
       <div className={styles.controlLabel}><span>{progress === 0 ? "발아 전" : progress < .1 ? "발아" : progress < .23 ? "고개 숙인 새싹" : progress < .35 ? "떡잎 펼침" : progress < .54 ? "첫 본잎" : progress < .76 ? "어린 나무" : "성목"} · DRAG</span><output>{Math.round(progress * 100)}%</output></div>

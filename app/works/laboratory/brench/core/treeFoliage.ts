@@ -9,7 +9,7 @@ export function growthTime(progress: number) {
   return p < .28 ? .12 * Math.pow(p / .28, 1.5) : .12 + (p - .28) / .72 * .88;
 }
 
-export function createTreeFoliage(stems: Stem[], settings: BranchSettings) {
+export function createTreeFoliage(stems: Stem[], settings: BranchSettings, maxLeaves = Infinity) {
   const random = randomSource(settings.seed ^ 0x73ad918);
   const geometry = createLeafGeometry(settings.leafType, "canopy");
   const surface = createLeafSurface(settings.leafType);
@@ -41,6 +41,12 @@ export function createTreeFoliage(stems: Stem[], settings: BranchSettings) {
         add(stem, at, phase + i * 2.399963);
       }
     });
+  }
+  const adultCandidates = sites.filter(site => !site.cotyledon);
+  if (adultCandidates.length > maxLeaves) {
+    const selected = new Set(Array.from({ length: maxLeaves }, (_, i) =>
+      adultCandidates[Math.floor((i + .5) * adultCandidates.length / maxLeaves)]));
+    sites.splice(0, sites.length, ...sites.filter(site => site.cotyledon || selected.has(site)));
   }
   const adultSites = sites.filter(site => !site.cotyledon);
   const seedSites = sites.filter(site => site.cotyledon);

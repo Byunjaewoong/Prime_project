@@ -214,12 +214,15 @@ function tube(stem: Stem, random: () => number, bark: BarkSurface, detail: numbe
   return { geometry, flakeGeometry, offsetU, update };
 }
 
-export function createBranch(settings: BranchSettings, bark: BarkSurface) {
+export type BranchRenderBudget = { maxStems: number; maxLeaves: number };
+
+export function createBranch(settings: BranchSettings, bark: BarkSurface,
+  budget: BranchRenderBudget = { maxStems: 420, maxLeaves: 7000 }) {
   const random = randomSource(settings.seed ^ 0x6a09e667);
   const materials: THREE.MeshStandardMaterial[] = [];
   const shootUniforms: { wood: { value: number }; front: { value: number };
     base: { value: THREE.Color }; tip: { value: THREE.Color } }[] = [];
-  const stems = createBranchSkeleton(settings);
+  const stems = createBranchSkeleton(settings, budget.maxStems);
   const group = new THREE.Group();
   const base = stems[0].curve.getPointAt(0);
   const scalePivot = new THREE.Group();
@@ -269,7 +272,7 @@ export function createBranch(settings: BranchSettings, bark: BarkSurface) {
   content.add(seedbed.group);
   const sproutCap = createSproutCap(stems[0], settings.leafSize, settings.leafDensity > 0);
   content.add(sproutCap.mesh);
-  const foliage = createTreeFoliage(stems, settings);
+  const foliage = createTreeFoliage(stems, settings, budget.maxLeaves);
   content.add(foliage.group);
   const wind = createTreeWind(group, settings.height, base.y, settings.thickness);
   const paleBase = new THREE.Color(0xe6dcaa), greenBase = new THREE.Color(0x71ab4e);
