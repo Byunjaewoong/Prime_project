@@ -916,12 +916,14 @@ function woody(args){
   var yof = (args.yof != undefined) ? args.yof : 0;
   var PAR = (args.PAR != undefined) ? args.PAR : genParams();
 
-  var cwid = 1200
+  // Leave extra drawing room when the host requests a longer woody stem.
+  var cwid = Math.ceil(1200 + Math.max(0, ((args.branchLength != undefined) ? args.branchLength : 400) - 400)*2)
   var lay0 = Layer.empty(cwid)
   var lay1 = Layer.empty(cwid)
 
   var PL = branch({
     ctx:lay0,xof:cwid*0.5,yof:cwid*0.7,
+    len:(args.branchLength != undefined) ? args.branchLength : 400,
     wid:PAR.branchWidth,
     twi:PAR.branchTwist,
     dep:PAR.branchDepth,

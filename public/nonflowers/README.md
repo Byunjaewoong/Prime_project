@@ -17,6 +17,11 @@ The default vintage framing uses a taller 1350-unit field, 85% flower heads and
 visitors adjust bloom size (50–140%), stem length (95–145%) and output resolution
 (1×, 1.5× or 2×, subject to a 3.2–6 megapixel canvas budget). These settings
 are stored in the URL with the seed and apply to PNG exports.
+In Mixed mode, the original plant has separate controls for total scale
+(40–120%, default 65%), stem length (80–140%, default 120%) and petal length
+(60–180%, default 100%). Herbaceous stems use `PAR.stemLength`; woody stems
+use an optional root branch length passed to the otherwise original branching
+algorithm. The shared output resolution control also applies to Mixed mode.
 The Flower Shape menu has a Vintage mode and a Mixed mode. Mixed regeneration
 draws the vintage meadow and then a complete original Nonflowers plant using
 the upstream `woody()` or `herbal()` function with original `genParams()` values.

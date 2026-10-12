@@ -28,12 +28,22 @@
         </div>
         <p class="mode-hint">선택 후 랜덤 재생성을 누르면 적용됩니다.</p>
       </fieldset>
-      <fieldset class="composition-controls">
-        <legend>구도와 출력 <span>COMPOSITION</span></legend>
+      <fieldset id="vintage-controls" class="composition-controls">
+        <legend>빈티지 꽃 <span>VINTAGE PLANT</span></legend>
         <label class="control-row" for="bloom-size"><span>꽃 크기 <output id="bloom-size-value">85%</output></span><input id="bloom-size" type="range" min="50" max="140" step="5" value="85"></label>
         <label class="control-row" for="stem-length"><span>줄기 길이 <output id="stem-length-value">115%</output></span><input id="stem-length" type="range" min="95" max="145" step="5" value="115"></label>
-        <label class="quality-row" for="resolution">출력 해상도 <select id="resolution"><option value="1">표준 · 1×</option><option value="1.5">균형 · 1.5×</option><option value="2" selected>고해상도 · 2×</option></select></label>
-        <p class="mode-hint">해상도는 이미지 저장에도 적용됩니다.</p>
+      </fieldset>
+      <fieldset id="mixed-controls" class="composition-controls" hidden>
+        <legend>믹싱모드 꽃 <span>ORIGINAL PLANT</span></legend>
+        <label class="control-row" for="mixed-size"><span>전체 크기 <output id="mixed-size-value">65%</output></span><input id="mixed-size" type="range" min="40" max="120" step="5" value="65"></label>
+        <label class="control-row" for="mixed-stem"><span>줄기 길이 <output id="mixed-stem-value">120%</output></span><input id="mixed-stem" type="range" min="80" max="140" step="5" value="120"></label>
+        <label class="control-row" for="mixed-petal"><span>꽃 길이 · 꽃잎 <output id="mixed-petal-value">100%</output></span><input id="mixed-petal" type="range" min="60" max="180" step="5" value="100"></label>
+        <p class="mode-hint">원본 식물에만 적용됩니다.</p>
+      </fieldset>
+      <fieldset class="composition-controls">
+        <legend>출력 <span>RESOLUTION</span></legend>
+        <label class="quality-row" for="resolution">해상도 <select id="resolution"><option value="1">표준 · 1×</option><option value="1.5">균형 · 1.5×</option><option value="2" selected>고해상도 · 2×</option></select></label>
+        <p class="mode-hint">모든 모드와 PNG 저장에 적용됩니다.</p>
       </fieldset>
       <fieldset>
         <legend>배경 톤 <span>PAPER TONE</span></legend>
