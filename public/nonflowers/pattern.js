@@ -74,10 +74,10 @@
   mixedSizeInput.value = String(readPercent('mixedSize', 50, 40, 120));
   mixedStemInput.value = String(readPercent('mixedStem', 120, 80, 400));
   mixedPetalInput.value = String(readPercent('mixedPetal', 100, 60, 180));
-  patternSizeInput.value = String(readPercent('patternSize', 50, 25, 100));
-  patternStemInput.value = String(readPercent('patternStem', 100, 60, 200));
-  patternSpacingInput.value = String(readPercent('patternSpacing', 8, 0, 80));
-  patternRatioInput.value = String(readPercent('patternRatio', 50, 0, 100));
+  patternSizeInput.value = String(readPercent('patternSize', 40, 25, 100));
+  patternStemInput.value = String(readPercent('patternStem', 30, 20, 200));
+  patternSpacingInput.value = String(readPercent('patternSpacing', 20, 0, 80));
+  patternRatioInput.value = String(readPercent('patternRatio', 100, 0, 100));
   if (mixedFlowers.length) {
     const latest = mixedFlowers.at(-1);
     mixedSeed = latest.seed;
@@ -352,6 +352,7 @@
       // blossoms looked like isolated specks after their branch was removed.
       par.flowerLength = Math.max(par.flowerLength, 20);
       par.flowerWidth = Math.max(par.flowerWidth, 11);
+      par.flowerChance = Math.max(par.flowerChance, .16);
     }
     let geometryScale;
     if (kind === 'woody') geometryScale = woody({ ctx: source, xof: sourceSize / 2, yof: sourceSize - 50, PAR: par, branchLength: 400 * stemScale, flowersOnly });
@@ -390,19 +391,17 @@
     const cols = Math.ceil(worldWidth / cell);
     const rows = Math.ceil(worldHeight / cell);
     const occupied = new Uint8Array(cols * rows);
+    const distance = new Uint16Array(cols * rows);
     const spacing = Number(patternSpacingInput.value);
-    const radius = Math.ceil(spacing / cell);
-    const marginOffsets = [];
-    for (let dy = -radius; dy <= radius; dy++) for (let dx = -radius; dx <= radius; dx++) {
-      if (dx * dx + dy * dy <= radius * radius) marginOffsets.push([dx, dy]);
-    }
+    const spacingCells = spacing / cell;
+    const coverageRadius = Math.max(3, Math.round((spacing + 8) / cell * 10));
     const size = Number(patternSizeInput.value);
     const stem = Number(patternStemInput.value);
     const stemRatio = Number(patternRatioInput.value) / 100;
-    const target = Math.max(34, Math.min(78, Math.round(worldWidth * worldHeight / 32000)));
-    // Stemmed silhouettes consume more room than flower-only clusters. Budget
-    // them by occupied area so the resulting *count* stays near the UI ratio.
-    const stemTarget = Math.round(target * stemRatio * (.6 + .4 * stemRatio));
+    const maxCount = Math.max(70, Math.min(220, Math.ceil(worldWidth * worldHeight / 8500)));
+    const motifPoolSize = 28;
+    let coverage = 0;
+    let hasPainted = false;
     const rand = (() => {
       let state = seed >>> 0;
       return () => {
@@ -414,35 +413,40 @@
     })();
     const variants = new Map();
     const activeKeys = new Set();
+    const failedKeys = new Set();
     const placements = [];
     let frontier = [];
     let generated = 0;
 
     async function prototype(kind, index) {
-      // Each slot receives its own seed. Retrying an empty blossom layer is
-      // deterministic and never substitutes a recycled shape.
+      // Keep a varied, bounded motif pool so filling a large screen does not
+      // allocate hundreds of full-size original plant rasters.
+      const motifIndex = index % motifPoolSize;
       for (let attempt = 0; attempt < 4; attempt++) {
-        const flowerSeed = 2 + ((seed + Math.imul(index + 1, 0x9e3779b9)
+        const flowerSeed = 2 + ((seed + Math.imul(motifIndex + 1, 0x9e3779b9)
           + Math.imul(attempt, 0x85ebca6b) + (kind === 'head' ? 0x41c64e6d : 0)) >>> 0) % 4294967293;
         const sizeJitter = (Math.imul(flowerSeed ^ (flowerSeed >>> 16), 0x85ebca6b) >>> 0) / 4294967296;
         const flower = { seed: flowerSeed,
-          size: kind === 'head' ? Math.max(24, Math.round(size * (.75 + .18 * sizeJitter) * (1 - .18 * index / target))) : size,
+          size: kind === 'head' ? Math.max(24, Math.round(size * (.75 + .18 * sizeJitter))) : size,
           stem, petal: 100 };
         const key = `${kind}:${originalKey(flower, worldWidth, worldHeight)}`;
+        if (failedKeys.has(key)) continue;
         let sprite = patternCache.get(key);
         if (!sprite) {
           Prng.s = flowerSeed;
           try {
             sprite = originalPlant(worldWidth, worldHeight, flower, kind === 'head');
           } catch (error) {
-            if (kind === 'head' && error.message === 'Original Nonflowers plant has no visible pixels') continue;
+            if (kind === 'head' && error.message === 'Original Nonflowers plant has no visible pixels') {
+              failedKeys.add(key);
+              continue;
+            }
             throw error;
           }
           patternCache.set(key, sprite);
           generated++;
+          if (generated % 2 === 0) await new Promise(resolve => setTimeout(resolve, 0));
         }
-        activeKeys.add(key);
-        if (generated % 2 === 0) await new Promise(resolve => setTimeout(resolve, 0));
         return { sprite, key };
       }
       return null;
@@ -466,45 +470,85 @@
       const pixels = context.getImageData(0, 0, w, h).data;
       const points = [];
       const painted = new Uint8Array(w * h);
+      let massX = 0, massY = 0;
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
         if (pixels[(y * w + x) * 4 + 3] > 8) {
           painted[y * w + x] = 1;
           points.push([x, y]);
+          massX += x; massY += y;
         }
       }
       const rim = points.filter(([x, y]) => x === 0 || y === 0 || x === w - 1 || y === h - 1 ||
         !painted[y * w + x - 1] || !painted[y * w + x + 1] ||
         !painted[(y - 1) * w + x] || !painted[(y + 1) * w + x]);
       mask.width = mask.height = 1;
-      const result = { angle, w, h, points, rim };
+      const stride = Math.max(1, Math.floor(points.length / 96));
+      const samples = points.filter((_, index) => index % stride === 0);
+      const centroid = points.length ? [Math.round(massX / points.length), Math.round(massY / points.length)] : [Math.floor(w / 2), Math.floor(h / 2)];
+      const result = { angle, w, h, points, rim, samples, centroid };
       variants.set(cacheKey, result);
       return result;
     }
 
     function fits(shape, left, top) {
       let inside = 0;
-      let contact = 0;
       for (const [x, y] of shape.points) {
         const gx = left + x, gy = top + y;
         if (gx < 0 || gx >= cols || gy < 0 || gy >= rows) continue;
         if (occupied[gy * cols + gx]) return null;
         inside++;
-        if ((gx > 0 && occupied[gy * cols + gx - 1]) ||
-            (gx + 1 < cols && occupied[gy * cols + gx + 1]) ||
-            (gy > 0 && occupied[(gy - 1) * cols + gx]) ||
-            (gy + 1 < rows && occupied[(gy + 1) * cols + gx])) contact++;
       }
-      return inside >= shape.points.length * .66 ? { inside, contact } : null;
+      if (inside < shape.points.length * .66) return null;
+      let totalGap = 0, far = 0, sampled = 0;
+      for (const [x, y] of shape.samples) {
+        const gx = left + x, gy = top + y;
+        if (gx < 0 || gx >= cols || gy < 0 || gy >= rows) continue;
+        const gap = hasPainted ? distance[gy * cols + gx] : coverageRadius;
+        totalGap += gap;
+        if (gap > coverageRadius) far++;
+        sampled++;
+      }
+      if (!sampled) return null;
+      const cx = left + shape.centroid[0], cy = top + shape.centroid[1];
+      const centerGap = hasPainted && cx >= 0 && cx < cols && cy >= 0 && cy < rows
+        ? distance[cy * cols + cx] : totalGap / sampled;
+      return { inside, meanGap: (totalGap / sampled * .8 + centerGap * .2) / 10,
+        newArea: far / sampled };
     }
 
     function reserve(shape, left, top) {
       for (const [x, y] of shape.points) {
         const gx = left + x, gy = top + y;
-        for (const [dx, dy] of marginOffsets) {
-          const px = gx + dx, py = gy + dy;
-          if (px >= 0 && px < cols && py >= 0 && py < rows) occupied[py * cols + px] = 1;
-        }
+        if (gx >= 0 && gx < cols && gy >= 0 && gy < rows) occupied[gy * cols + gx] = 1;
       }
+      hasPainted = true;
+      distance.fill(65535);
+      for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+        const i = y * cols + x;
+        if (occupied[i]) { distance[i] = 0; continue; }
+        let value = distance[i];
+        if (x > 0) value = Math.min(value, distance[i - 1] + 10);
+        if (y > 0) {
+          value = Math.min(value, distance[i - cols] + 10);
+          if (x > 0) value = Math.min(value, distance[i - cols - 1] + 14);
+          if (x + 1 < cols) value = Math.min(value, distance[i - cols + 1] + 14);
+        }
+        distance[i] = value;
+      }
+      let covered = 0;
+      for (let y = rows - 1; y >= 0; y--) for (let x = cols - 1; x >= 0; x--) {
+        const i = y * cols + x;
+        let value = distance[i];
+        if (x + 1 < cols) value = Math.min(value, distance[i + 1] + 10);
+        if (y + 1 < rows) {
+          value = Math.min(value, distance[i + cols] + 10);
+          if (x > 0) value = Math.min(value, distance[i + cols - 1] + 14);
+          if (x + 1 < cols) value = Math.min(value, distance[i + cols + 1] + 14);
+        }
+        distance[i] = value;
+        if (value <= coverageRadius) covered++;
+      }
+      coverage = covered / distance.length;
       frontier = [];
       for (let y = 1; y < rows - 1; y++) for (let x = 1; x < cols - 1; x++) {
         const position = y * cols + x;
@@ -513,21 +557,27 @@
       }
     }
 
-    async function placeKind(kind, count) {
-      if (!count) return;
+    async function fillPattern() {
+      const nextIndex = { stem: 0, head: 0 };
+      let stemmed = 0;
       let consecutiveMisses = 0;
-      for (let index = 0; index < count; index++) {
+      for (let slot = 0; slot < maxCount && (placements.length < 12 || coverage < .9); slot++) {
         if (id !== generation || disposed) return;
+        const kind = stemRatio === 1 || (stemRatio > 0 && stemmed / Math.max(1, placements.length) < stemRatio) ? 'stem' : 'head';
+        const index = nextIndex[kind]++;
         const item = await prototype(kind, index);
-        if (!item) continue;
+        if (!item) {
+          if (++consecutiveMisses >= 10) break;
+          continue;
+        }
         const { sprite, key } = item;
         let best = null;
-        for (let trial = 0; trial < 150; trial++) {
+        for (let trial = 0; trial < 180; trial++) {
           const turn = Math.floor(rand() * 12);
           const shape = variant(sprite, key, turn);
           if (!shape.points.length) continue;
           let left, top;
-          if (frontier.length && shape.rim.length && rand() < (kind === 'head' ? .78 : .48)) {
+          if (frontier.length && shape.rim.length && rand() < .4) {
             const [edgeX, edgeY] = frontier[Math.floor(rand() * frontier.length)];
             const [rimX, rimY] = shape.rim[Math.floor(rand() * shape.rim.length)];
             left = edgeX - rimX + Math.floor(rand() * 5) - 2;
@@ -538,27 +588,28 @@
           }
           const fit = fits(shape, left, top);
           if (!fit) continue;
-          // Reward long near-contacts between irregular outlines while the
-          // reserved margin prevents the painted pixels from touching.
-          const score = fit.contact / Math.sqrt(shape.points.length) +
-            fit.inside / shape.points.length * .55 + rand() * .04;
+          // Spacing is a mean over the painted area and its center of mass.
+          // Favor uncovered regions while keeping motifs around the requested gap.
+          const targetGap = spacingCells + Math.sqrt(shape.points.length / Math.PI) * .32;
+          const score = Math.exp(-Math.abs(fit.meanGap - targetGap) / Math.max(2, targetGap)) * .55 +
+            fit.newArea * .35 + fit.inside / shape.points.length * .1 + rand() * .015;
           if (!best || score > best.score) best = { shape, left, top, score, sprite, kind };
         }
         if (best) {
           reserve(best.shape, best.left, best.top);
           placements.push(best);
+          activeKeys.add(key);
+          if (kind === 'stem') stemmed++;
           consecutiveMisses = 0;
         } else {
-          activeKeys.delete(key);
           consecutiveMisses++;
-          if (consecutiveMisses >= 5) break;
+          if (consecutiveMisses >= 10) break;
         }
-        if (index % 3 === 2) await new Promise(resolve => setTimeout(resolve, 0));
+        if (slot % 3 === 2) await new Promise(resolve => setTimeout(resolve, 0));
       }
     }
 
-    await placeKind('stem', stemTarget);
-    await placeKind('head', stemRatio === 1 ? 0 : target - placements.length);
+    await fillPattern();
     if (id !== generation || disposed) return null;
     for (const item of placements) {
       painter.save();
@@ -573,7 +624,7 @@
       patternCache.delete(key);
     }
     return { count: placements.length, stemmed: placements.filter(item => item.kind === 'stem').length,
-      heads: placements.filter(item => item.kind === 'head').length, generated };
+      heads: placements.filter(item => item.kind === 'head').length, generated, coverage };
   }
 
   function drawSprite(context, sprite) {
@@ -788,8 +839,9 @@
       canvas.dataset.patternStemmed = String(patternStats?.stemmed || 0);
       canvas.dataset.patternHeads = String(patternStats?.heads || 0);
       canvas.dataset.patternGenerated = String(patternStats?.generated || 0);
+      canvas.dataset.patternCoverage = patternStats ? patternStats.coverage.toFixed(3) : '0';
       document.getElementById('pattern-count').value = patternStats
-        ? `${patternStats.count} · ${patternStats.stemmed} stemmed / ${patternStats.heads} flowers` : '0';
+        ? `${patternStats.count} · ${patternStats.stemmed} stemmed / ${patternStats.heads} flowers · ${Math.round(patternStats.coverage * 100)}% area` : '0';
       document.getElementById('mixed-edition-row').hidden = mode !== 'mixed';
       document.getElementById('mixed-edition').value = mixedSeed.toString(16).toUpperCase().padStart(8, '0');
       document.getElementById('mixed-count').value = String(currentMixedFlowers.length);
@@ -861,8 +913,8 @@
     for (const [name, value, fallback] of [
       ['bloom', bloomInput.value, '85'], ['stem', stemInput.value, '115'], ['quality', resolutionInput.value, '2'],
       ['mixedSize', mixedSizeInput.value, '50'], ['mixedStem', mixedStemInput.value, '120'], ['mixedPetal', mixedPetalInput.value, '100'],
-      ['patternSize', patternSizeInput.value, '50'], ['patternStem', patternStemInput.value, '100'],
-      ['patternSpacing', patternSpacingInput.value, '8'], ['patternRatio', patternRatioInput.value, '50'],
+      ['patternSize', patternSizeInput.value, '40'], ['patternStem', patternStemInput.value, '30'],
+      ['patternSpacing', patternSpacingInput.value, '20'], ['patternRatio', patternRatioInput.value, '100'],
     ]) {
       if (value === fallback) url.searchParams.delete(name);
       else url.searchParams.set(name, value);

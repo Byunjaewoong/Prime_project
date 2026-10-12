@@ -63,14 +63,15 @@ millions of needless noise evaluations per generated plant.
 The bundled Material Icons font is from Google's Material Design Icons project
 and is licensed under Apache 2.0; its license text is in fonts/LICENSE.
 
-Pattern mode composes independently seeded complete Nonflowers plants and
-stemless flower clusters. The latter use the same `herbal()` plant
-generator, but omit its stem-and-leaf layer, preserving the original blossom
-positions and size variation. A five-unit alpha occupancy grid checks painted
-silhouettes, reserves a user-set margin, and proposes new positions by matching
-one motif's contour to the empty frontier beside another. Stemmed motifs are
-placed first; smaller flower clusters fill the remaining gaps. The menu controls
-stemmed size (50% by default), stem length (100%), spacing (8 units), and the
-stemmed-to-flower ratio. Regenerate pattern chooses a new seed; the controls and
-seed are saved in the URL. Cached sprites are reused when spacing and ratio
-change, and the PNG export includes the entire composition.
+Pattern mode composes complete Nonflowers plants and stemless flower clusters.
+The latter use the same `herbal()` generator but omit its stem-and-leaf layer.
+The default is 40% stemmed size, 30% stem length, 20 units of spacing, and a
+100:0 stemmed-to-cluster ratio. A five-unit grid records painted silhouette
+area. An approximate distance field measures the gap across sampled painted
+pixels and each motif's center of mass, so spacing is judged over the whole
+shape. Placement also favors uncovered regions. The number of motifs adapts
+to the canvas area and stops near 90% spatial coverage (or when no fitting
+space remains), with a bounded seed pool and placement budget for performance.
+Regenerate pattern chooses a new seed; the controls and seed are saved in the
+URL. Cached sprites are reused when spacing and ratio change, and the PNG
+export includes the entire composition.

@@ -21,6 +21,7 @@ try {
     await page.goto(`${base}/works/laboratory/nonFlowers`);
     const frame = await (await page.waitForSelector('iframe')).contentFrame();
     const ready = () => frame.waitForFunction(() => document.querySelector('#meadow')?.getAttribute('aria-busy') === 'false' && document.querySelector('#status').hidden);
+    await frame.goto(`${base}/nonflowers/index.html?mode=vintage&seed=12345`);
     await ready();
     const image = () => frame.locator('#meadow').evaluate(c => c.toDataURL());
     const first = await image();
@@ -60,7 +61,7 @@ try {
     let previous = first;
     // Mode changes take effect with regeneration, and Mixed must retain both
     // the new meadow petals and the original Nonflowers leaf-built petals.
-    await frame.getByRole('radio', { name: '혼합 · 원본 + 빈티지' }).check();
+    await frame.getByRole('radio', { name: 'Nonflower' }).check();
     assert.equal(await frame.locator('#meadow').getAttribute('data-mode'), 'vintage');
     const start = Date.now();
     const repetitions = process.env.VERIFY_QUICK ? 1 : 12;
@@ -135,7 +136,7 @@ try {
     assert(await image() === previous, 'Saved seed must reproduce the composition after reload');
     assert.equal(await frame.locator('#meadow').getAttribute('data-mode'), 'mixed');
     await frame.getByRole('button', { name: '메뉴 열기', exact: true }).click();
-    await frame.getByRole('radio', { name: '빈티지', exact: true }).check();
+    await frame.getByRole('radio', { name: 'Vintage', exact: true }).check();
     await frame.locator('#regenerate').click();
     await ready();
     assert.equal(await frame.locator('#meadow').getAttribute('data-mode'), 'vintage');
