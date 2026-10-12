@@ -291,10 +291,11 @@
     const source = Layer.empty(sourceSize);
     par.flowerLength *= petalScale;
     par.innerLength *= petalScale;
-    if (kind === 'woody') woody({ ctx: source, xof: sourceSize / 2, yof: sourceSize - 50, PAR: par, branchLength: 400 * stemScale });
+    let geometryScale;
+    if (kind === 'woody') geometryScale = woody({ ctx: source, xof: sourceSize / 2, yof: sourceSize - 50, PAR: par, branchLength: 400 * stemScale });
     else {
       par.stemLength *= stemScale;
-      herbal({ ctx: source, xof: sourceSize / 2, yof: sourceSize, PAR: par, adaptiveCanvas: true });
+      geometryScale = herbal({ ctx: source, xof: sourceSize / 2, yof: sourceSize, PAR: par, adaptiveCanvas: true });
     }
     solidifyPigment(source);
     const bounds = Layer.bound(source);
@@ -304,7 +305,10 @@
     }
     const width = bounds.xmax - bounds.xmin + 1;
     const height = bounds.ymax - bounds.ymin + 1;
-    const scale = Math.min(worldHeight * .80 / height, worldWidth * .78 / width, 2.2) * Number(mixedSizeInput.value) / 100;
+    // Fitting each longer stem to the viewport made unrelated petals and leaves
+    // shrink. Keep the camera fixed and undo the bounded internal raster scale.
+    const scale = Math.min(worldHeight * .80 / 850, worldWidth * .78 / 350, 2.2)
+      * Number(mixedSizeInput.value) / 100 / geometryScale;
     const centerX = worldWidth * random(.37, .63);
     const baseY = worldHeight + random(5, 65);
     context.save();

@@ -24,6 +24,10 @@ use an optional root branch length passed to the otherwise original branching
 algorithm. The shared output resolution control also applies to Mixed mode.
 Long stems use a bounded internal raster size so 400% can render without an
 unbounded canvas allocation; the stem slider renders when released.
+The mixed plant uses a fixed composition scale independent of its stem length;
+its internal raster downscale is reversed when placing it, keeping petals and
+leaves the same on-screen size as the stem length changes. Woody branching only
+lengthens the root stem; child branches keep their original length distribution.
 The Flower Shape menu has a Vintage mode and a Mixed mode. Mixed regeneration
 draws the vintage meadow and then a complete original Nonflowers plant using
 the upstream `woody()` or `herbal()` function with original `genParams()` values.

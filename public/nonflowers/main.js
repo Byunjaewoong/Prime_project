@@ -650,6 +650,7 @@ function branch(args){
   var yof = (args.yof != undefined) ? args.yof : 0;
   var rot = (args.rot != undefined) ? args.rot : [PI/2,0,0];
   var len = (args.len != undefined) ? args.len : 400;
+  var childLength = (args.childLength != undefined) ? args.childLength : len;
   var seg = (args.seg != undefined) ? args.seg : 40;
   var wid = (args.wid != undefined) ? args.wid : 1;
   var twi = (args.twi != undefined) ? args.twi : 5;
@@ -712,7 +713,7 @@ function branch(args){
         xof:xof+P[ind].x,yof:yof+P[ind].y,
         rot:[r[0]+normRand(-1,1)*PI/6,r[1]+normRand(-1,1)*PI/6,r[2]+normRand(-1,1)*PI/6],
         seg:seg,
-        len:len*normRand(0.4,0.6),
+        len:childLength*normRand(0.4,0.6),
         wid:wid*normRand(0.4,0.7),
         twi:twi*0.7,
         dep:dep-1
@@ -918,7 +919,7 @@ function woody(args){
 
   // Expand the logical drawing room for long stems, while bounding raster cost.
   var branchLength = (args.branchLength != undefined) ? args.branchLength : 400
-  var logicalWidth = Math.max(1200,Math.ceil(branchLength*2.7))
+  var logicalWidth = Math.max(1200,Math.ceil((branchLength+400)/0.7))
   var renderScale = Math.min(1,1600/logicalWidth)
   var cwid = Math.ceil(logicalWidth*renderScale)
   var lay0 = Layer.empty(cwid)
@@ -929,6 +930,7 @@ function woody(args){
   var PL = branch({
     ctx:lay0,xof:logicalWidth*0.5,yof:logicalWidth*0.7,
     len:branchLength,
+    childLength:400,
     wid:PAR.branchWidth,
     twi:PAR.branchTwist,
     dep:PAR.branchDepth,
@@ -1025,6 +1027,7 @@ function woody(args){
   Layer.blit(ctx,lay0,{ble:"multiply",xof:xref,yof:yref})
   Layer.blit(ctx,lay1,{ble:"normal",xof:xref,yof:yref})
 
+  return renderScale
 }
 
 // generate a herbaceous plant
@@ -1165,6 +1168,7 @@ function herbal(args){
   Layer.blit(ctx,lay0,{ble:"multiply",xof:xref,yof:yref})
   Layer.blit(ctx,lay1,{ble:"normal",xof:xref,yof:yref})
 
+  return renderScale
 }
 // collection of image filters
 var Filter = new function(){
