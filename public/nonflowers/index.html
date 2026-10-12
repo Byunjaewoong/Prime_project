@@ -26,8 +26,9 @@
         <div class="mode-options" role="radiogroup" aria-label="꽃 형태">
           <label><input type="radio" name="flower-mode" value="mixed" checked><span>Nonflower</span></label>
           <label><input type="radio" name="flower-mode" value="vintage"><span>Vintage</span></label>
+          <label><input type="radio" name="flower-mode" value="pattern"><span>Pattern</span></label>
         </div>
-        <p class="mode-hint">모드 변경은 NEW COMPOSITION을 누르면 적용됩니다.</p>
+        <p class="mode-hint">모드 변경은 NEW COMPOSITION을 누르면 적용됩니다. Pattern은 아래 재생성 버튼으로도 시작할 수 있습니다.</p>
         <label class="visibility-row" for="show-vintage"><span>Vintage flowers</span><input id="show-vintage" type="checkbox" role="switch"><span class="switch-track" aria-hidden="true"></span></label>
       </fieldset>
       <fieldset id="vintage-controls" class="composition-controls" hidden>
@@ -43,6 +44,15 @@
         <label class="control-row" for="mixed-depth"><span>앞뒤 깊이 <output id="mixed-depth-value">50%</output></span><input id="mixed-depth" type="range" min="0" max="100" step="1" value="50"></label>
         <p class="mode-hint">가장 최근 Nonflower를 조절합니다. ↻ nonflower는 기존 꽃을 유지하며 한 송이를 더합니다.</p>
         <div class="edition">NONFLOWERS <output id="mixed-count">1</output></div>
+      </fieldset>
+      <fieldset id="pattern-controls" class="composition-controls" hidden>
+        <legend>Pattern</legend>
+        <label class="control-row" for="pattern-size"><span>Stemmed size <output id="pattern-size-value">50%</output></span><input id="pattern-size" type="range" min="25" max="100" step="5" value="50"></label>
+        <label class="control-row" for="pattern-stem"><span>Stem length <output id="pattern-stem-value">100%</output></span><input id="pattern-stem" type="range" min="60" max="200" step="5" value="100"></label>
+        <label class="control-row" for="pattern-spacing"><span>Flower spacing <output id="pattern-spacing-value">24</output></span><input id="pattern-spacing" type="range" min="0" max="80" step="4" value="24"></label>
+        <label class="control-row" for="pattern-ratio"><span>Stemmed : head only <output id="pattern-ratio-value">50 : 50</output></span><input id="pattern-ratio" type="range" min="0" max="100" step="5" value="50"></label>
+        <button id="pattern-regenerate" class="action primary" type="button">↻ Regenerate pattern</button>
+        <div class="edition">PLACED <output id="pattern-count">0</output></div>
       </fieldset>
       <span class="section-title">Output</span>
       <fieldset class="composition-controls">

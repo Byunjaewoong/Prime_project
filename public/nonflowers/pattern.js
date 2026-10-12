@@ -44,7 +44,7 @@
     return makeMixedFlower(flowerSeed, size, stem, petal, depth / 1000);
   });
   let mixedFlowers = parsedMix?.length && parsedMix.every(Boolean) ? parsedMix : [];
-  let mode = query.get('mode') === 'vintage' ? 'vintage' : 'mixed';
+  let mode = ['vintage', 'pattern'].includes(query.get('mode')) ? query.get('mode') : 'mixed';
   let pendingMode = mode;
   const vintageToggle = document.getElementById('show-vintage');
   let showVintage = query.has('vintage') ? query.get('vintage') === '1' : mode === 'vintage';
@@ -55,12 +55,18 @@
   const resolutionInput = document.getElementById('resolution');
   const vintageControls = document.getElementById('vintage-controls');
   const mixedControls = document.getElementById('mixed-controls');
+  const patternControls = document.getElementById('pattern-controls');
+  const patternGenerateButton = document.getElementById('pattern-regenerate');
+  const patternSizeInput = document.getElementById('pattern-size');
+  const patternStemInput = document.getElementById('pattern-stem');
+  const patternSpacingInput = document.getElementById('pattern-spacing');
+  const patternRatioInput = document.getElementById('pattern-ratio');
   const mixedSizeInput = document.getElementById('mixed-size');
   const mixedStemInput = document.getElementById('mixed-stem');
   const mixedPetalInput = document.getElementById('mixed-petal');
   const mixedDepthInput = document.getElementById('mixed-depth');
   const readPercent = (name, fallback, min, max) => {
-    const value = Number(query.get(name));
+    const value = query.has(name) ? Number(query.get(name)) : NaN;
     return Number.isFinite(value) && value >= min && value <= max ? value : fallback;
   };
   bloomInput.value = String(readPercent('bloom', 85, 50, 140));
@@ -68,6 +74,10 @@
   mixedSizeInput.value = String(readPercent('mixedSize', 50, 40, 120));
   mixedStemInput.value = String(readPercent('mixedStem', 120, 80, 400));
   mixedPetalInput.value = String(readPercent('mixedPetal', 100, 60, 180));
+  patternSizeInput.value = String(readPercent('patternSize', 50, 25, 100));
+  patternStemInput.value = String(readPercent('patternStem', 100, 60, 200));
+  patternSpacingInput.value = String(readPercent('patternSpacing', 24, 0, 80));
+  patternRatioInput.value = String(readPercent('patternRatio', 50, 0, 100));
   if (mixedFlowers.length) {
     const latest = mixedFlowers.at(-1);
     mixedSeed = latest.seed;
@@ -85,8 +95,13 @@
   for (const [input, output] of [[mixedSizeInput, 'mixed-size-value'], [mixedStemInput, 'mixed-stem-value'], [mixedPetalInput, 'mixed-petal-value'], [mixedDepthInput, 'mixed-depth-value']]) {
     document.getElementById(output).value = `${input.value}%`;
   }
+  document.getElementById('pattern-size-value').value = `${patternSizeInput.value}%`;
+  document.getElementById('pattern-stem-value').value = `${patternStemInput.value}%`;
+  document.getElementById('pattern-spacing-value').value = patternSpacingInput.value;
+  document.getElementById('pattern-ratio-value').value = `${patternRatioInput.value} : ${100 - Number(patternRatioInput.value)}`;
   mixedControls.hidden = pendingMode !== 'mixed';
-  vintageControls.hidden = pendingMode === 'mixed';
+  vintageControls.hidden = pendingMode !== 'vintage';
+  patternControls.hidden = pendingMode !== 'pattern';
   let flowers = null;
   let generation = 0;
   let resizeTimer;
@@ -94,6 +109,7 @@
   let frame = 0;
   let disposed = false;
   const originalCache = new Map();
+  const patternCache = new Map();
   const vintageCache = new Map();
   let vintageCacheSignature = '';
   let vintageCachePixels = 0;
@@ -355,8 +371,195 @@
     return { canvas: sprite, kind, x: centerX - width * scale / 2, y: baseY - height * scale, width: width * scale, height: height * scale };
   }
 
+  // A flower-only motif uses the upstream Nonflowers petal geometry and its
+  // generated pigment palette, placed radially without drawing a stalk.
+  function originalHead(worldWidth, worldHeight, flower) {
+    const par = genParams({ silent: true });
+    const source = Layer.empty(520);
+    source.translate(260, 260);
+    const count = Math.max(4, Math.min(12, par.flowerPetal));
+    const length = Math.max(50, par.flowerLength * 2.3) * flower.petal / 100;
+    const width = Math.max(14, par.flowerWidth * 1.6);
+    const phase = random(0, tau);
+    for (let index = 0; index < count; index++) {
+      source.save();
+      source.rotate(phase + index / count * tau + random(-.09, .09));
+      leaf({ ctx: source, flo: true, xof: 0, yof: 0,
+        rot: [Math.PI / 2, 0, 0], len: length * random(.84, 1.12),
+        wid: t => par.flowerShape(t) * width,
+        vei: [0], col: par.flowerColor, cof: par.flowerColorCurve,
+        ben: t => [par.flowerOpenCurve(t, .5), 0, 0],
+      });
+      source.restore();
+    }
+    source.beginPath();
+    source.arc(0, 0, Math.max(4, width * .3), 0, tau);
+    source.fillStyle = hsv(par.innerColor.min[0], par.innerColor.min[1], par.innerColor.min[2], 1);
+    source.fill();
+    source.setTransform(1, 0, 0, 1, 0, 0);
+    solidifyPigment(source);
+    const bounds = Layer.bound(source);
+    const sprite = document.createElement('canvas');
+    sprite.width = bounds.xmax - bounds.xmin + 1;
+    sprite.height = bounds.ymax - bounds.ymin + 1;
+    sprite.getContext('2d').drawImage(source.canvas, bounds.xmin, bounds.ymin,
+      sprite.width, sprite.height, 0, 0, sprite.width, sprite.height);
+    source.canvas.width = source.canvas.height = 1;
+    const scale = Math.min(worldHeight * .80 / 850, worldWidth * .78 / 350, 2.2) * flower.size / 100;
+    return { canvas: sprite, kind: 'head', width: sprite.width * scale, height: sprite.height * scale };
+  }
+
   const originalKey = (flower, worldWidth, worldHeight) =>
     `${flower.seed}:${flower.size}:${flower.stem}:${flower.petal}:${worldWidth}:${worldHeight}`;
+
+  // Pack the painted silhouettes rather than their rectangular transparent
+  // sprites. A coarse occupancy grid keeps layout quick even at export size.
+  async function drawPattern(painter, worldWidth, worldHeight, id) {
+    const cell = 7;
+    const cols = Math.ceil(worldWidth / cell);
+    const rows = Math.ceil(worldHeight / cell);
+    const occupied = new Uint8Array(cols * rows);
+    const spacing = Number(patternSpacingInput.value);
+    const radius = Math.ceil(spacing / cell);
+    const marginOffsets = [];
+    for (let dy = -radius; dy <= radius; dy++) for (let dx = -radius; dx <= radius; dx++) {
+      if (dx * dx + dy * dy <= radius * radius) marginOffsets.push([dx, dy]);
+    }
+    const size = Number(patternSizeInput.value);
+    const stem = Number(patternStemInput.value);
+    const stemRatio = Number(patternRatioInput.value) / 100;
+    const target = Math.max(12, Math.min(38, Math.round(worldWidth * worldHeight / 61000)));
+    const stemTarget = Math.round(target * stemRatio);
+    const headTarget = target - stemTarget;
+    const rand = (() => {
+      let state = seed >>> 0;
+      return () => {
+        state = (state + 0x6d2b79f5) | 0;
+        let value = Math.imul(state ^ state >>> 15, 1 | state);
+        value ^= value + Math.imul(value ^ value >>> 7, 61 | value);
+        return ((value ^ value >>> 14) >>> 0) / 4294967296;
+      };
+    })();
+    const variants = new Map();
+    const activeKeys = new Set();
+    const placements = [];
+    let generated = 0;
+
+    async function prototype(kind, index) {
+      const flowerSeed = 2 + ((seed ^ Math.imul(index + 1, 0x9e3779b9) ^ (kind === 'head' ? 0x41c64e6d : 0)) >>> 0) % 4294967293;
+      const flower = { seed: flowerSeed, size: kind === 'head' ? 100 + index % 4 * 15 : size,
+        stem, petal: kind === 'head' ? 115 + index % 3 * 15 : 100 };
+      const key = `${kind}:${originalKey(flower, worldWidth, worldHeight)}`;
+      activeKeys.add(key);
+      let sprite = patternCache.get(key);
+      if (!sprite) {
+        Prng.s = flowerSeed;
+        sprite = kind === 'head' ? originalHead(worldWidth, worldHeight, flower)
+          : originalPlant(worldWidth, worldHeight, flower);
+        patternCache.set(key, sprite);
+        generated++;
+      }
+      if (generated % 2 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+      return { sprite, key };
+    }
+
+    function variant(sprite, key, turn) {
+      const cacheKey = `${key}:${turn}`;
+      if (variants.has(cacheKey)) return variants.get(cacheKey);
+      const angle = turn * Math.PI / 12;
+      const cosine = Math.cos(angle);
+      const sine = Math.sin(angle);
+      const w = Math.ceil((Math.abs(cosine) * sprite.width + Math.abs(sine) * sprite.height) / cell) + 2;
+      const h = Math.ceil((Math.abs(sine) * sprite.width + Math.abs(cosine) * sprite.height) / cell) + 2;
+      const mask = document.createElement('canvas');
+      mask.width = w; mask.height = h;
+      const context = mask.getContext('2d', { willReadFrequently: true });
+      context.translate(w / 2, h / 2);
+      context.rotate(angle);
+      context.drawImage(sprite.canvas, -sprite.width / (2 * cell), -sprite.height / (2 * cell),
+        sprite.width / cell, sprite.height / cell);
+      const pixels = context.getImageData(0, 0, w, h).data;
+      const points = [];
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        if (pixels[(y * w + x) * 4 + 3] > 8) points.push([x, y]);
+      }
+      mask.width = mask.height = 1;
+      const result = { angle, w, h, points };
+      variants.set(cacheKey, result);
+      return result;
+    }
+
+    function fits(shape, left, top) {
+      let inside = 0;
+      for (const [x, y] of shape.points) {
+        const gx = left + x, gy = top + y;
+        if (gx < 0 || gx >= cols || gy < 0 || gy >= rows) continue;
+        if (occupied[gy * cols + gx]) return 0;
+        inside++;
+      }
+      return inside >= shape.points.length * .62 ? inside : 0;
+    }
+
+    function reserve(shape, left, top) {
+      for (const [x, y] of shape.points) {
+        const gx = left + x, gy = top + y;
+        for (const [dx, dy] of marginOffsets) {
+          const px = gx + dx, py = gy + dy;
+          if (px >= 0 && px < cols && py >= 0 && py < rows) occupied[py * cols + px] = 1;
+        }
+      }
+    }
+
+    async function placeKind(kind, count, poolSize) {
+      if (!count) return;
+      const pool = [];
+      for (let index = 0; index < poolSize; index++) {
+        if (id !== generation || disposed) return;
+        pool.push(await prototype(kind, index));
+      }
+      for (let index = 0; index < count; index++) {
+        if (id !== generation || disposed) return;
+        const { sprite, key } = pool[index % pool.length];
+        let best = null;
+        // Later, smaller flower heads occupy irregular pockets between stems.
+        for (let trial = 0; trial < 95; trial++) {
+          const turn = Math.floor(rand() * 24);
+          const shape = variant(sprite, key, turn);
+          if (!shape.points.length) continue;
+          const left = Math.round(rand() * (cols + shape.w * .25) - shape.w * .62);
+          const top = Math.round(rand() * (rows + shape.h * .25) - shape.h * .62);
+          const visible = fits(shape, left, top);
+          if (!visible) continue;
+          // Prefer fully visible shapes, yet allow a few to cross the paper edge.
+          const score = visible / shape.points.length + rand() * .12;
+          if (!best || score > best.score) best = { shape, left, top, score, sprite, kind };
+          if (score > 1.08) break;
+        }
+        if (best) {
+          reserve(best.shape, best.left, best.top);
+          placements.push(best);
+        }
+      }
+    }
+
+    await placeKind('stem', stemTarget, Math.min(12, stemTarget));
+    await placeKind('head', headTarget, Math.min(16, headTarget));
+    if (id !== generation || disposed) return null;
+    for (const item of placements) {
+      painter.save();
+      painter.translate((item.left + item.shape.w / 2) * cell, (item.top + item.shape.h / 2) * cell);
+      painter.rotate(item.shape.angle);
+      painter.drawImage(item.sprite.canvas, -item.sprite.width / 2, -item.sprite.height / 2,
+        item.sprite.width, item.sprite.height);
+      painter.restore();
+    }
+    for (const [key, sprite] of patternCache) if (!activeKeys.has(key)) {
+      sprite.canvas.width = sprite.canvas.height = 1;
+      patternCache.delete(key);
+    }
+    return { count: placements.length, stemmed: placements.filter(item => item.kind === 'stem').length,
+      heads: placements.filter(item => item.kind === 'head').length, generated };
+  }
 
   function drawSprite(context, sprite) {
     context.save();
@@ -436,7 +639,7 @@
 
   async function render() {
     const id = ++generation;
-    generateButton.disabled = mixedGenerateButton.disabled = downloadButton.disabled = true;
+    generateButton.disabled = mixedGenerateButton.disabled = patternGenerateButton.disabled = downloadButton.disabled = true;
     canvas.setAttribute('aria-busy', 'true');
     status.hidden = false;
     status.textContent = '꽃을 그리고 있습니다…';
@@ -494,7 +697,7 @@
     const currentMixedFlowers = mode === 'mixed' ? mixedFlowers.map(flower => ({ ...flower })) : [];
     const mixedDepth = currentMixedFlowers.at(-1)?.depth;
     const layers = [
-      ...(showVintage ? items.map(item => ({ type: 'vintage', depth: item.depth, item })) : []),
+      ...(showVintage && mode !== 'pattern' ? items.map(item => ({ type: 'vintage', depth: item.depth, item })) : []),
       ...currentMixedFlowers.map(flower => ({ type: 'mixed', depth: flower.depth, flower })),
     ].sort((a, b) => a.depth - b.depth);
     let vintageBehind = 0;
@@ -505,6 +708,12 @@
     let originalMs = 0;
     let vintageMs = 0;
     try {
+      const patternStats = mode === 'pattern' ? await drawPattern(painter, worldWidth, worldHeight, id) : null;
+      if (id !== generation || disposed) return;
+      if (mode !== 'pattern') {
+        for (const sprite of patternCache.values()) sprite.canvas.width = sprite.canvas.height = 1;
+        patternCache.clear();
+      }
       for (let i = 0; i < layers.length; i++) {
         if (id !== generation || disposed) return;
         const layer = layers[i];
@@ -553,13 +762,18 @@
       canvas.dataset.originalMs = String(Math.round(originalMs));
       canvas.dataset.vintageMs = String(Math.round(vintageMs));
       canvas.dataset.originalKind = originalKind;
-      canvas.dataset.vintageFlowers = String(showVintage ? vintageCount : 0);
-      canvas.dataset.vintageVisible = String(showVintage);
+      canvas.dataset.vintageFlowers = String(showVintage && mode !== 'pattern' ? vintageCount : 0);
+      canvas.dataset.vintageVisible = String(showVintage && mode !== 'pattern');
       canvas.dataset.vintageBehind = String(vintageBehind);
       canvas.dataset.vintageFront = String(vintageFront);
       canvas.dataset.mixedDepth = mode === 'mixed' ? mixedDepth.toFixed(4) : '';
       canvas.dataset.mixedDepths = currentMixedFlowers.map(flower => flower.depth.toFixed(4)).join(',');
       canvas.dataset.mixedSeed = mode === 'mixed' ? String(mixedSeed) : '';
+      canvas.dataset.patternCount = String(patternStats?.count || 0);
+      canvas.dataset.patternStemmed = String(patternStats?.stemmed || 0);
+      canvas.dataset.patternHeads = String(patternStats?.heads || 0);
+      canvas.dataset.patternGenerated = String(patternStats?.generated || 0);
+      document.getElementById('pattern-count').value = String(patternStats?.count || 0);
       document.getElementById('mixed-edition-row').hidden = mode !== 'mixed';
       document.getElementById('mixed-edition').value = mixedSeed.toString(16).toUpperCase().padStart(8, '0');
       document.getElementById('mixed-count').value = String(currentMixedFlowers.length);
@@ -572,7 +786,7 @@
     } finally {
       if (working !== flowers) working.width = working.height = 1;
       if (id === generation) {
-        generateButton.disabled = mixedGenerateButton.disabled = false;
+        generateButton.disabled = mixedGenerateButton.disabled = patternGenerateButton.disabled = false;
         canvas.setAttribute('aria-busy', 'false');
       }
     }
@@ -606,7 +820,8 @@
     input.addEventListener('change', event => {
       pendingMode = event.target.value;
       mixedControls.hidden = pendingMode !== 'mixed';
-      vintageControls.hidden = pendingMode === 'mixed';
+      vintageControls.hidden = pendingMode !== 'vintage';
+      patternControls.hidden = pendingMode !== 'pattern';
       if (pendingMode === 'vintage') {
         showVintage = vintageToggle.checked = true;
       }
@@ -615,7 +830,7 @@
   function updateUrl() {
     const url = new URL(location.href);
     url.searchParams.set('seed', String(seed));
-    if (mode === 'mixed') url.searchParams.set('mode', 'mixed');
+    if (mode === 'mixed' || mode === 'pattern') url.searchParams.set('mode', mode);
     else url.searchParams.delete('mode');
     if (mode === 'mixed') url.searchParams.set('mixedSeed', String(mixedSeed));
     else url.searchParams.delete('mixedSeed');
@@ -630,6 +845,8 @@
     for (const [name, value, fallback] of [
       ['bloom', bloomInput.value, '85'], ['stem', stemInput.value, '115'], ['quality', resolutionInput.value, '2'],
       ['mixedSize', mixedSizeInput.value, '50'], ['mixedStem', mixedStemInput.value, '120'], ['mixedPetal', mixedPetalInput.value, '100'],
+      ['patternSize', patternSizeInput.value, '50'], ['patternStem', patternStemInput.value, '100'],
+      ['patternSpacing', patternSpacingInput.value, '24'], ['patternRatio', patternRatioInput.value, '50'],
     ]) {
       if (value === fallback) url.searchParams.delete(name);
       else url.searchParams.set(name, value);
@@ -662,6 +879,15 @@
   mixedStemInput.addEventListener('change', () => {
     if (mode === 'mixed') scheduleComposition();
   });
+  for (const [input, output] of [[patternSizeInput, 'pattern-size-value'], [patternStemInput, 'pattern-stem-value'], [patternSpacingInput, 'pattern-spacing-value'], [patternRatioInput, 'pattern-ratio-value']]) {
+    input.addEventListener('input', () => {
+      document.getElementById(output).value = input === patternRatioInput
+        ? `${input.value} : ${100 - Number(input.value)}`
+        : input === patternSpacingInput ? input.value : `${input.value}%`;
+      updateUrl();
+    });
+    input.addEventListener('change', () => { if (mode === 'pattern') scheduleComposition(); });
+  }
   resolutionInput.addEventListener('change', scheduleComposition);
   vintageToggle.addEventListener('change', () => {
     showVintage = vintageToggle.checked;
@@ -684,6 +910,19 @@
     document.querySelector('input[name="flower-mode"][value="mixed"]').checked = true;
     mixedControls.hidden = false;
     vintageControls.hidden = true;
+    patternControls.hidden = true;
+    clearTimeout(controlsTimer);
+    updateUrl();
+    render();
+  });
+  patternGenerateButton.addEventListener('click', () => {
+    let next = newSeed();
+    while (next === seed) next = newSeed();
+    seed = next;
+    mode = pendingMode = 'pattern';
+    document.querySelector('input[name="flower-mode"][value="pattern"]').checked = true;
+    mixedControls.hidden = vintageControls.hidden = true;
+    patternControls.hidden = false;
     clearTimeout(controlsTimer);
     updateUrl();
     render();
@@ -721,6 +960,8 @@
     clearTimeout(resizeTimer); clearTimeout(controlsTimer); cancelAnimationFrame(frame);
     for (const sprite of originalCache.values()) sprite.canvas.width = sprite.canvas.height = 1;
     originalCache.clear();
+    for (const sprite of patternCache.values()) sprite.canvas.width = sprite.canvas.height = 1;
+    patternCache.clear();
     for (const sprite of vintageCache.values()) sprite.canvas.width = sprite.canvas.height = 1;
     vintageCache.clear();
     vintageCachePixels = 0;
