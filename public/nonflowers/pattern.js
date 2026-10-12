@@ -1,4 +1,4 @@
-/* global Prng, Noise, paper, leaf, stroke, hsv, genParams */
+/* global Prng, Noise, paper, leaf, stem, stroke, hsv, genParams */
 // Vintage meadow composition. Built on Lingdong Huang's MIT-licensed Nonflowers:
 // seeded randomness, Perlin contours, variable-width strokes and veined leaves.
 (() => {
@@ -193,8 +193,7 @@
   // source's leaf() supplies 3D incremental curvature and HSV face shading;
   // genParams() supplies the original noise mask, opening and color curves.
   // Only its overall length is normalized to the meadow's flower size.
-  function originalBlossom(context, x, y, radius) {
-    const par = genParams({ silent: true });
+  function originalBlossom(context, x, y, radius, par) {
     const opening = Math.random();
     const count = par.flowerPetal;
     const width = radius * (.22 + (par.flowerWidth - 5) / 25 * .23);
@@ -223,6 +222,37 @@
     context.restore();
   }
 
+  // The original stem() grows a bent 3D centerline and paints three narrow
+  // longitudinal color bands over its noise-shaped width. Rotate the finished
+  // centerline into this meadow's planting direction, then return its real tip
+  // and attachment points so flowers and shoots stay connected to the stem.
+  function originalStalk(context, from, toward, par, thickness = 1) {
+    const dx = toward[0] - from[0];
+    const dy = toward[1] - from[1];
+    const angle = Math.atan2(dx, -dy);
+    const length = Math.hypot(dx, dy);
+    const phase = random(0, 100);
+    context.save();
+    context.translate(from[0], from[1]);
+    context.rotate(angle);
+    const centerline = stem({ ctx: context, rot: [Math.PI / 2, 0, 0], len: length, seg: 40,
+      col: { min: [72, .26, .56, .90], max: [72, .26, .56, .90] },
+      wid: t => thickness * par.stemWidth * .25 *
+        (Math.pow(Math.sin(t * Math.PI / 2 + Math.PI / 2), .5) * Noise.noise(t * 10, phase) * .5 + .5),
+      ben: t => [
+        (Noise.noise(t, phase) * 2 - 1) * t * par.stemBend,
+        0,
+        (Noise.noise(t, phase + Math.PI) * 2 - 1) * t * par.stemBend,
+      ],
+    });
+    context.restore();
+    const ca = Math.cos(angle);
+    const sa = Math.sin(angle);
+    const points = centerline.map(point => [from[0] + point[0] * ca - point[1] * sa,
+      from[1] + point[0] * sa + point[1] * ca]);
+    return { points, tip: points[points.length - 1] };
+  }
+
   function umbel(context, x, y, radius, color) {
     const count = Math.floor(random(7, 12));
     for (let j = 0; j < count; j++) {
@@ -249,28 +279,41 @@
     }
   }
 
-  function plant(context, item, height) {
+  function plant(context, item, height, stats) {
     const { x, y, size, kind, color, depth } = item;
     const root = [x + random(-175, 175), height + random(30, 170)];
-    const points = curve(root, [x, y + (kind === 'umbel' ? size * .5 : 0)], random(-75, 75));
+    const original = item.variant === 'original';
+    const par = original ? genParams({ silent: true }) : null;
     context.globalAlpha = .68 + depth * .3;
-    stalk(context, points, random(.75, 1.4) * (kind === 'umbel' ? .7 : 1));
+    let points;
+    let flowerPoint = [x, y];
+    if (original) {
+      const generated = originalStalk(context, root, flowerPoint, par);
+      points = generated.points;
+      flowerPoint = generated.tip;
+      stats.originalStems++;
+    } else {
+      points = curve(root, [x, y + (kind === 'umbel' ? size * .5 : 0)], random(-75, 75));
+      stalk(context, points, random(.75, 1.4) * (kind === 'umbel' ? .7 : 1));
+    }
     const count = Math.floor(random(3, 7));
     for (let j = 0; j < count; j++) {
       const i = Math.floor(random(5, 29));
       const side = j % 2 ? 1 : -1;
       const point = points[i];
-      foliage(context, point[0], point[1], side * random(.45, 1.1), random(19, 49), kind !== 'blue' && Math.random() < .7);
+      foliage(context, point[0], point[1], side * random(.45, 1.1), random(19, 49), !original && kind !== 'blue' && Math.random() < .7);
       if (j < 2 && kind !== 'umbel' && point[1] < height * .93) {
         const tip = [point[0] + side * random(16, 40), point[1] - random(26, 65)];
-        stalk(context, curve(point, tip, side * 6, 16), .6);
+        const budTip = original ? originalStalk(context, point, tip, par, .48).tip : tip;
+        if (original) stats.originalStems++;
+        else stalk(context, curve(point, tip, side * 6, 16), .6);
         context.fillStyle = ink(color, .7);
-        context.beginPath(); context.ellipse(tip[0], tip[1], 2.5, 5, side * .35, 0, tau); context.fill();
+        context.beginPath(); context.ellipse(budTip[0], budTip[1], 2.5, 5, side * .35, 0, tau); context.fill();
       }
     }
     context.globalAlpha = .85 + depth * .15;
     if (kind === 'umbel') umbel(context, x, y, size, color);
-    else if (item.variant === 'original') originalBlossom(context, x, y, size);
+    else if (original) originalBlossom(context, flowerPoint[0], flowerPoint[1], size, par);
     else blossom(context, x, y, size, color, random(.50, 1), Math.random() < .24);
     context.globalAlpha = 1;
   }
@@ -317,6 +360,7 @@
     painter.scale(width / worldWidth, height / worldHeight);
     Prng.s = seed;
     const items = [];
+    const stats = { originalStems: 0 };
     let originalCount = 0;
     let vintageCount = 0;
     const columns = Math.max(5, Math.min(26, Math.round(worldWidth / 73)));
@@ -349,7 +393,7 @@
     try {
       for (let i = 0; i < items.length; i++) {
         if (id !== generation || disposed) return;
-        plant(painter, items[i], worldHeight);
+        plant(painter, items[i], worldHeight, stats);
         if (i % 4 === 3) await new Promise(resolve => setTimeout(resolve, 0));
       }
       if (id !== generation || disposed) return;
@@ -367,6 +411,7 @@
       canvas.dataset.seed = String(seed);
       canvas.dataset.mode = mode;
       canvas.dataset.originalFlowers = String(originalCount);
+      canvas.dataset.originalStems = String(stats.originalStems);
       canvas.dataset.vintageFlowers = String(vintageCount);
       status.hidden = true;
       downloadButton.disabled = false;

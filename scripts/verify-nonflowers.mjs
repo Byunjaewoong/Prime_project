@@ -71,6 +71,8 @@ try {
       previous = next;
       assert.equal(await frame.locator('#meadow').getAttribute('data-mode'), 'mixed');
       assert(Number(await frame.locator('#meadow').getAttribute('data-original-flowers')) > 0);
+      assert(Number(await frame.locator('#meadow').getAttribute('data-original-stems')) >=
+        Number(await frame.locator('#meadow').getAttribute('data-original-flowers')));
       assert(Number(await frame.locator('#meadow').getAttribute('data-vintage-flowers')) > 0);
       assert.equal(await frame.locator('canvas').count(), 1, 'DOM canvases must not accumulate');
     }
@@ -89,6 +91,7 @@ try {
     await ready();
     assert.equal(await frame.locator('#meadow').getAttribute('data-mode'), 'vintage');
     assert.equal(await frame.locator('#meadow').getAttribute('data-original-flowers'), '0');
+    assert.equal(await frame.locator('#meadow').getAttribute('data-original-stems'), '0');
     assert(!frame.url().includes('mode=mixed'));
     const pendingDownload = page.waitForEvent('download');
     await frame.locator('#download').click();
