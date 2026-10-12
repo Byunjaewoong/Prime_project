@@ -1,6 +1,7 @@
 // Nonflowers
 // Procedurally generated paintings of nonexistent flowers.
 // (c) Lingdong Huang 2018
+/* eslint-disable @typescript-eslint/no-unused-vars -- Vendored classic-script helpers are also consumed by pattern.js. */
 
 
 // index arrays with .x, .y, .z and negative indices
