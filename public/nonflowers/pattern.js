@@ -30,6 +30,20 @@
   const queryMixedSeed = Number(query.get('mixedSeed'));
   let mixedSeed = Number.isSafeInteger(queryMixedSeed) && queryMixedSeed > 1 && queryMixedSeed <= 0xffffffff
     ? queryMixedSeed : 2 + ((seed ^ 0x6d2b79f5) >>> 0) % 4294967293;
+  const mixedDepthFor = flowerSeed => Math.round((.15 + (((flowerSeed ^ 0xa511e9b3) >>> 0) / 4294967296) * .7) * 1000) / 1000;
+  const makeMixedFlower = (flowerSeed, size, stem, petal, depth = mixedDepthFor(flowerSeed)) =>
+    ({ seed: flowerSeed, size, stem, petal, depth });
+  const savedMix = query.get('mix');
+  const parsedMix = savedMix?.split(';').map(entry => {
+    const parts = entry.split(',');
+    if (parts.length !== 5 || parts.some(part => !/^[0-9a-z]+$/i.test(part))) return null;
+    const [flowerSeed, size, stem, petal, depth] = parts.map(part => parseInt(part, 36));
+    if (!Number.isSafeInteger(flowerSeed) || flowerSeed < 2 || flowerSeed > 0xffffffff ||
+        size < 40 || size > 120 || stem < 80 || stem > 400 || petal < 60 || petal > 180 ||
+        depth < 0 || depth > 1000) return null;
+    return makeMixedFlower(flowerSeed, size, stem, petal, depth / 1000);
+  });
+  let mixedFlowers = parsedMix?.length && parsedMix.every(Boolean) ? parsedMix : [];
   let mode = query.get('mode') === 'mixed' ? 'mixed' : 'vintage';
   let pendingMode = mode;
   const vintageToggle = document.getElementById('show-vintage');
@@ -44,6 +58,7 @@
   const mixedSizeInput = document.getElementById('mixed-size');
   const mixedStemInput = document.getElementById('mixed-stem');
   const mixedPetalInput = document.getElementById('mixed-petal');
+  const mixedDepthInput = document.getElementById('mixed-depth');
   const readPercent = (name, fallback, min, max) => {
     const value = Number(query.get(name));
     return Number.isFinite(value) && value >= min && value <= max ? value : fallback;
@@ -53,10 +68,21 @@
   mixedSizeInput.value = String(readPercent('mixedSize', 50, 40, 120));
   mixedStemInput.value = String(readPercent('mixedStem', 120, 80, 400));
   mixedPetalInput.value = String(readPercent('mixedPetal', 100, 60, 180));
+  if (mixedFlowers.length) {
+    const latest = mixedFlowers.at(-1);
+    mixedSeed = latest.seed;
+    mixedSizeInput.value = String(latest.size);
+    mixedStemInput.value = String(latest.stem);
+    mixedPetalInput.value = String(latest.petal);
+    mixedDepthInput.value = String(Math.round(latest.depth * 100));
+  } else {
+    mixedFlowers = [makeMixedFlower(mixedSeed, Number(mixedSizeInput.value), Number(mixedStemInput.value), Number(mixedPetalInput.value))];
+    mixedDepthInput.value = String(Math.round(mixedFlowers[0].depth * 100));
+  }
   resolutionInput.value = ['1', '1.5', '2'].includes(query.get('quality')) ? query.get('quality') : '2';
   document.getElementById('bloom-size-value').value = `${bloomInput.value}%`;
   document.getElementById('stem-length-value').value = `${stemInput.value}%`;
-  for (const [input, output] of [[mixedSizeInput, 'mixed-size-value'], [mixedStemInput, 'mixed-stem-value'], [mixedPetalInput, 'mixed-petal-value']]) {
+  for (const [input, output] of [[mixedSizeInput, 'mixed-size-value'], [mixedStemInput, 'mixed-stem-value'], [mixedPetalInput, 'mixed-petal-value'], [mixedDepthInput, 'mixed-depth-value']]) {
     document.getElementById(output).value = `${input.value}%`;
   }
   mixedControls.hidden = pendingMode !== 'mixed';
@@ -289,11 +315,11 @@
 
   // Generate the complete plant through the original woody/herbal path, then
   // adjust only its finished raster opacity before placing it in the meadow.
-  function originalPlant(context, worldWidth, worldHeight) {
+  function originalPlant(context, worldWidth, worldHeight, flower) {
     const par = genParams({ silent: true });
     const kind = Math.random() <= .5 ? 'woody' : 'herbal';
-    const stemScale = Number(mixedStemInput.value) / 100;
-    const petalScale = Number(mixedPetalInput.value) / 100;
+    const stemScale = flower.stem / 100;
+    const petalScale = flower.petal / 100;
     const sourceSize = Math.min(1600, Math.ceil(800 + Math.max(0, stemScale - 1) * 1000 + Math.max(0, petalScale - 1) * 100));
     const source = Layer.empty(sourceSize);
     par.flowerLength *= petalScale;
@@ -315,8 +341,8 @@
     // Fitting each longer stem to the viewport made unrelated petals and leaves
     // shrink. Keep the camera fixed and undo the bounded internal raster scale.
     const scale = Math.min(worldHeight * .80 / 850, worldWidth * .78 / 350, 2.2)
-      * Number(mixedSizeInput.value) / 100 / geometryScale;
-    const centerX = worldWidth * random(.37, .63);
+      * flower.size / 100 / geometryScale;
+    const centerX = worldWidth * random(.16, .84);
     const baseY = worldHeight + random(5, 65);
     context.save();
     context.globalAlpha = 1;
@@ -397,32 +423,30 @@
     items.forEach((item, index) => {
       item.paintSeed = 2 + ((seed ^ Math.imul(index + 1, 0x9e3779b9)) >>> 0) % 4294967293;
     });
-    items.sort((a, b) => a.depth - b.depth);
-    const mixedDepth = .15 + (((mixedSeed ^ 0xa511e9b3) >>> 0) / 4294967296) * .7;
-    let mixedDrawn = false;
+    const currentMixedFlowers = mode === 'mixed' ? mixedFlowers.map(flower => ({ ...flower })) : [];
+    const mixedDepth = currentMixedFlowers.at(-1)?.depth;
+    const layers = [
+      ...(showVintage ? items.map(item => ({ type: 'vintage', depth: item.depth, item })) : []),
+      ...currentMixedFlowers.map(flower => ({ type: 'mixed', depth: flower.depth, flower })),
+    ].sort((a, b) => a.depth - b.depth);
     let vintageBehind = 0;
     let vintageFront = 0;
     try {
-      for (let i = 0; i < items.length; i++) {
+      for (let i = 0; i < layers.length; i++) {
         if (id !== generation || disposed) return;
-        if (mode === 'mixed' && !mixedDrawn && items[i].depth >= mixedDepth) {
-          Prng.s = mixedSeed;
-          originalKind = originalPlant(painter, worldWidth, worldHeight);
-          mixedDrawn = true;
-        }
-        if (showVintage) {
-          Prng.s = items[i].paintSeed;
-          plant(painter, items[i], worldHeight);
-          if (mixedDrawn) vintageFront++;
+        const layer = layers[i];
+        if (layer.type === 'mixed') {
+          Prng.s = layer.flower.seed;
+          originalKind = originalPlant(painter, worldWidth, worldHeight, layer.flower);
+        } else {
+          Prng.s = layer.item.paintSeed;
+          plant(painter, layer.item, worldHeight);
+          if (layer.depth >= mixedDepth) vintageFront++;
           else vintageBehind++;
         }
         if (i % 4 === 3) await new Promise(resolve => setTimeout(resolve, 0));
       }
       if (id !== generation || disposed) return;
-      if (mode === 'mixed' && !mixedDrawn) {
-        Prng.s = mixedSeed;
-        originalKind = originalPlant(painter, worldWidth, worldHeight);
-      }
       canvas.width = width; canvas.height = height;
       if (flowers) { flowers.width = flowers.height = 1; }
       flowers = working;
@@ -430,16 +454,18 @@
       document.getElementById('edition').value = seed.toString(16).toUpperCase().padStart(8, '0');
       canvas.dataset.seed = String(seed);
       canvas.dataset.mode = mode;
-      canvas.dataset.originalPlants = String(mode === 'mixed' ? 1 : 0);
+      canvas.dataset.originalPlants = String(currentMixedFlowers.length);
       canvas.dataset.originalKind = originalKind;
       canvas.dataset.vintageFlowers = String(showVintage ? vintageCount : 0);
       canvas.dataset.vintageVisible = String(showVintage);
       canvas.dataset.vintageBehind = String(vintageBehind);
       canvas.dataset.vintageFront = String(vintageFront);
       canvas.dataset.mixedDepth = mode === 'mixed' ? mixedDepth.toFixed(4) : '';
+      canvas.dataset.mixedDepths = currentMixedFlowers.map(flower => flower.depth.toFixed(4)).join(',');
       canvas.dataset.mixedSeed = mode === 'mixed' ? String(mixedSeed) : '';
       document.getElementById('mixed-edition-row').hidden = mode !== 'mixed';
       document.getElementById('mixed-edition').value = mixedSeed.toString(16).toUpperCase().padStart(8, '0');
+      document.getElementById('mixed-count').value = String(currentMixedFlowers.length);
       status.hidden = true;
       downloadButton.disabled = false;
     } catch (error) {
@@ -494,6 +520,11 @@
     else url.searchParams.delete('mode');
     if (mode === 'mixed') url.searchParams.set('mixedSeed', String(mixedSeed));
     else url.searchParams.delete('mixedSeed');
+    if (mode === 'mixed') {
+      url.searchParams.set('mix', mixedFlowers.map(flower =>
+        [flower.seed, flower.size, flower.stem, flower.petal, Math.round(flower.depth * 1000)]
+          .map(value => value.toString(36)).join(',')).join(';'));
+    } else url.searchParams.delete('mix');
     if (showVintage) url.searchParams.delete('vintage');
     else url.searchParams.set('vintage', '0');
     for (const [name, value, fallback] of [
@@ -516,9 +547,14 @@
       scheduleComposition();
     });
   }
-  for (const [input, output] of [[mixedSizeInput, 'mixed-size-value'], [mixedStemInput, 'mixed-stem-value'], [mixedPetalInput, 'mixed-petal-value']]) {
+  for (const [input, output] of [[mixedSizeInput, 'mixed-size-value'], [mixedStemInput, 'mixed-stem-value'], [mixedPetalInput, 'mixed-petal-value'], [mixedDepthInput, 'mixed-depth-value']]) {
     input.addEventListener('input', () => {
       document.getElementById(output).value = `${input.value}%`;
+      const latest = mixedFlowers.at(-1);
+      if (input === mixedSizeInput) latest.size = Number(input.value);
+      if (input === mixedStemInput) latest.stem = Number(input.value);
+      if (input === mixedPetalInput) latest.petal = Number(input.value);
+      if (input === mixedDepthInput) latest.depth = Number(input.value) / 100;
       if (mode === 'mixed' && input !== mixedStemInput) scheduleComposition();
       else updateUrl();
     });
@@ -539,7 +575,9 @@
     mixedSizeInput.value = String(randomStep(45, 55, 5));
     mixedStemInput.value = String(randomStep(80, 400, 10));
     mixedPetalInput.value = String(randomStep(60, 180, 5));
-    for (const [input, output] of [[mixedSizeInput, 'mixed-size-value'], [mixedStemInput, 'mixed-stem-value'], [mixedPetalInput, 'mixed-petal-value']]) {
+    mixedFlowers.push(makeMixedFlower(mixedSeed, Number(mixedSizeInput.value), Number(mixedStemInput.value), Number(mixedPetalInput.value)));
+    mixedDepthInput.value = String(Math.round(mixedFlowers.at(-1).depth * 100));
+    for (const [input, output] of [[mixedSizeInput, 'mixed-size-value'], [mixedStemInput, 'mixed-stem-value'], [mixedPetalInput, 'mixed-petal-value'], [mixedDepthInput, 'mixed-depth-value']]) {
       document.getElementById(output).value = `${input.value}%`;
     }
     mode = pendingMode = 'mixed';
@@ -555,6 +593,9 @@
     while (next === seed) next = newSeed();
     seed = next;
     mixedSeed = newSeed();
+    mixedFlowers = [makeMixedFlower(mixedSeed, Number(mixedSizeInput.value), Number(mixedStemInput.value), Number(mixedPetalInput.value))];
+    mixedDepthInput.value = String(Math.round(mixedFlowers[0].depth * 100));
+    document.getElementById('mixed-depth-value').value = `${mixedDepthInput.value}%`;
     mode = pendingMode;
     clearTimeout(controlsTimer);
     updateUrl();

@@ -30,19 +30,24 @@ leaves the same on-screen size as the stem length changes. Woody branching only
 lengthens the root stem; child branches keep their original length distribution.
 The Flower Shape menu has a Vintage mode and a Mixed mode. The Vintage flowers
 switch hides or restores the meadow without changing its seed. The Mixed flower
-button regenerates only the original plant and randomizes its total size to
+button adds another original plant without removing earlier plants. Each added
+plant has an independent seed, depth and shape parameters. The button randomizes
+the new plant's total size to
 45–55%, stem length to 80–400%, and petal length to 60–180%. The vintage
 composition remains reproducible from its separate seed. Each vintage plant
-has a depth value and independent paint seed. Plants are sorted by depth, and
-the original plant is painted between rear and front vintage flowers. Mixed mode
+has a depth value and independent paint seed. All plants are sorted by depth,
+so every original plant can sit between rear and front vintage flowers. The
+Mixed controls edit the latest added plant. The general regeneration button
+starts a new composition with one original plant. Mixed mode
 draws a complete original Nonflowers plant using
 the upstream `woody()` or `herbal()` function with original `genParams()` values.
 The upstream geometry, branching, leaves, petals, color and filtering stay
 together. The finished plant raster has its pigment alpha raised to opaque,
 while low-alpha silhouette edges remain soft; it is then cropped and positioned
 within the meadow. Vintage flower heads are also drawn without layer opacity.
-The URL saves `mode=mixed`, `mixedSeed`, `vintage=0` when hidden, and all control
-values so the full composition can be reopened.
+The URL saves `mode=mixed`, `mixedSeed`, a `mix` list of plants and their depths,
+`vintage=0` when hidden, and all control values so the full composition can be
+reopened.
 
 Rendering yields between small plant batches, caps the backing canvas at 3.2M
 pixels, cancels superseded generations and releases replaced canvases. Resizing

@@ -39,8 +39,10 @@
         <label class="control-row" for="mixed-size"><span>전체 크기 <output id="mixed-size-value">50%</output></span><input id="mixed-size" type="range" min="40" max="120" step="5" value="50"></label>
         <label class="control-row" for="mixed-stem"><span>줄기 길이 <output id="mixed-stem-value">120%</output></span><input id="mixed-stem" type="range" min="80" max="400" step="10" value="120"></label>
         <label class="control-row" for="mixed-petal"><span>꽃 길이 · 꽃잎 <output id="mixed-petal-value">100%</output></span><input id="mixed-petal" type="range" min="60" max="180" step="5" value="100"></label>
-        <p class="mode-hint">원본 식물에만 적용됩니다.</p>
-        <button id="mixed-regenerate" class="mixed-generate" type="button"><span>↻</span> 믹싱모드 꽃 랜덤 생성</button>
+        <label class="control-row" for="mixed-depth"><span>앞뒤 깊이 <output id="mixed-depth-value">50%</output></span><input id="mixed-depth" type="range" min="0" max="100" step="1" value="50"></label>
+        <p class="mode-hint">가장 최근 꽃을 조절합니다. 랜덤 생성하면 기존 꽃에 덧그립니다.</p>
+        <button id="mixed-regenerate" class="mixed-generate" type="button"><span>↻</span> 믹싱모드 꽃 추가 생성</button>
+        <div class="edition">생성된 믹싱 꽃 <output id="mixed-count">1</output>송이</div>
       </fieldset>
       <fieldset class="composition-controls">
         <legend>출력 <span>RESOLUTION</span></legend>
