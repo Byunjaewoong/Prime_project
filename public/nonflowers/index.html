@@ -28,6 +28,13 @@
         </div>
         <p class="mode-hint">선택 후 랜덤 재생성을 누르면 적용됩니다.</p>
       </fieldset>
+      <fieldset class="composition-controls">
+        <legend>구도와 출력 <span>COMPOSITION</span></legend>
+        <label class="control-row" for="bloom-size"><span>꽃 크기 <output id="bloom-size-value">85%</output></span><input id="bloom-size" type="range" min="50" max="140" step="5" value="85"></label>
+        <label class="control-row" for="stem-length"><span>줄기 길이 <output id="stem-length-value">115%</output></span><input id="stem-length" type="range" min="95" max="145" step="5" value="115"></label>
+        <label class="quality-row" for="resolution">출력 해상도 <select id="resolution"><option value="1">표준 · 1×</option><option value="1.5">균형 · 1.5×</option><option value="2" selected>고해상도 · 2×</option></select></label>
+        <p class="mode-hint">해상도는 이미지 저장에도 적용됩니다.</p>
+      </fieldset>
       <fieldset>
         <legend>배경 톤 <span>PAPER TONE</span></legend>
         <div class="swatches" id="swatches">

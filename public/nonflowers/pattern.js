@@ -29,9 +29,22 @@
   let mode = query.get('mode') === 'mixed' ? 'mixed' : 'vintage';
   let pendingMode = mode;
   document.querySelector(`input[name="flower-mode"][value="${mode}"]`).checked = true;
+  const bloomInput = document.getElementById('bloom-size');
+  const stemInput = document.getElementById('stem-length');
+  const resolutionInput = document.getElementById('resolution');
+  const readPercent = (name, fallback, min, max) => {
+    const value = Number(query.get(name));
+    return Number.isFinite(value) && value >= min && value <= max ? value : fallback;
+  };
+  bloomInput.value = String(readPercent('bloom', 85, 50, 140));
+  stemInput.value = String(readPercent('stem', 115, 95, 145));
+  resolutionInput.value = ['1', '1.5', '2'].includes(query.get('quality')) ? query.get('quality') : '2';
+  document.getElementById('bloom-size-value').value = `${bloomInput.value}%`;
+  document.getElementById('stem-length-value').value = `${stemInput.value}%`;
   let flowers = null;
   let generation = 0;
   let resizeTimer;
+  let controlsTimer;
   let frame = 0;
   let disposed = false;
 
@@ -314,14 +327,17 @@
     // Pixel and plant budgets bound memory/work on phones and large monitors.
     const cssWidth = Math.max(1, innerWidth);
     const cssHeight = Math.max(1, innerHeight);
-    const ratio = Math.min(devicePixelRatio || 1, 2, Math.sqrt(3200000 / (cssWidth * cssHeight)));
+    const quality = Number(resolutionInput.value);
+    const ratio = Math.min(quality, Math.sqrt((quality === 2 ? 6000000 : 3200000) / (cssWidth * cssHeight)));
     const width = Math.round(cssWidth * ratio);
     const height = Math.round(cssHeight * ratio);
     const working = document.createElement('canvas');
     working.width = width; working.height = height;
     const painter = working.getContext('2d');
-    const worldHeight = 1100;
+    const worldHeight = 1350;
     const worldWidth = worldHeight * cssWidth / cssHeight;
+    const bloomScale = Number(bloomInput.value) / 100;
+    const stemScale = Number(stemInput.value) / 100;
     painter.scale(width / worldWidth, height / worldHeight);
     Prng.s = seed;
     const items = [];
@@ -334,14 +350,14 @@
       for (let col = -1; col <= columns; col++) {
         const depth = row / 6;
         const x = (col + random(.05, .95)) / columns * worldWidth;
-        const y = 110 + row * 157 + random(-72, 72);
+        const y = 160 + row * 180 / stemScale + random(-72, 72);
         const isUmbel = Math.random() < .43;
         const color = isUmbel ? pick([[34, .26, .96], [20, .42, .88], [10, .57, .84]]) : pick(palettes);
         if (!isUmbel) vintageCount++;
         items.push({ x, y, depth, kind: isUmbel ? 'umbel' : color[0] > 200 && color[0] < 300 ? 'blue' : 'cosmos',
-          size: isUmbel ? random(26, 48) : random(27, 43) * (.85 + depth * .45), color });
+          size: (isUmbel ? random(26, 48) : random(27, 43) * (.85 + depth * .45)) * bloomScale, color });
         if (row > 1 && Math.random() < .7) items.push({ x: x + random(-40, 40), y: y + random(35, 80), depth,
-          kind: 'umbel', size: random(15, 29), color: pick([[32, .30, .97], [15, .39, .9]]) });
+          kind: 'umbel', size: random(15, 29) * bloomScale, color: pick([[32, .30, .97], [15, .39, .9]]) });
       }
     }
     try {
@@ -405,16 +421,38 @@
   document.querySelectorAll('input[name="flower-mode"]').forEach(input => {
     input.addEventListener('change', event => { pendingMode = event.target.value; });
   });
+  function updateUrl() {
+    const url = new URL(location.href);
+    url.searchParams.set('seed', String(seed));
+    if (mode === 'mixed') url.searchParams.set('mode', 'mixed');
+    else url.searchParams.delete('mode');
+    for (const [name, value, fallback] of [
+      ['bloom', bloomInput.value, '85'], ['stem', stemInput.value, '115'], ['quality', resolutionInput.value, '2'],
+    ]) {
+      if (value === fallback) url.searchParams.delete(name);
+      else url.searchParams.set(name, value);
+    }
+    history.replaceState(null, '', url);
+  }
+  function scheduleComposition() {
+    updateUrl();
+    clearTimeout(controlsTimer);
+    controlsTimer = setTimeout(render, 220);
+  }
+  for (const [input, output] of [[bloomInput, 'bloom-size-value'], [stemInput, 'stem-length-value']]) {
+    input.addEventListener('input', () => {
+      document.getElementById(output).value = `${input.value}%`;
+      scheduleComposition();
+    });
+  }
+  resolutionInput.addEventListener('change', scheduleComposition);
   generateButton.addEventListener('click', () => {
     let next = newSeed();
     while (next === seed) next = newSeed();
     seed = next;
     mode = pendingMode;
-    const url = new URL(location.href);
-    url.searchParams.set('seed', String(seed));
-    if (mode === 'mixed') url.searchParams.set('mode', 'mixed');
-    else url.searchParams.delete('mode');
-    history.replaceState(null, '', url);
+    clearTimeout(controlsTimer);
+    updateUrl();
     render();
   });
   downloadButton.addEventListener('click', () => {
@@ -434,7 +472,7 @@
   window.addEventListener('resize', onResize);
   window.addEventListener('pagehide', () => {
     disposed = true; generation++;
-    clearTimeout(resizeTimer); cancelAnimationFrame(frame);
+    clearTimeout(resizeTimer); clearTimeout(controlsTimer); cancelAnimationFrame(frame);
   });
   window.addEventListener('pageshow', event => {
     if (event.persisted) { disposed = false; render(); }

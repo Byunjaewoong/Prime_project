@@ -12,6 +12,11 @@ The six tone presets and custom color picker recompose cached flowers without
 changing the arrangement. Random regeneration chooses a fresh crypto seed;
 the iframe URL's numeric seed reproduces the arrangement at the same viewport.
 The menu also exports the full composition as PNG, including its selected tone.
+The default vintage framing uses a taller 1350-unit field, 85% flower heads and
+115% stem spacing for a wider view with longer visible stalks. The menu lets
+visitors adjust bloom size (50–140%), stem length (95–145%) and output resolution
+(1×, 1.5× or 2×, subject to a 3.2–6 megapixel canvas budget). These settings
+are stored in the URL with the seed and apply to PNG exports.
 The Flower Shape menu has a Vintage mode and a Mixed mode. Mixed regeneration
 draws the vintage meadow and then a complete original Nonflowers plant using
 the upstream `woody()` or `herbal()` function with original `genParams()` values.

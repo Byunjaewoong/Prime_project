@@ -102,7 +102,8 @@ try {
     await page.setViewportSize(mobile ? { width: 844, height: 390 } : { width: 1000, height: 700 });
     await frame.waitForFunction(() => {
       const c = document.querySelector('#meadow');
-      const ratio = Math.min(devicePixelRatio || 1, 2, Math.sqrt(3200000 / (innerWidth * innerHeight)));
+      const quality = Number(document.querySelector('#resolution').value);
+      const ratio = Math.min(quality, Math.sqrt((quality === 2 ? 6000000 : 3200000) / (innerWidth * innerHeight)));
       return c.width === Math.round(innerWidth * ratio) && c.height === Math.round(innerHeight * ratio) && c.getAttribute('aria-busy') === 'false';
     });
     assert.equal(await frame.evaluate(() => document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight), false);
