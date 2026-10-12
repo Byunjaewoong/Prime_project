@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="main.js"></script>
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <title>Nonflowers</title>
+
+  </head>
+  <body onload="load()">
+
+    <div id="loader">
+      <div id="spinner">
+
+      </div>
+      <div id="load-text">Generating...&nbsp;&nbsp;&nbsp;</div>
+    </div>
+
+    <div style="display:none;" id="content" class="emerge" >
+      <div><br></div>
+      <div id="canvas-container"></div>
+      <div><br></div>
+      <table align="center" style="width:600px; max-width:100%;">
+        <tr><td align="right">
+          <div id="options" class="option-bar">
+            <button type="button" class="material-icons button" aria-label="Generate another flower" onclick="location.reload()">refresh</button>
+            <button type="button" class="material-icons button" aria-label="Download PNG" onclick="makeDownload()">file_download</button>
+            <button type="button" class="material-icons button" aria-label="Show generated parameters" onclick="toggle('summary','block')">list</button>
+            <button type="button" class="material-icons button" aria-label="Set random seed" onclick="toggle('settings','table')">settings</button>
+            <button type="button" class="material-icons button" aria-label="Share" onclick="toggle('share','table')">share</button>
+          </div>
+        </td><tr>
+
+        <tr><td>
+          <div id="summary" style="display:none" class="emerge"></div>
+        </td></tr>
+
+        <tr><td align="right">
+          <div id="settings" style="display:none" class="emerge">
+            <p>Seed: <input title="random seed" id="inp-seed"/></p>
+            <p align="center">
+              <button onclick="reloadWSeed(document.getElementById('inp-seed').value)">
+                Generate
+              </button>
+            </p>
+          </div>
+        </td></tr>
+
+        <tr><td align="right">
+          <div id="share" style="display:none" class="emerge">
+            <a id="share-twitter" target="_blank">
+              Twitter
+            </a>
+          </div>
+        </td></tr>
+
+
+      </table>
+    </div>
+
+  </body>
+</html>
