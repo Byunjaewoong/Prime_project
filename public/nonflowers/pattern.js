@@ -669,7 +669,7 @@
     let next = newSeed();
     while (next === mixedSeed) next = newSeed();
     mixedSeed = next;
-    mixedSizeInput.value = String(randomStep(45, 55, 5));
+    mixedSizeInput.value = String(randomStep(60, 80, 5));
     mixedStemInput.value = String(randomStep(80, 400, 10));
     mixedPetalInput.value = String(randomStep(60, 180, 5));
     mixedFlowers.push(makeMixedFlower(mixedSeed, Number(mixedSizeInput.value), Number(mixedStemInput.value), Number(mixedPetalInput.value)));

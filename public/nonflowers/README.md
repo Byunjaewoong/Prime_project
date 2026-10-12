@@ -33,7 +33,7 @@ switch hides or restores the meadow without changing its seed. The Mixed flower
 button adds another original plant without removing earlier plants. Each added
 plant has an independent seed, depth and shape parameters. The button randomizes
 the new plant's total size to
-45–55%, stem length to 80–400%, and petal length to 60–180%. The vintage
+60–80%, stem length to 80–400%, and petal length to 60–180%. The vintage
 composition remains reproducible from its separate seed. Each vintage plant
 has a depth value and independent paint seed. All plants are sorted by depth,
 so every original plant can sit between rear and front vintage flowers. The

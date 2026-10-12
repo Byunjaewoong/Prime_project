@@ -92,7 +92,7 @@ try {
     assert.equal(await frame.locator('#meadow').getAttribute('data-generated-originals'), '1');
     assert.equal(await frame.locator('#meadow').getAttribute('data-reused-originals'), '1');
     assert(Number(await frame.locator('#meadow').getAttribute('data-reused-vintage')) > 0);
-    assert([45, 50, 55].includes(Number(await frame.locator('#mixed-size').inputValue())));
+    assert([60, 65, 70, 75, 80].includes(Number(await frame.locator('#mixed-size').inputValue())));
     assert(Number(await frame.locator('#mixed-stem').inputValue()) >= 80 && Number(await frame.locator('#mixed-stem').inputValue()) <= 400);
     assert(Number(await frame.locator('#mixed-petal').inputValue()) >= 60 && Number(await frame.locator('#mixed-petal').inputValue()) <= 180);
     assert(Number(await frame.locator('#meadow').getAttribute('data-vintage-behind')) > 0);
