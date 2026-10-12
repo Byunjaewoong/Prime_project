@@ -12,6 +12,11 @@ The six tone presets and custom color picker recompose cached flowers without
 changing the arrangement. Random regeneration chooses a fresh crypto seed;
 the iframe URL's numeric seed reproduces the arrangement at the same viewport.
 The menu also exports the full composition as PNG, including its selected tone.
+The Flower Shape menu has a Vintage mode and a Mixed mode. Mixed regeneration
+places both styles together: vintage scalloped petals and original Nonflowers
+petals drawn with the upstream 3D `leaf()` geometry, noise-width profile,
+opening curve, HSV face colors, and inner petal ring. Its normalized flower
+length fits the meadow composition. The URL saves `mode=mixed` with the seed.
 
 Rendering yields between small plant batches, caps the backing canvas at 3.2M
 pixels, cancels superseded generations and releases replaced canvases. Resizing

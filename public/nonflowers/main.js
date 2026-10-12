@@ -800,7 +800,7 @@ function vizParams(PAR){
 }
 
 // generate random parameters
-function genParams(){
+function genParams(options){
   var randint = (x,y) => (Math.floor(normRand(x,y)))
 
   var PAR = {}
@@ -901,9 +901,10 @@ function genParams(){
   PAR.branchColor = {min:[branchHue,branchSaturation,branchValue,1],
                      max:[branchHue,branchSaturation,branchValue,1]}
 
-  console.log(PAR)
-
-  vizParams(PAR)
+  if (!options || !options.silent){
+    console.log(PAR)
+    vizParams(PAR)
+  }
   return PAR
 }
 

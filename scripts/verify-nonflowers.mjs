@@ -58,6 +58,10 @@ try {
       assert(difference.max <= 2 && difference.mean < .15, 'Tone round-trip must preserve the flower artwork');
     }
     let previous = first;
+    // Mode changes take effect with regeneration, and Mixed must retain both
+    // the new meadow petals and the original Nonflowers leaf-built petals.
+    await frame.getByRole('radio', { name: '혼합 · 원본 + 빈티지' }).check();
+    assert.equal(await frame.locator('#meadow').getAttribute('data-mode'), 'vintage');
     const start = Date.now();
     for (let i = 0; i < 12; i++) {
       await frame.locator('#regenerate').click();
@@ -65,14 +69,27 @@ try {
       const next = await image();
       assert.notEqual(next, previous, 'Every regeneration must produce a different image');
       previous = next;
+      assert.equal(await frame.locator('#meadow').getAttribute('data-mode'), 'mixed');
+      assert(Number(await frame.locator('#meadow').getAttribute('data-original-flowers')) > 0);
+      assert(Number(await frame.locator('#meadow').getAttribute('data-vintage-flowers')) > 0);
       assert.equal(await frame.locator('canvas').count(), 1, 'DOM canvases must not accumulate');
     }
     const renderMs = (Date.now() - start) / 12;
+    await frame.getByRole('button', { name: '메뉴 닫기', exact: true }).first().click();
+    await page.screenshot({ path: path.join(output, `${mobile ? 'mobile' : 'desktop'}-mixed.png`) });
     const numericSeed = await frame.locator('#meadow').getAttribute('data-seed');
-    await frame.goto(`${base}/nonflowers/index.html?seed=${numericSeed}`);
+    assert.match(frame.url(), /mode=mixed/);
+    await frame.goto(`${base}/nonflowers/index.html?seed=${numericSeed}&mode=mixed`);
     await ready();
     assert(await image() === previous, 'Saved seed must reproduce the composition after reload');
+    assert.equal(await frame.locator('#meadow').getAttribute('data-mode'), 'mixed');
     await frame.getByRole('button', { name: '메뉴 열기', exact: true }).click();
+    await frame.getByRole('radio', { name: '빈티지', exact: true }).check();
+    await frame.locator('#regenerate').click();
+    await ready();
+    assert.equal(await frame.locator('#meadow').getAttribute('data-mode'), 'vintage');
+    assert.equal(await frame.locator('#meadow').getAttribute('data-original-flowers'), '0');
+    assert(!frame.url().includes('mode=mixed'));
     const pendingDownload = page.waitForEvent('download');
     await frame.locator('#download').click();
     const download = await pendingDownload;

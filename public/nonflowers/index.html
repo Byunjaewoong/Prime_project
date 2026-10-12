@@ -20,6 +20,14 @@
       <div class="panel-heading"><span>FIELD NOTES / 01</span><button id="close-menu" aria-label="메뉴 닫기">×</button></div>
       <h1>A wildflower study.</h1>
       <p class="intro">종이 위에 피어나는, 세상에 없는 꽃.</p>
+      <fieldset class="flower-mode">
+        <legend>꽃 형태 <span>FLOWER SHAPE</span></legend>
+        <div class="mode-options" role="radiogroup" aria-label="꽃 형태">
+          <label><input type="radio" name="flower-mode" value="vintage" checked><span>빈티지</span></label>
+          <label><input type="radio" name="flower-mode" value="mixed"><span>혼합 · 원본 + 빈티지</span></label>
+        </div>
+        <p class="mode-hint">선택 후 랜덤 재생성을 누르면 적용됩니다.</p>
+      </fieldset>
       <fieldset>
         <legend>배경 톤 <span>PAPER TONE</span></legend>
         <div class="swatches" id="swatches">

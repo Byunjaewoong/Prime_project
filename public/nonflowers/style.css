@@ -17,6 +17,13 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .panel-heading button { background: none; font-size: 24px; width: 30px; height: 30px; margin: -8px -8px -8px 0; }
 h1 { font: italic 29px/1.2 Georgia, serif; font-weight: 400; margin: 25px 0 9px; letter-spacing: -.045em; }
 .intro { font: 11px/1.8 sans-serif; color: #6e746a; margin: 0 0 26px; }
+.mode-options { clear: both; display: grid; grid-template-columns: 1fr 1.5fr; gap: 7px; }
+.mode-options label { display: block; position: relative; cursor: pointer; }
+.mode-options input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.mode-options span { display: flex; align-items: center; justify-content: center; min-height: 40px; padding: 7px; border: 1px solid #62736466; color: #59665a; font: 10px/1.25 sans-serif; text-align: center; }
+.mode-options input:checked + span { background: #354a3d; border-color: #354a3d; color: #f5edda; }
+.mode-options input:focus-visible + span { outline: 2px solid #8b3d36; outline-offset: 3px; }
+.mode-hint { clear: both; margin: 10px 0 0; color: #788175; font: 9px/1.6 sans-serif; }
 fieldset { padding: 22px 0; border: 0; border-top: 1px solid #3f4a362b; margin: 0; min-width: 0; }
 legend { float: left; width: 100%; font: 11px sans-serif; margin: 0 0 18px; }
 legend span { float: right; font: 9px monospace; letter-spacing: .09em; color: #737b70; }

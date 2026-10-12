@@ -1,4 +1,4 @@
-/* global Prng, Noise, paper, leaf, stroke, hsv */
+/* global Prng, Noise, paper, leaf, stroke, hsv, genParams */
 // Vintage meadow composition. Built on Lingdong Huang's MIT-licensed Nonflowers:
 // seeded randomness, Perlin contours, variable-width strokes and veined leaves.
 (() => {
@@ -23,8 +23,12 @@
   try { tone = localStorage.getItem('nonflowers-paper-tone') || tone; } catch { /* Private mode. */ }
   if (!/^#[0-9a-f]{6}$/i.test(tone)) tone = '#a6b7b2';
   let seed = newSeed();
-  const querySeed = Number(new URLSearchParams(location.search).get('seed'));
+  const query = new URLSearchParams(location.search);
+  const querySeed = Number(query.get('seed'));
   if (Number.isSafeInteger(querySeed) && querySeed > 1 && querySeed <= 0xffffffff) seed = querySeed;
+  let mode = query.get('mode') === 'mixed' ? 'mixed' : 'vintage';
+  let pendingMode = mode;
+  document.querySelector(`input[name="flower-mode"][value="${mode}"]`).checked = true;
   let flowers = null;
   let generation = 0;
   let resizeTimer;
@@ -185,6 +189,40 @@
     context.restore();
   }
 
+  // Draw the original Nonflowers flower with its own sampled parameters. The
+  // source's leaf() supplies 3D incremental curvature and HSV face shading;
+  // genParams() supplies the original noise mask, opening and color curves.
+  // Only its overall length is normalized to the meadow's flower size.
+  function originalBlossom(context, x, y, radius) {
+    const par = genParams({ silent: true });
+    const opening = Math.random();
+    const count = par.flowerPetal;
+    const width = radius * (.22 + (par.flowerWidth - 5) / 25 * .23);
+    const length = radius * random(.86, 1.14);
+    const innerLength = length * par.innerLength / par.flowerLength;
+    const innerWidth = width * par.innerWidth / par.flowerWidth;
+    const angle = random(0, tau);
+    const facing = random(-.34, .34);
+    context.save();
+    context.translate(x, y);
+    for (let k = 0; k < count; k++) {
+      context.save();
+      context.rotate(angle + k / count * tau);
+      const rot = [Math.PI / 2 + facing, random(-.30, .30), 0];
+      const bend = t => [par.flowerOpenCurve(t, opening), 0, 0];
+      leaf({ ctx: context, flo: true, rot, len: length * random(.7, 1.3), seg: 40,
+        wid: t => par.flowerShape(t) * width, vei: [0], col: par.flowerColor,
+        cof: par.flowerColorCurve, ben: bend });
+      if (innerLength > 1 && innerWidth > .3) {
+        leaf({ ctx: context, flo: true, rot, len: innerLength * random(.8, 1.2), seg: 24,
+          wid: t => Math.sin(Math.PI * t) * innerWidth, vei: [0], col: par.innerColor,
+          cof: t => t, ben: bend });
+      }
+      context.restore();
+    }
+    context.restore();
+  }
+
   function umbel(context, x, y, radius, color) {
     const count = Math.floor(random(7, 12));
     for (let j = 0; j < count; j++) {
@@ -232,6 +270,7 @@
     }
     context.globalAlpha = .85 + depth * .15;
     if (kind === 'umbel') umbel(context, x, y, size, color);
+    else if (item.variant === 'original') originalBlossom(context, x, y, size);
     else blossom(context, x, y, size, color, random(.50, 1), Math.random() < .24);
     context.globalAlpha = 1;
   }
@@ -278,6 +317,8 @@
     painter.scale(width / worldWidth, height / worldHeight);
     Prng.s = seed;
     const items = [];
+    let originalCount = 0;
+    let vintageCount = 0;
     const columns = Math.max(5, Math.min(26, Math.round(worldWidth / 73)));
     // Stratified jitter avoids both a rigid repeat and large accidental holes.
     // The tallest layer is airy; lower layers gain larger, more crowded blooms.
@@ -288,11 +329,22 @@
         const y = 110 + row * 157 + random(-72, 72);
         const isUmbel = Math.random() < .43;
         const color = isUmbel ? pick([[34, .26, .96], [20, .42, .88], [10, .57, .84]]) : pick(palettes);
+        const variant = mode === 'mixed' && !isUmbel && Math.random() < .5 ? 'original' : 'vintage';
+        if (!isUmbel) { if (variant === 'original') originalCount++; else vintageCount++; }
         items.push({ x, y, depth, kind: isUmbel ? 'umbel' : color[0] > 200 && color[0] < 300 ? 'blue' : 'cosmos',
-          size: isUmbel ? random(26, 48) : random(27, 43) * (.85 + depth * .45), color });
+          size: isUmbel ? random(26, 48) : random(27, 43) * (.85 + depth * .45), color, variant });
         if (row > 1 && Math.random() < .7) items.push({ x: x + random(-40, 40), y: y + random(35, 80), depth,
           kind: 'umbel', size: random(15, 29), color: pick([[32, .30, .97], [15, .39, .9]]) });
       }
+    }
+    // Even an extreme random draw must still visibly contain both styles.
+    if (mode === 'mixed' && originalCount === 0) {
+      const flower = items.find(item => item.kind !== 'umbel');
+      if (flower) { flower.variant = 'original'; originalCount++; vintageCount--; }
+    }
+    if (mode === 'mixed' && vintageCount === 0) {
+      const flower = items.find(item => item.kind !== 'umbel' && item.variant === 'original');
+      if (flower) { flower.variant = 'vintage'; vintageCount++; originalCount--; }
     }
     try {
       for (let i = 0; i < items.length; i++) {
@@ -313,6 +365,9 @@
       compose();
       document.getElementById('edition').value = seed.toString(16).toUpperCase().padStart(8, '0');
       canvas.dataset.seed = String(seed);
+      canvas.dataset.mode = mode;
+      canvas.dataset.originalFlowers = String(originalCount);
+      canvas.dataset.vintageFlowers = String(vintageCount);
       status.hidden = true;
       downloadButton.disabled = false;
     } catch (error) {
@@ -353,12 +408,18 @@
     if (button) setTone(button.dataset.tone);
   });
   toneInput.addEventListener('input', event => setTone(event.target.value));
+  document.querySelectorAll('input[name="flower-mode"]').forEach(input => {
+    input.addEventListener('change', event => { pendingMode = event.target.value; });
+  });
   generateButton.addEventListener('click', () => {
     let next = newSeed();
     while (next === seed) next = newSeed();
     seed = next;
+    mode = pendingMode;
     const url = new URL(location.href);
     url.searchParams.set('seed', String(seed));
+    if (mode === 'mixed') url.searchParams.set('mode', 'mixed');
+    else url.searchParams.delete('mode');
     history.replaceState(null, '', url);
     render();
   });
