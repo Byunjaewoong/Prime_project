@@ -70,9 +70,8 @@ try {
       assert.notEqual(next, previous, 'Every regeneration must produce a different image');
       previous = next;
       assert.equal(await frame.locator('#meadow').getAttribute('data-mode'), 'mixed');
-      assert(Number(await frame.locator('#meadow').getAttribute('data-original-flowers')) > 0);
-      assert(Number(await frame.locator('#meadow').getAttribute('data-original-stems')) >=
-        Number(await frame.locator('#meadow').getAttribute('data-original-flowers')));
+      assert.equal(await frame.locator('#meadow').getAttribute('data-original-plants'), '1');
+      assert.match(await frame.locator('#meadow').getAttribute('data-original-kind'), /^(woody|herbal)$/);
       assert(Number(await frame.locator('#meadow').getAttribute('data-vintage-flowers')) > 0);
       assert.equal(await frame.locator('canvas').count(), 1, 'DOM canvases must not accumulate');
     }
@@ -90,8 +89,8 @@ try {
     await frame.locator('#regenerate').click();
     await ready();
     assert.equal(await frame.locator('#meadow').getAttribute('data-mode'), 'vintage');
-    assert.equal(await frame.locator('#meadow').getAttribute('data-original-flowers'), '0');
-    assert.equal(await frame.locator('#meadow').getAttribute('data-original-stems'), '0');
+    assert.equal(await frame.locator('#meadow').getAttribute('data-original-plants'), '0');
+    assert.equal(await frame.locator('#meadow').getAttribute('data-original-kind'), 'none');
     assert(!frame.url().includes('mode=mixed'));
     const pendingDownload = page.waitForEvent('download');
     await frame.locator('#download').click();

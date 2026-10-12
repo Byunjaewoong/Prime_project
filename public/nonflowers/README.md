@@ -13,14 +13,11 @@ changing the arrangement. Random regeneration chooses a fresh crypto seed;
 the iframe URL's numeric seed reproduces the arrangement at the same viewport.
 The menu also exports the full composition as PNG, including its selected tone.
 The Flower Shape menu has a Vintage mode and a Mixed mode. Mixed regeneration
-places both styles together: vintage scalloped petals and original Nonflowers
-petals drawn with the upstream 3D `leaf()` geometry, noise-width profile,
-opening curve, HSV face colors, and inner petal ring. Its normalized flower
-length fits the meadow composition. The URL saves `mode=mixed` with the seed.
-Original-style flowers now also grow on the upstream `stem()` geometry: its
-incremental 3D bend, noise-tapered width, and lengthwise color strips are used
-for the main stalk and small side shoots. The flower is placed at the generated
-stem's actual endpoint, and leaves attach along its returned centerline.
+draws the vintage meadow and then a complete original Nonflowers plant using
+the upstream `woody()` or `herbal()` function with original `genParams()` values.
+The upstream geometry, branching, leaves, petals, color and filtering stay
+together; only the finished transparent plant image is cropped and positioned
+within the meadow. The URL saves `mode=mixed` with the seed.
 
 Rendering yields between small plant batches, caps the backing canvas at 3.2M
 pixels, cancels superseded generations and releases replaced canvases. Resizing
