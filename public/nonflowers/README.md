@@ -63,12 +63,14 @@ millions of needless noise evaluations per generated plant.
 The bundled Material Icons font is from Google's Material Design Icons project
 and is licensed under Apache 2.0; its license text is in fonts/LICENSE.
 
-Pattern mode composes complete seeded Nonflowers plants and stemless heads made
-from the upstream petal geometry and generated pigment colors. A low-resolution
-alpha occupancy grid checks their painted silhouettes, then reserves a user-set
-margin around each placed shape. Stemmed motifs are packed first; smaller heads
-fill the remaining gaps. The menu controls stemmed size (50% by default), stem
-length (100%), spacing, and the stemmed-to-head count ratio. Regenerate pattern
-chooses a new seed; those controls and the seed are saved in the URL. The cached
-sprites are reused while spacing and ratio change, and the PNG export includes
-the entire composition.
+Pattern mode composes independently seeded complete Nonflowers plants and
+stemless flower clusters. The latter use the same `herbal()` plant
+generator, but omit its stem-and-leaf layer, preserving the original blossom
+positions and size variation. A five-unit alpha occupancy grid checks painted
+silhouettes, reserves a user-set margin, and proposes new positions by matching
+one motif's contour to the empty frontier beside another. Stemmed motifs are
+placed first; smaller flower clusters fill the remaining gaps. The menu controls
+stemmed size (50% by default), stem length (100%), spacing (8 units), and the
+stemmed-to-flower ratio. Regenerate pattern chooses a new seed; the controls and
+seed are saved in the URL. Cached sprites are reused when spacing and ratio
+change, and the PNG export includes the entire composition.

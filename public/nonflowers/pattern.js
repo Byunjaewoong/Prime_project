@@ -76,7 +76,7 @@
   mixedPetalInput.value = String(readPercent('mixedPetal', 100, 60, 180));
   patternSizeInput.value = String(readPercent('patternSize', 50, 25, 100));
   patternStemInput.value = String(readPercent('patternStem', 100, 60, 200));
-  patternSpacingInput.value = String(readPercent('patternSpacing', 24, 0, 80));
+  patternSpacingInput.value = String(readPercent('patternSpacing', 8, 0, 80));
   patternRatioInput.value = String(readPercent('patternRatio', 50, 0, 100));
   if (mixedFlowers.length) {
     const latest = mixedFlowers.at(-1);
@@ -324,35 +324,44 @@
   function solidifyPigment(context) {
     const image = context.getImageData(0, 0, context.canvas.width, context.canvas.height);
     const pixels = image.data;
+    let painted = 0;
     for (let i = 3; i < pixels.length; i += 4) {
       const alpha = pixels[i];
       if (alpha === 0) continue;
+      if (alpha > 48) painted++;
       const coverage = Math.min(1, alpha / 72);
       pixels[i] = Math.round(255 * coverage * coverage * (3 - 2 * coverage));
     }
     context.putImageData(image, 0, 0);
+    return painted;
   }
 
   // Keep the expensive original geometry as a cropped transparent sprite.
   // A new flower does not regenerate plants already present in the scene.
-  function originalPlant(worldWidth, worldHeight, flower) {
+  function originalPlant(worldWidth, worldHeight, flower, flowersOnly = false) {
     const par = genParams({ silent: true });
-    const kind = Math.random() <= .5 ? 'woody' : 'herbal';
+    const kind = flowersOnly ? 'herbal' : Math.random() <= .5 ? 'woody' : 'herbal';
     const stemScale = flower.stem / 100;
     const petalScale = flower.petal / 100;
     const sourceSize = Math.min(1600, Math.ceil(800 + Math.max(0, stemScale - 1) * 1000 + Math.max(0, petalScale - 1) * 100));
     const source = Layer.empty(sourceSize);
     par.flowerLength *= petalScale;
     par.innerLength *= petalScale;
+    if (flowersOnly) {
+      // Select fuller examples of the *same* generated flower layer. Tiny
+      // blossoms looked like isolated specks after their branch was removed.
+      par.flowerLength = Math.max(par.flowerLength, 20);
+      par.flowerWidth = Math.max(par.flowerWidth, 11);
+    }
     let geometryScale;
-    if (kind === 'woody') geometryScale = woody({ ctx: source, xof: sourceSize / 2, yof: sourceSize - 50, PAR: par, branchLength: 400 * stemScale });
+    if (kind === 'woody') geometryScale = woody({ ctx: source, xof: sourceSize / 2, yof: sourceSize - 50, PAR: par, branchLength: 400 * stemScale, flowersOnly });
     else {
       par.stemLength *= stemScale;
-      geometryScale = herbal({ ctx: source, xof: sourceSize / 2, yof: sourceSize, PAR: par, adaptiveCanvas: true });
+      geometryScale = herbal({ ctx: source, xof: sourceSize / 2, yof: sourceSize, PAR: par, adaptiveCanvas: true, flowersOnly });
     }
-    solidifyPigment(source);
+    const painted = solidifyPigment(source);
     const bounds = Layer.bound(source);
-    if (bounds.xmax < bounds.xmin || bounds.ymax < bounds.ymin) {
+    if (bounds.xmax < bounds.xmin || bounds.ymax < bounds.ymin || (flowersOnly && painted < 1200)) {
       source.canvas.width = source.canvas.height = 1;
       throw new Error('Original Nonflowers plant has no visible pixels');
     }
@@ -371,51 +380,13 @@
     return { canvas: sprite, kind, x: centerX - width * scale / 2, y: baseY - height * scale, width: width * scale, height: height * scale };
   }
 
-  // A flower-only motif uses the upstream Nonflowers petal geometry and its
-  // generated pigment palette, placed radially without drawing a stalk.
-  function originalHead(worldWidth, worldHeight, flower) {
-    const par = genParams({ silent: true });
-    const source = Layer.empty(520);
-    source.translate(260, 260);
-    const count = Math.max(4, Math.min(12, par.flowerPetal));
-    const length = Math.max(50, par.flowerLength * 2.3) * flower.petal / 100;
-    const width = Math.max(14, par.flowerWidth * 1.6);
-    const phase = random(0, tau);
-    for (let index = 0; index < count; index++) {
-      source.save();
-      source.rotate(phase + index / count * tau + random(-.09, .09));
-      leaf({ ctx: source, flo: true, xof: 0, yof: 0,
-        rot: [Math.PI / 2, 0, 0], len: length * random(.84, 1.12),
-        wid: t => par.flowerShape(t) * width,
-        vei: [0], col: par.flowerColor, cof: par.flowerColorCurve,
-        ben: t => [par.flowerOpenCurve(t, .5), 0, 0],
-      });
-      source.restore();
-    }
-    source.beginPath();
-    source.arc(0, 0, Math.max(4, width * .3), 0, tau);
-    source.fillStyle = hsv(par.innerColor.min[0], par.innerColor.min[1], par.innerColor.min[2], 1);
-    source.fill();
-    source.setTransform(1, 0, 0, 1, 0, 0);
-    solidifyPigment(source);
-    const bounds = Layer.bound(source);
-    const sprite = document.createElement('canvas');
-    sprite.width = bounds.xmax - bounds.xmin + 1;
-    sprite.height = bounds.ymax - bounds.ymin + 1;
-    sprite.getContext('2d').drawImage(source.canvas, bounds.xmin, bounds.ymin,
-      sprite.width, sprite.height, 0, 0, sprite.width, sprite.height);
-    source.canvas.width = source.canvas.height = 1;
-    const scale = Math.min(worldHeight * .80 / 850, worldWidth * .78 / 350, 2.2) * flower.size / 100;
-    return { canvas: sprite, kind: 'head', width: sprite.width * scale, height: sprite.height * scale };
-  }
-
   const originalKey = (flower, worldWidth, worldHeight) =>
     `${flower.seed}:${flower.size}:${flower.stem}:${flower.petal}:${worldWidth}:${worldHeight}`;
 
-  // Pack the painted silhouettes rather than their rectangular transparent
-  // sprites. A coarse occupancy grid keeps layout quick even at export size.
+  // Pack against painted silhouettes, including the spaces between petals and
+  // bent branches. The second pass uses those spaces instead of a regular grid.
   async function drawPattern(painter, worldWidth, worldHeight, id) {
-    const cell = 7;
+    const cell = 5;
     const cols = Math.ceil(worldWidth / cell);
     const rows = Math.ceil(worldHeight / cell);
     const occupied = new Uint8Array(cols * rows);
@@ -428,9 +399,10 @@
     const size = Number(patternSizeInput.value);
     const stem = Number(patternStemInput.value);
     const stemRatio = Number(patternRatioInput.value) / 100;
-    const target = Math.max(12, Math.min(38, Math.round(worldWidth * worldHeight / 61000)));
-    const stemTarget = Math.round(target * stemRatio);
-    const headTarget = target - stemTarget;
+    const target = Math.max(34, Math.min(78, Math.round(worldWidth * worldHeight / 32000)));
+    // Stemmed silhouettes consume more room than flower-only clusters. Budget
+    // them by occupied area so the resulting *count* stays near the UI ratio.
+    const stemTarget = Math.round(target * stemRatio * (.6 + .4 * stemRatio));
     const rand = (() => {
       let state = seed >>> 0;
       return () => {
@@ -443,30 +415,43 @@
     const variants = new Map();
     const activeKeys = new Set();
     const placements = [];
+    let frontier = [];
     let generated = 0;
 
     async function prototype(kind, index) {
-      const flowerSeed = 2 + ((seed ^ Math.imul(index + 1, 0x9e3779b9) ^ (kind === 'head' ? 0x41c64e6d : 0)) >>> 0) % 4294967293;
-      const flower = { seed: flowerSeed, size: kind === 'head' ? 100 + index % 4 * 15 : size,
-        stem, petal: kind === 'head' ? 115 + index % 3 * 15 : 100 };
-      const key = `${kind}:${originalKey(flower, worldWidth, worldHeight)}`;
-      activeKeys.add(key);
-      let sprite = patternCache.get(key);
-      if (!sprite) {
-        Prng.s = flowerSeed;
-        sprite = kind === 'head' ? originalHead(worldWidth, worldHeight, flower)
-          : originalPlant(worldWidth, worldHeight, flower);
-        patternCache.set(key, sprite);
-        generated++;
+      // Each slot receives its own seed. Retrying an empty blossom layer is
+      // deterministic and never substitutes a recycled shape.
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const flowerSeed = 2 + ((seed + Math.imul(index + 1, 0x9e3779b9)
+          + Math.imul(attempt, 0x85ebca6b) + (kind === 'head' ? 0x41c64e6d : 0)) >>> 0) % 4294967293;
+        const sizeJitter = (Math.imul(flowerSeed ^ (flowerSeed >>> 16), 0x85ebca6b) >>> 0) / 4294967296;
+        const flower = { seed: flowerSeed,
+          size: kind === 'head' ? Math.max(24, Math.round(size * (.75 + .18 * sizeJitter) * (1 - .18 * index / target))) : size,
+          stem, petal: 100 };
+        const key = `${kind}:${originalKey(flower, worldWidth, worldHeight)}`;
+        let sprite = patternCache.get(key);
+        if (!sprite) {
+          Prng.s = flowerSeed;
+          try {
+            sprite = originalPlant(worldWidth, worldHeight, flower, kind === 'head');
+          } catch (error) {
+            if (kind === 'head' && error.message === 'Original Nonflowers plant has no visible pixels') continue;
+            throw error;
+          }
+          patternCache.set(key, sprite);
+          generated++;
+        }
+        activeKeys.add(key);
+        if (generated % 2 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+        return { sprite, key };
       }
-      if (generated % 2 === 0) await new Promise(resolve => setTimeout(resolve, 0));
-      return { sprite, key };
+      return null;
     }
 
     function variant(sprite, key, turn) {
       const cacheKey = `${key}:${turn}`;
       if (variants.has(cacheKey)) return variants.get(cacheKey);
-      const angle = turn * Math.PI / 12;
+      const angle = turn * Math.PI / 6;
       const cosine = Math.cos(angle);
       const sine = Math.sin(angle);
       const w = Math.ceil((Math.abs(cosine) * sprite.width + Math.abs(sine) * sprite.height) / cell) + 2;
@@ -480,24 +465,36 @@
         sprite.width / cell, sprite.height / cell);
       const pixels = context.getImageData(0, 0, w, h).data;
       const points = [];
+      const painted = new Uint8Array(w * h);
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-        if (pixels[(y * w + x) * 4 + 3] > 8) points.push([x, y]);
+        if (pixels[(y * w + x) * 4 + 3] > 8) {
+          painted[y * w + x] = 1;
+          points.push([x, y]);
+        }
       }
+      const rim = points.filter(([x, y]) => x === 0 || y === 0 || x === w - 1 || y === h - 1 ||
+        !painted[y * w + x - 1] || !painted[y * w + x + 1] ||
+        !painted[(y - 1) * w + x] || !painted[(y + 1) * w + x]);
       mask.width = mask.height = 1;
-      const result = { angle, w, h, points };
+      const result = { angle, w, h, points, rim };
       variants.set(cacheKey, result);
       return result;
     }
 
     function fits(shape, left, top) {
       let inside = 0;
+      let contact = 0;
       for (const [x, y] of shape.points) {
         const gx = left + x, gy = top + y;
         if (gx < 0 || gx >= cols || gy < 0 || gy >= rows) continue;
-        if (occupied[gy * cols + gx]) return 0;
+        if (occupied[gy * cols + gx]) return null;
         inside++;
+        if ((gx > 0 && occupied[gy * cols + gx - 1]) ||
+            (gx + 1 < cols && occupied[gy * cols + gx + 1]) ||
+            (gy > 0 && occupied[(gy - 1) * cols + gx]) ||
+            (gy + 1 < rows && occupied[(gy + 1) * cols + gx])) contact++;
       }
-      return inside >= shape.points.length * .62 ? inside : 0;
+      return inside >= shape.points.length * .66 ? { inside, contact } : null;
     }
 
     function reserve(shape, left, top) {
@@ -508,42 +505,60 @@
           if (px >= 0 && px < cols && py >= 0 && py < rows) occupied[py * cols + px] = 1;
         }
       }
+      frontier = [];
+      for (let y = 1; y < rows - 1; y++) for (let x = 1; x < cols - 1; x++) {
+        const position = y * cols + x;
+        if (!occupied[position] && (occupied[position - 1] || occupied[position + 1] ||
+          occupied[position - cols] || occupied[position + cols])) frontier.push([x, y]);
+      }
     }
 
-    async function placeKind(kind, count, poolSize) {
+    async function placeKind(kind, count) {
       if (!count) return;
-      const pool = [];
-      for (let index = 0; index < poolSize; index++) {
-        if (id !== generation || disposed) return;
-        pool.push(await prototype(kind, index));
-      }
+      let consecutiveMisses = 0;
       for (let index = 0; index < count; index++) {
         if (id !== generation || disposed) return;
-        const { sprite, key } = pool[index % pool.length];
+        const item = await prototype(kind, index);
+        if (!item) continue;
+        const { sprite, key } = item;
         let best = null;
-        // Later, smaller flower heads occupy irregular pockets between stems.
-        for (let trial = 0; trial < 95; trial++) {
-          const turn = Math.floor(rand() * 24);
+        for (let trial = 0; trial < 150; trial++) {
+          const turn = Math.floor(rand() * 12);
           const shape = variant(sprite, key, turn);
           if (!shape.points.length) continue;
-          const left = Math.round(rand() * (cols + shape.w * .25) - shape.w * .62);
-          const top = Math.round(rand() * (rows + shape.h * .25) - shape.h * .62);
-          const visible = fits(shape, left, top);
-          if (!visible) continue;
-          // Prefer fully visible shapes, yet allow a few to cross the paper edge.
-          const score = visible / shape.points.length + rand() * .12;
+          let left, top;
+          if (frontier.length && shape.rim.length && rand() < (kind === 'head' ? .78 : .48)) {
+            const [edgeX, edgeY] = frontier[Math.floor(rand() * frontier.length)];
+            const [rimX, rimY] = shape.rim[Math.floor(rand() * shape.rim.length)];
+            left = edgeX - rimX + Math.floor(rand() * 5) - 2;
+            top = edgeY - rimY + Math.floor(rand() * 5) - 2;
+          } else {
+            left = Math.round(rand() * (cols + shape.w * .25) - shape.w * .62);
+            top = Math.round(rand() * (rows + shape.h * .25) - shape.h * .62);
+          }
+          const fit = fits(shape, left, top);
+          if (!fit) continue;
+          // Reward long near-contacts between irregular outlines while the
+          // reserved margin prevents the painted pixels from touching.
+          const score = fit.contact / Math.sqrt(shape.points.length) +
+            fit.inside / shape.points.length * .55 + rand() * .04;
           if (!best || score > best.score) best = { shape, left, top, score, sprite, kind };
-          if (score > 1.08) break;
         }
         if (best) {
           reserve(best.shape, best.left, best.top);
           placements.push(best);
+          consecutiveMisses = 0;
+        } else {
+          activeKeys.delete(key);
+          consecutiveMisses++;
+          if (consecutiveMisses >= 5) break;
         }
+        if (index % 3 === 2) await new Promise(resolve => setTimeout(resolve, 0));
       }
     }
 
-    await placeKind('stem', stemTarget, Math.min(12, stemTarget));
-    await placeKind('head', headTarget, Math.min(16, headTarget));
+    await placeKind('stem', stemTarget);
+    await placeKind('head', stemRatio === 1 ? 0 : target - placements.length);
     if (id !== generation || disposed) return null;
     for (const item of placements) {
       painter.save();
@@ -773,7 +788,8 @@
       canvas.dataset.patternStemmed = String(patternStats?.stemmed || 0);
       canvas.dataset.patternHeads = String(patternStats?.heads || 0);
       canvas.dataset.patternGenerated = String(patternStats?.generated || 0);
-      document.getElementById('pattern-count').value = String(patternStats?.count || 0);
+      document.getElementById('pattern-count').value = patternStats
+        ? `${patternStats.count} · ${patternStats.stemmed} stemmed / ${patternStats.heads} flowers` : '0';
       document.getElementById('mixed-edition-row').hidden = mode !== 'mixed';
       document.getElementById('mixed-edition').value = mixedSeed.toString(16).toUpperCase().padStart(8, '0');
       document.getElementById('mixed-count').value = String(currentMixedFlowers.length);
@@ -846,7 +862,7 @@
       ['bloom', bloomInput.value, '85'], ['stem', stemInput.value, '115'], ['quality', resolutionInput.value, '2'],
       ['mixedSize', mixedSizeInput.value, '50'], ['mixedStem', mixedStemInput.value, '120'], ['mixedPetal', mixedPetalInput.value, '100'],
       ['patternSize', patternSizeInput.value, '50'], ['patternStem', patternStemInput.value, '100'],
-      ['patternSpacing', patternSpacingInput.value, '24'], ['patternRatio', patternRatioInput.value, '50'],
+      ['patternSpacing', patternSpacingInput.value, '8'], ['patternRatio', patternRatioInput.value, '50'],
     ]) {
       if (value === fallback) url.searchParams.delete(name);
       else url.searchParams.set(name, value);

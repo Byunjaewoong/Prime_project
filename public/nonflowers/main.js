@@ -1011,12 +1011,14 @@ function woody(args){
       }
     }
   }
-  Layer.filter(lay0,Filter.fade)
-  Layer.filter(lay0,Filter.wispy)
+  if (!args.flowersOnly){
+    Layer.filter(lay0,Filter.fade)
+    Layer.filter(lay0,Filter.wispy)
+  }
   Layer.filter(lay1,Filter.wispy)
-  var b1 = Layer.bound(lay0)
+  var b1 = args.flowersOnly ? null : Layer.bound(lay0)
   var b2 = Layer.bound(lay1)
-  var bd = {
+  var bd = args.flowersOnly ? b2 : {
     xmin:Math.min(b1.xmin,b2.xmin),
     xmax:Math.max(b1.xmax,b2.xmax),
     ymin:Math.min(b1.ymin,b2.ymin),
@@ -1024,7 +1026,7 @@ function woody(args){
   }
   var xref = xof-(bd.xmin+bd.xmax)/2
   var yref = yof-bd.ymax
-  Layer.blit(ctx,lay0,{ble:"multiply",xof:xref,yof:yref})
+  if (!args.flowersOnly) Layer.blit(ctx,lay0,{ble:"multiply",xof:xref,yof:yref})
   Layer.blit(ctx,lay1,{ble:"normal",xof:xref,yof:yref})
 
   return renderScale
@@ -1152,12 +1154,14 @@ function herbal(args){
          ])})
     }
   }
-  Layer.filter(lay0,Filter.fade)
-  Layer.filter(lay0,Filter.wispy)
+  if (!args.flowersOnly){
+    Layer.filter(lay0,Filter.fade)
+    Layer.filter(lay0,Filter.wispy)
+  }
   Layer.filter(lay1,Filter.wispy)
-  var b1 = Layer.bound(lay0)
+  var b1 = args.flowersOnly ? null : Layer.bound(lay0)
   var b2 = Layer.bound(lay1)
-  var bd = {
+  var bd = args.flowersOnly ? b2 : {
     xmin:Math.min(b1.xmin,b2.xmin),
     xmax:Math.max(b1.xmax,b2.xmax),
     ymin:Math.min(b1.ymin,b2.ymin),
@@ -1165,7 +1169,7 @@ function herbal(args){
   }
   var xref = xof-(bd.xmin+bd.xmax)/2
   var yref = yof-bd.ymax
-  Layer.blit(ctx,lay0,{ble:"multiply",xof:xref,yof:yref})
+  if (!args.flowersOnly) Layer.blit(ctx,lay0,{ble:"multiply",xof:xref,yof:yref})
   Layer.blit(ctx,lay1,{ble:"normal",xof:xref,yof:yref})
 
   return renderScale
