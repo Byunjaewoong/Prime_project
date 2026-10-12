@@ -327,6 +327,11 @@ export default function BrenchExperience() {
     link.href = viewer.capture();
     link.click();
   };
+  const renderControl = (control: (typeof controls)[number]) => <div className={styles.control} key={control.key}>
+    <span className={styles.controlLabel}><span>{control.label}</span><output>{settings[control.key].toFixed(control.step >= 1 ? 0 : 2)}</output></span>
+    <DragOnlyRange label={control.label} min={control.min} max={control.max} step={control.step}
+      value={settings[control.key]} onChange={value => setValue(control.key, value)} />
+  </div>;
 
   return <main className={styles.page}>
     <canvas key={canvasVersion} ref={canvasRef} className={styles.canvas} role="img"
@@ -346,13 +351,7 @@ export default function BrenchExperience() {
       onPointerUp={() => { dragRef.current = null; }}
       onPointerCancel={() => { dragRef.current = null; }}
       onLostPointerCapture={() => { dragRef.current = null; }} />
-    <div className={styles.caption}><span>BRENCH / TREE STUDY</span><span>{branchCount} STEMS · DRAG TO ROTATE</span></div>
     {error && <div className={styles.error}>{error}</div>}
-    {progress === 0 && <div className={styles.emptyHint}>아래 성장 손잡이를 오른쪽으로 드래그하세요</div>}
-    <section className={styles.growth} aria-label="나무 성장 시간축">
-      <div className={styles.controlLabel}><span>{progress === 0 ? "발아 전" : progress < .1 ? "발아" : progress < .23 ? "고개 숙인 새싹" : progress < .35 ? "떡잎 펼침" : progress < .54 ? "첫 본잎" : progress < .76 ? "어린 나무" : "성목"} · DRAG</span><output>{Math.round(progress * 100)}%</output></div>
-      <DragOnlyRange label="성장 시간" min={0} max={100} step={.1} value={progress * 100} onChange={updateGrowth} />
-    </section>
     <div className={styles.menuRoot}>
       {controlsOpen && <aside id="brench-menu" className={styles.menu} aria-label="나무 설정">
         <div className={styles.menuHeader}><span>Brench</span><nav className={styles.menuLinks} aria-label="Brench navigation">
@@ -360,6 +359,21 @@ export default function BrenchExperience() {
           <Link href="/works/laboratory" aria-label="Laboratory"><FlaskConical size={16} /></Link>
         </nav></div>
         <div className={styles.controls}>
+          <span className={styles.sectionTitle}>GROWTH</span>
+          <div className={styles.control}>
+            <span className={styles.controlLabel}><span>성장 단계</span><output>{Math.round(progress * 100)}%</output></span>
+            <DragOnlyRange label="성장 시간" min={0} max={100} step={.1} value={progress * 100} onChange={updateGrowth} />
+            <span className={styles.seed}>{progress === 0 ? "발아 전" : progress < .1 ? "발아" : progress < .23 ? "고개 숙인 새싹" : progress < .35 ? "떡잎 펼침" : progress < .54 ? "첫 본잎" : progress < .76 ? "어린 나무" : "성목"} · {branchCount} STEMS</span>
+          </div>
+          <span className={styles.sectionTitle}>TREE FORM</span>
+          <div className={styles.presets}>{presets.map(preset => <button type="button" key={preset.name}
+            onClick={() => setSettings(current => ({ ...current, ...preset.values }))}>{preset.name}</button>)}</div>
+          <button type="button" className={styles.action} onClick={regenerate}><RefreshCw size={14} /> 새 나무 생성</button>
+          <button type="button" className={styles.action} onClick={randomizeModel}><Dices size={14} /> 모델 랜덤 생성</button>
+          <span className={styles.seed}>SEED {settings.seed}</span>
+          {controls.slice(0, 10).map(renderControl)}
+          <LeafSelector value={settings.leafType} onChange={leafType => setSettings(current => ({ ...current, leafType }))} />
+          {controls.slice(10, 12).map(renderControl)}
           <span className={styles.sectionTitle}>WIND</span>
           <div className={styles.control}><span className={styles.controlLabel}><span>바람 주기</span><output>{wind.period.toFixed(2)}초</output></span>
             <DragOnlyRange label="바람 주기" min={1} max={12} step={.25} value={wind.period}
@@ -370,25 +384,15 @@ export default function BrenchExperience() {
           <div className={styles.control}><span className={styles.controlLabel}><span>바람 세기</span><output>{Math.round(wind.strength * 100)}%</output></span>
             <DragOnlyRange label="바람 세기" min={0} max={100} step={1} value={wind.strength * 100}
               onChange={strength => setWind(current => ({ ...current, strength: strength / 100 }))} /></div>
-          <p className={styles.leafHint}>기본 시점 기준 · 0° 오른쪽 / 90° 뒤 / 180° 왼쪽 / 270° 앞<br />주기가 짧을수록 자주 불고, 세기 0%에서는 멈춥니다.<br />줄기 굵기가 클수록 덜 휘고 더 빨리 복원됩니다.</p>
-          <LeafSelector value={settings.leafType} onChange={leafType => setSettings(current => ({ ...current, leafType }))} />
-          <span className={styles.sectionTitle}>TREE FORM</span>
-          <div className={styles.presets}>{presets.map(preset => <button type="button" key={preset.name}
-            onClick={() => setSettings(current => ({ ...current, ...preset.values }))}>{preset.name}</button>)}</div>
-          <button type="button" className={styles.action} onClick={regenerate}><RefreshCw size={14} /> 새 나무 생성</button>
-          <button type="button" className={styles.action} onClick={randomizeModel}><Dices size={14} /> 모델 랜덤 생성</button>
-          <span className={styles.seed}>SEED {settings.seed}</span>
-          {controls.map(control => <div className={styles.control} key={control.key}>
-            <span className={styles.controlLabel}><span>{control.label}</span><output>{settings[control.key].toFixed(control.step >= 1 ? 0 : 2)}</output></span>
-            <DragOnlyRange label={control.label} min={control.min} max={control.max} step={control.step}
-              value={settings[control.key]} onChange={value => setValue(control.key, value)} />
-          </div>)}
-          <span className={styles.sectionTitle}>LIGHT & VIEW</span>
+          <p className={styles.leafHint}>0° 오른쪽 / 90° 뒤 / 180° 왼쪽 / 270° 앞</p>
+          <span className={styles.sectionTitle}>APPEARANCE & VIEW</span>
+          {renderControl(controls[12])}
           <div className={styles.control}><span className={styles.controlLabel}><span>명암</span><output>{contrast.toFixed(2)}</output></span>
             <DragOnlyRange label="명암" min={0} max={2} step={.05} value={contrast} onChange={setContrast} /></div>
           <div className={styles.control}><span className={styles.controlLabel}><span>확대</span><output>{zoom.toFixed(2)}×</output></span>
             <DragOnlyRange label="확대" min={.7} max={3.5} step={.05} value={zoom} onChange={setZoom} /></div>
           <button type="button" className={styles.action} onClick={resetView}><RotateCcw size={14} /> 시점 초기화</button>
+          <span className={styles.sectionTitle}>EXPORT & RESET</span>
           <button type="button" className={styles.action} onClick={() => { setSettings(DEFAULT_BRANCH_SETTINGS); setWind(DEFAULT_WIND_SETTINGS); setContrast(1); resetView(); updateGrowth(INITIAL_GROWTH * 100); }}>모든 설정 초기화</button>
           <button type="button" className={styles.action} onClick={download}><Download size={14} /> PNG 저장</button>
         </div>

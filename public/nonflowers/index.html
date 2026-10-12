@@ -10,47 +10,46 @@
     <script src="pattern.js" defer></script>
   </head>
   <body>
-    <canvas id="meadow" role="img" aria-label="빈티지 종이 위에 무작위로 생성된 야생화 패턴"></canvas>
-    <header class="masthead">
-      <a href="/works/laboratory" target="_top" aria-label="Laboratory로 돌아가기">↖ LABORATORY</a>
-      <span>NONFLOWERS <i>/</i> FIELD NOTES</span>
-    </header>
+    <canvas id="meadow" role="img" aria-label="종이 위에 생성된 Nonflower 패턴"></canvas>
     <div id="status" role="status" aria-live="polite">꽃을 그리고 있습니다…</div>
     <aside id="menu" class="panel" aria-label="꽃 패턴 설정" hidden>
-      <div class="panel-heading"><span>FIELD NOTES / 01</span><button id="close-menu" aria-label="메뉴 닫기">×</button></div>
-      <h1>A wildflower study.</h1>
-      <p class="intro">종이 위에 피어나는, 세상에 없는 꽃.</p>
+      <div class="panel-heading"><span>Nonflowers</span><nav class="menu-links" aria-label="Nonflowers navigation">
+        <a href="/" target="_top" aria-label="Home">⌂</a>
+        <a href="/works/laboratory" target="_top" aria-label="Laboratory">⚗</a>
+      </nav></div>
+      <div class="panel-content">
+      <span class="section-title">Composition</span>
+      <button id="mixed-regenerate" class="action primary" type="button">↻ nonflower</button>
+      <button id="regenerate" class="action" type="button">↻ NEW COMPOSITION</button>
+      <span class="section-title">Mode</span>
       <fieldset class="flower-mode">
-        <legend>꽃 형태 <span>FLOWER SHAPE</span></legend>
         <div class="mode-options" role="radiogroup" aria-label="꽃 형태">
-          <label><input type="radio" name="flower-mode" value="vintage" checked><span>빈티지</span></label>
-          <label><input type="radio" name="flower-mode" value="mixed"><span>혼합 · 원본 + 빈티지</span></label>
+          <label><input type="radio" name="flower-mode" value="mixed" checked><span>Nonflower</span></label>
+          <label><input type="radio" name="flower-mode" value="vintage"><span>Vintage</span></label>
         </div>
-        <p class="mode-hint">선택 후 랜덤 재생성을 누르면 적용됩니다.</p>
-        <label class="visibility-row" for="show-vintage"><span>빈티지 꽃 표시</span><input id="show-vintage" type="checkbox" checked role="switch"><span class="switch-track" aria-hidden="true"></span></label>
+        <p class="mode-hint">모드 변경은 NEW COMPOSITION을 누르면 적용됩니다.</p>
+        <label class="visibility-row" for="show-vintage"><span>Vintage flowers</span><input id="show-vintage" type="checkbox" role="switch"><span class="switch-track" aria-hidden="true"></span></label>
       </fieldset>
-      <fieldset id="vintage-controls" class="composition-controls">
-        <legend>빈티지 꽃 <span>VINTAGE PLANT</span></legend>
+      <fieldset id="vintage-controls" class="composition-controls" hidden>
+        <legend>Vintage flowers</legend>
         <label class="control-row" for="bloom-size"><span>꽃 크기 <output id="bloom-size-value">85%</output></span><input id="bloom-size" type="range" min="50" max="140" step="5" value="85"></label>
         <label class="control-row" for="stem-length"><span>줄기 길이 <output id="stem-length-value">115%</output></span><input id="stem-length" type="range" min="95" max="145" step="5" value="115"></label>
       </fieldset>
-      <fieldset id="mixed-controls" class="composition-controls" hidden>
-        <legend>믹싱모드 꽃 <span>ORIGINAL PLANT</span></legend>
+      <fieldset id="mixed-controls" class="composition-controls">
+        <legend>Nonflower</legend>
         <label class="control-row" for="mixed-size"><span>전체 크기 <output id="mixed-size-value">50%</output></span><input id="mixed-size" type="range" min="40" max="120" step="5" value="50"></label>
         <label class="control-row" for="mixed-stem"><span>줄기 길이 <output id="mixed-stem-value">120%</output></span><input id="mixed-stem" type="range" min="80" max="400" step="10" value="120"></label>
         <label class="control-row" for="mixed-petal"><span>꽃 길이 · 꽃잎 <output id="mixed-petal-value">100%</output></span><input id="mixed-petal" type="range" min="60" max="180" step="5" value="100"></label>
         <label class="control-row" for="mixed-depth"><span>앞뒤 깊이 <output id="mixed-depth-value">50%</output></span><input id="mixed-depth" type="range" min="0" max="100" step="1" value="50"></label>
-        <p class="mode-hint">가장 최근 꽃을 조절합니다. 랜덤 생성하면 기존 꽃에 덧그립니다.</p>
-        <button id="mixed-regenerate" class="mixed-generate" type="button"><span>↻</span> 믹싱모드 꽃 추가 생성</button>
-        <div class="edition">생성된 믹싱 꽃 <output id="mixed-count">1</output>송이</div>
+        <p class="mode-hint">가장 최근 Nonflower를 조절합니다. ↻ nonflower는 기존 꽃을 유지하며 한 송이를 더합니다.</p>
+        <div class="edition">NONFLOWERS <output id="mixed-count">1</output></div>
       </fieldset>
+      <span class="section-title">Output</span>
       <fieldset class="composition-controls">
-        <legend>출력 <span>RESOLUTION</span></legend>
         <label class="quality-row" for="resolution">해상도 <select id="resolution"><option value="1">표준 · 1×</option><option value="1.5">균형 · 1.5×</option><option value="2" selected>고해상도 · 2×</option></select></label>
-        <p class="mode-hint">모든 모드와 PNG 저장에 적용됩니다.</p>
       </fieldset>
+      <span class="section-title">Paper tone</span>
       <fieldset>
-        <legend>배경 톤 <span>PAPER TONE</span></legend>
         <div class="swatches" id="swatches">
           <button data-tone="#a6b7b2" style="--swatch:#a6b7b2" aria-label="미스트 블루" aria-pressed="true"></button>
           <button data-tone="#c0c1a7" style="--swatch:#c0c1a7" aria-label="세이지 그린" aria-pressed="false"></button>
@@ -61,11 +60,11 @@
         </div>
         <label class="custom-tone">직접 고르기 <input type="color" id="tone" value="#a6b7b2" aria-label="사용자 지정 배경 색상"></label>
       </fieldset>
-      <button id="regenerate" class="generate"><span>↻</span> 랜덤 재생성 <small>NEW COMPOSITION</small></button>
-      <button id="download" class="download">이미지 저장 <span>↓ PNG</span></button>
+      <button id="download" class="action" type="button">↓ PNG 저장</button>
       <div class="edition">EDITION <output id="edition">—</output></div>
-      <div id="mixed-edition-row" class="edition" hidden>MIXED FLOWER <output id="mixed-edition">—</output></div>
+      <div id="mixed-edition-row" class="edition" hidden>NONFLOWER <output id="mixed-edition">—</output></div>
       <footer>Based on <a href="https://github.com/LingDong-/nonflowers" target="_blank" rel="noopener noreferrer">Nonflowers by Lingdong Huang ↗</a><br>Procedural botanical paintings · MIT</footer>
+      </div>
     </aside>
     <button id="menu-toggle" class="menu-toggle" aria-label="메뉴 열기" aria-controls="menu" aria-expanded="false">M</button>
   </body>

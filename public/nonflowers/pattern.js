@@ -44,10 +44,10 @@
     return makeMixedFlower(flowerSeed, size, stem, petal, depth / 1000);
   });
   let mixedFlowers = parsedMix?.length && parsedMix.every(Boolean) ? parsedMix : [];
-  let mode = query.get('mode') === 'mixed' ? 'mixed' : 'vintage';
+  let mode = query.get('mode') === 'vintage' ? 'vintage' : 'mixed';
   let pendingMode = mode;
   const vintageToggle = document.getElementById('show-vintage');
-  let showVintage = query.get('vintage') !== '0';
+  let showVintage = query.has('vintage') ? query.get('vintage') === '1' : mode === 'vintage';
   vintageToggle.checked = showVintage;
   document.querySelector(`input[name="flower-mode"][value="${mode}"]`).checked = true;
   const bloomInput = document.getElementById('bloom-size');
@@ -591,11 +591,10 @@
     menu.hidden = !open;
     toggle.setAttribute('aria-expanded', String(open));
     toggle.setAttribute('aria-label', open ? '메뉴 닫기' : '메뉴 열기');
-    if (open) document.getElementById('close-menu').focus();
+    if (open) { menu.scrollTop = 0; mixedGenerateButton.focus(); }
     else toggle.focus();
   }
   toggle.addEventListener('click', () => setMenu(menu.hidden));
-  document.getElementById('close-menu').addEventListener('click', () => setMenu(false));
   document.addEventListener('keydown', event => { if (event.key === 'Escape' && !menu.hidden) setMenu(false); });
   canvas.addEventListener('click', () => { if (!menu.hidden) setMenu(false); });
   document.getElementById('swatches').addEventListener('click', event => {
@@ -608,6 +607,9 @@
       pendingMode = event.target.value;
       mixedControls.hidden = pendingMode !== 'mixed';
       vintageControls.hidden = pendingMode === 'mixed';
+      if (pendingMode === 'vintage') {
+        showVintage = vintageToggle.checked = true;
+      }
     });
   });
   function updateUrl() {
@@ -622,8 +624,9 @@
         [flower.seed, flower.size, flower.stem, flower.petal, Math.round(flower.depth * 1000)]
           .map(value => value.toString(36)).join(',')).join(';'));
     } else url.searchParams.delete('mix');
-    if (showVintage) url.searchParams.delete('vintage');
-    else url.searchParams.set('vintage', '0');
+    if (showVintage) url.searchParams.set('vintage', '1');
+    else if (mode === 'vintage') url.searchParams.set('vintage', '0');
+    else url.searchParams.delete('vintage');
     for (const [name, value, fallback] of [
       ['bloom', bloomInput.value, '85'], ['stem', stemInput.value, '115'], ['quality', resolutionInput.value, '2'],
       ['mixedSize', mixedSizeInput.value, '50'], ['mixedStem', mixedStemInput.value, '120'], ['mixedPetal', mixedPetalInput.value, '100'],
