@@ -234,21 +234,35 @@
         context.beginPath(); context.ellipse(tip[0], tip[1], 2.5, 5, side * .35, 0, tau); context.fill();
       }
     }
-    context.globalAlpha = .85 + depth * .15;
+    context.globalAlpha = 1;
     if (kind === 'umbel') umbel(context, x, y, size, color);
     else blossom(context, x, y, size, color, random(.50, 1), Math.random() < .24);
     context.globalAlpha = 1;
   }
 
-  // Generate a complete plant through the unmodified upstream path. Geometry,
-  // branching, leaves, flowers, colors and filters all come from woody/herbal.
-  // Only the finished transparent raster is positioned among the meadow plants.
+  // Keep the original plant's shape and pigment colors, but make its painted
+  // pixels opaque. Preserve low-alpha edge pixels for smooth silhouettes.
+  function solidifyPigment(context) {
+    const image = context.getImageData(0, 0, context.canvas.width, context.canvas.height);
+    const pixels = image.data;
+    for (let i = 3; i < pixels.length; i += 4) {
+      const alpha = pixels[i];
+      if (alpha === 0) continue;
+      const coverage = Math.min(1, alpha / 72);
+      pixels[i] = Math.round(255 * coverage * coverage * (3 - 2 * coverage));
+    }
+    context.putImageData(image, 0, 0);
+  }
+
+  // Generate the complete plant through the original woody/herbal path, then
+  // adjust only its finished raster opacity before placing it in the meadow.
   function originalPlant(context, worldWidth, worldHeight) {
     const source = Layer.empty(600);
     const par = genParams({ silent: true });
     const kind = Math.random() <= .5 ? 'woody' : 'herbal';
     if (kind === 'woody') woody({ ctx: source, xof: 300, yof: 550, PAR: par });
     else herbal({ ctx: source, xof: 300, yof: 600, PAR: par });
+    solidifyPigment(source);
     const bounds = Layer.bound(source);
     if (bounds.xmax < bounds.xmin || bounds.ymax < bounds.ymin) {
       source.canvas.width = source.canvas.height = 1;
@@ -338,12 +352,6 @@
       }
       if (id !== generation || disposed) return;
       if (mode === 'mixed') originalKind = originalPlant(painter, worldWidth, worldHeight);
-      // Wear the pigment itself, so the selected paper tone appears in flecks.
-      painter.setTransform(1, 0, 0, 1, 0, 0);
-      painter.globalCompositeOperation = 'destination-out';
-      painter.globalAlpha = .43;
-      painter.fillStyle = painter.createPattern(wear, 'repeat');
-      painter.fillRect(0, 0, width, height);
       canvas.width = width; canvas.height = height;
       if (flowers) { flowers.width = flowers.height = 1; }
       flowers = working;

@@ -16,8 +16,10 @@ The Flower Shape menu has a Vintage mode and a Mixed mode. Mixed regeneration
 draws the vintage meadow and then a complete original Nonflowers plant using
 the upstream `woody()` or `herbal()` function with original `genParams()` values.
 The upstream geometry, branching, leaves, petals, color and filtering stay
-together; only the finished transparent plant image is cropped and positioned
-within the meadow. The URL saves `mode=mixed` with the seed.
+together. The finished plant raster has its pigment alpha raised to opaque,
+while low-alpha silhouette edges remain soft; it is then cropped and positioned
+within the meadow. Vintage flower heads are also drawn without layer opacity.
+The URL saves `mode=mixed` with the seed.
 
 Rendering yields between small plant batches, caps the backing canvas at 3.2M
 pixels, cancels superseded generations and releases replaced canvases. Resizing
