@@ -916,14 +916,19 @@ function woody(args){
   var yof = (args.yof != undefined) ? args.yof : 0;
   var PAR = (args.PAR != undefined) ? args.PAR : genParams();
 
-  // Leave extra drawing room when the host requests a longer woody stem.
-  var cwid = Math.ceil(1200 + Math.max(0, ((args.branchLength != undefined) ? args.branchLength : 400) - 400)*2)
+  // Expand the logical drawing room for long stems, while bounding raster cost.
+  var branchLength = (args.branchLength != undefined) ? args.branchLength : 400
+  var logicalWidth = Math.max(1200,Math.ceil(branchLength*2.7))
+  var renderScale = Math.min(1,1600/logicalWidth)
+  var cwid = Math.ceil(logicalWidth*renderScale)
   var lay0 = Layer.empty(cwid)
   var lay1 = Layer.empty(cwid)
+  lay0.scale(renderScale,renderScale)
+  lay1.scale(renderScale,renderScale)
 
   var PL = branch({
-    ctx:lay0,xof:cwid*0.5,yof:cwid*0.7,
-    len:(args.branchLength != undefined) ? args.branchLength : 400,
+    ctx:lay0,xof:logicalWidth*0.5,yof:logicalWidth*0.7,
+    len:branchLength,
     wid:PAR.branchWidth,
     twi:PAR.branchTwist,
     dep:PAR.branchDepth,
@@ -1030,12 +1035,17 @@ function herbal(args){
   var yof = (args.yof != undefined) ? args.yof : 0;
   var PAR = (args.PAR != undefined) ? args.PAR : genParams();
 
-  var cwid = 1200
+  var logicalWidth = (args.adaptiveCanvas) ?
+    Math.max(1200,Math.ceil((PAR.stemLength*1.3+PAR.shootLength*1.5+100)/0.7)) : 1200
+  var renderScale = Math.min(1,1600/logicalWidth)
+  var cwid = Math.ceil(logicalWidth*renderScale)
   var lay0 = Layer.empty(cwid)
   var lay1 = Layer.empty(cwid)
+  lay0.scale(renderScale,renderScale)
+  lay1.scale(renderScale,renderScale)
 
-  var x0 = cwid*0.5
-  var y0 = cwid*0.7
+  var x0 = logicalWidth*0.5
+  var y0 = logicalWidth*0.7
 
   for (var i = 0; i < PAR.stemCount; i++){
     var r = [PI/2,0,normRand(-1,1)*PI]

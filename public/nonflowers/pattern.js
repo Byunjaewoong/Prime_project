@@ -43,8 +43,8 @@
   };
   bloomInput.value = String(readPercent('bloom', 85, 50, 140));
   stemInput.value = String(readPercent('stem', 115, 95, 145));
-  mixedSizeInput.value = String(readPercent('mixedSize', 65, 40, 120));
-  mixedStemInput.value = String(readPercent('mixedStem', 120, 80, 140));
+  mixedSizeInput.value = String(readPercent('mixedSize', 50, 40, 120));
+  mixedStemInput.value = String(readPercent('mixedStem', 120, 80, 400));
   mixedPetalInput.value = String(readPercent('mixedPetal', 100, 60, 180));
   resolutionInput.value = ['1', '1.5', '2'].includes(query.get('quality')) ? query.get('quality') : '2';
   document.getElementById('bloom-size-value').value = `${bloomInput.value}%`;
@@ -287,14 +287,14 @@
     const kind = Math.random() <= .5 ? 'woody' : 'herbal';
     const stemScale = Number(mixedStemInput.value) / 100;
     const petalScale = Number(mixedPetalInput.value) / 100;
-    const sourceSize = Math.ceil(600 + Math.max(0, stemScale - 1) * 1500 + Math.max(0, petalScale - 1) * 100);
+    const sourceSize = Math.min(1600, Math.ceil(800 + Math.max(0, stemScale - 1) * 1000 + Math.max(0, petalScale - 1) * 100));
     const source = Layer.empty(sourceSize);
     par.flowerLength *= petalScale;
     par.innerLength *= petalScale;
     if (kind === 'woody') woody({ ctx: source, xof: sourceSize / 2, yof: sourceSize - 50, PAR: par, branchLength: 400 * stemScale });
     else {
       par.stemLength *= stemScale;
-      herbal({ ctx: source, xof: sourceSize / 2, yof: sourceSize, PAR: par });
+      herbal({ ctx: source, xof: sourceSize / 2, yof: sourceSize, PAR: par, adaptiveCanvas: true });
     }
     solidifyPigment(source);
     const bounds = Layer.bound(source);
@@ -453,7 +453,7 @@
     else url.searchParams.delete('mode');
     for (const [name, value, fallback] of [
       ['bloom', bloomInput.value, '85'], ['stem', stemInput.value, '115'], ['quality', resolutionInput.value, '2'],
-      ['mixedSize', mixedSizeInput.value, '65'], ['mixedStem', mixedStemInput.value, '120'], ['mixedPetal', mixedPetalInput.value, '100'],
+      ['mixedSize', mixedSizeInput.value, '50'], ['mixedStem', mixedStemInput.value, '120'], ['mixedPetal', mixedPetalInput.value, '100'],
     ]) {
       if (value === fallback) url.searchParams.delete(name);
       else url.searchParams.set(name, value);
@@ -474,10 +474,13 @@
   for (const [input, output] of [[mixedSizeInput, 'mixed-size-value'], [mixedStemInput, 'mixed-stem-value'], [mixedPetalInput, 'mixed-petal-value']]) {
     input.addEventListener('input', () => {
       document.getElementById(output).value = `${input.value}%`;
-      if (mode === 'mixed') scheduleComposition();
+      if (mode === 'mixed' && input !== mixedStemInput) scheduleComposition();
       else updateUrl();
     });
   }
+  mixedStemInput.addEventListener('change', () => {
+    if (mode === 'mixed') scheduleComposition();
+  });
   resolutionInput.addEventListener('change', scheduleComposition);
   generateButton.addEventListener('click', () => {
     let next = newSeed();
