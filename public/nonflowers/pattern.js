@@ -93,6 +93,10 @@
   let controlsTimer;
   let frame = 0;
   let disposed = false;
+  const originalCache = new Map();
+  const vintageCache = new Map();
+  let vintageCacheSignature = '';
+  let vintageCachePixels = 0;
 
   // A fixed noise field makes saved seeds repeatable even after a page reload.
   // Only the PRNG is advanced by each composition; tone changes never touch it.
@@ -313,9 +317,9 @@
     context.putImageData(image, 0, 0);
   }
 
-  // Generate the complete plant through the original woody/herbal path, then
-  // adjust only its finished raster opacity before placing it in the meadow.
-  function originalPlant(context, worldWidth, worldHeight, flower) {
+  // Keep the expensive original geometry as a cropped transparent sprite.
+  // A new flower does not regenerate plants already present in the scene.
+  function originalPlant(worldWidth, worldHeight, flower) {
     const par = genParams({ silent: true });
     const kind = Math.random() <= .5 ? 'woody' : 'herbal';
     const stemScale = flower.stem / 100;
@@ -344,14 +348,69 @@
       * flower.size / 100 / geometryScale;
     const centerX = worldWidth * random(.16, .84);
     const baseY = worldHeight + random(5, 65);
-    context.save();
-    context.globalAlpha = 1;
-    context.globalCompositeOperation = 'source-over';
-    context.drawImage(source.canvas, bounds.xmin, bounds.ymin, width, height,
-      centerX - width * scale / 2, baseY - height * scale, width * scale, height * scale);
-    context.restore();
+    const sprite = document.createElement('canvas');
+    sprite.width = width; sprite.height = height;
+    sprite.getContext('2d').drawImage(source.canvas, bounds.xmin, bounds.ymin, width, height, 0, 0, width, height);
     source.canvas.width = source.canvas.height = 1;
-    return kind;
+    return { canvas: sprite, kind, x: centerX - width * scale / 2, y: baseY - height * scale, width: width * scale, height: height * scale };
+  }
+
+  const originalKey = (flower, worldWidth, worldHeight) =>
+    `${flower.seed}:${flower.size}:${flower.stem}:${flower.petal}:${worldWidth}:${worldHeight}`;
+
+  function drawSprite(context, sprite) {
+    context.save();
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.drawImage(sprite.canvas, sprite.x, sprite.y);
+    context.restore();
+  }
+
+  function drawVintage(context, item, width, height, worldWidth, worldHeight, cacheLimit) {
+    const cached = vintageCache.get(item.cacheId);
+    if (cached) { drawSprite(context, cached); return true; }
+    Prng.s = item.paintSeed;
+    if (item.kind === 'umbel' || vintageCachePixels >= cacheLimit) {
+      plant(context, item, worldHeight);
+      return false;
+    }
+    const scaleX = width / worldWidth;
+    const scaleY = height / worldHeight;
+    const x = Math.max(0, Math.floor((item.x - 320) * scaleX));
+    const y = Math.max(0, Math.floor((item.y - 160) * scaleY));
+    const right = Math.min(width, Math.ceil((item.x + 320) * scaleX));
+    const boundsWidth = right - x;
+    const boundsHeight = height - y;
+    if (boundsWidth <= 0 || boundsHeight <= 0) return false;
+    const temp = document.createElement('canvas');
+    temp.width = boundsWidth; temp.height = boundsHeight;
+    const tempContext = temp.getContext('2d', { willReadFrequently: true });
+    tempContext.setTransform(scaleX, 0, 0, scaleY, -x, -y);
+    plant(tempContext, item, worldHeight);
+    const data = tempContext.getImageData(0, 0, boundsWidth, boundsHeight).data;
+    let left = boundsWidth, top = boundsHeight, bottom = -1, edge = -1;
+    for (let row = 0; row < boundsHeight; row++) {
+      for (let col = 0; col < boundsWidth; col++) {
+        if (data[(row * boundsWidth + col) * 4 + 3] === 0) continue;
+        if (col < left) left = col;
+        if (col > edge) edge = col;
+        if (row < top) top = row;
+        if (row > bottom) bottom = row;
+      }
+    }
+    if (bottom < 0) { temp.width = temp.height = 1; return false; }
+    const sprite = { canvas: document.createElement('canvas'), x: x + left, y: y + top };
+    sprite.canvas.width = edge - left + 1;
+    sprite.canvas.height = bottom - top + 1;
+    sprite.canvas.getContext('2d').drawImage(temp, left, top, sprite.canvas.width, sprite.canvas.height,
+      0, 0, sprite.canvas.width, sprite.canvas.height);
+    temp.width = temp.height = 1;
+    drawSprite(context, sprite);
+    const pixels = sprite.canvas.width * sprite.canvas.height;
+    if (vintageCachePixels + pixels <= cacheLimit) {
+      vintageCache.set(item.cacheId, sprite);
+      vintageCachePixels += pixels;
+    } else sprite.canvas.width = sprite.canvas.height = 1;
+    return false;
   }
 
   function compose() {
@@ -396,6 +455,14 @@
     const worldWidth = worldHeight * cssWidth / cssHeight;
     const bloomScale = Number(bloomInput.value) / 100;
     const stemScale = Number(stemInput.value) / 100;
+    const cacheSignature = `${seed}:${bloomScale}:${stemScale}:${width}:${height}`;
+    if (cacheSignature !== vintageCacheSignature) {
+      for (const sprite of vintageCache.values()) sprite.canvas.width = sprite.canvas.height = 1;
+      vintageCache.clear();
+      vintageCachePixels = 0;
+      vintageCacheSignature = cacheSignature;
+    }
+    const vintageCacheLimit = cssWidth < 700 ? 16000000 : 32000000;
     painter.scale(width / worldWidth, height / worldHeight);
     Prng.s = seed;
     const items = [];
@@ -421,6 +488,7 @@
     // Each vintage plant has its own depth and random stream. Changing the
     // original flower or hiding the meadow cannot change vintage silhouettes.
     items.forEach((item, index) => {
+      item.cacheId = index;
       item.paintSeed = 2 + ((seed ^ Math.imul(index + 1, 0x9e3779b9)) >>> 0) % 4294967293;
     });
     const currentMixedFlowers = mode === 'mixed' ? mixedFlowers.map(flower => ({ ...flower })) : [];
@@ -431,22 +499,46 @@
     ].sort((a, b) => a.depth - b.depth);
     let vintageBehind = 0;
     let vintageFront = 0;
+    let generatedOriginals = 0;
+    let reusedOriginals = 0;
+    let reusedVintage = 0;
+    let originalMs = 0;
+    let vintageMs = 0;
     try {
       for (let i = 0; i < layers.length; i++) {
         if (id !== generation || disposed) return;
         const layer = layers[i];
         if (layer.type === 'mixed') {
-          Prng.s = layer.flower.seed;
-          originalKind = originalPlant(painter, worldWidth, worldHeight, layer.flower);
+          const start = performance.now();
+          const key = originalKey(layer.flower, worldWidth, worldHeight);
+          let sprite = originalCache.get(key);
+          if (sprite) reusedOriginals++;
+          else {
+            Prng.s = layer.flower.seed;
+            sprite = originalPlant(worldWidth, worldHeight, layer.flower);
+            originalCache.set(key, sprite);
+            generatedOriginals++;
+          }
+          painter.drawImage(sprite.canvas, sprite.x, sprite.y, sprite.width, sprite.height);
+          originalKind = sprite.kind;
+          originalMs += performance.now() - start;
         } else {
-          Prng.s = layer.item.paintSeed;
-          plant(painter, layer.item, worldHeight);
+          const start = performance.now();
+          if (drawVintage(painter, layer.item, width, height, worldWidth, worldHeight, vintageCacheLimit)) reusedVintage++;
+          vintageMs += performance.now() - start;
           if (layer.depth >= mixedDepth) vintageFront++;
           else vintageBehind++;
         }
         if (i % 4 === 3) await new Promise(resolve => setTimeout(resolve, 0));
       }
       if (id !== generation || disposed) return;
+      const activeKeys = new Set(currentMixedFlowers.map(flower => originalKey(flower, worldWidth, worldHeight)));
+      for (const [key, sprite] of originalCache) {
+        if (!activeKeys.has(key)) {
+          sprite.canvas.width = sprite.canvas.height = 1;
+          originalCache.delete(key);
+        }
+      }
       canvas.width = width; canvas.height = height;
       if (flowers) { flowers.width = flowers.height = 1; }
       flowers = working;
@@ -455,6 +547,11 @@
       canvas.dataset.seed = String(seed);
       canvas.dataset.mode = mode;
       canvas.dataset.originalPlants = String(currentMixedFlowers.length);
+      canvas.dataset.generatedOriginals = String(generatedOriginals);
+      canvas.dataset.reusedOriginals = String(reusedOriginals);
+      canvas.dataset.reusedVintage = String(reusedVintage);
+      canvas.dataset.originalMs = String(Math.round(originalMs));
+      canvas.dataset.vintageMs = String(Math.round(vintageMs));
       canvas.dataset.originalKind = originalKind;
       canvas.dataset.vintageFlowers = String(showVintage ? vintageCount : 0);
       canvas.dataset.vintageVisible = String(showVintage);
@@ -619,6 +716,11 @@
   window.addEventListener('pagehide', () => {
     disposed = true; generation++;
     clearTimeout(resizeTimer); clearTimeout(controlsTimer); cancelAnimationFrame(frame);
+    for (const sprite of originalCache.values()) sprite.canvas.width = sprite.canvas.height = 1;
+    originalCache.clear();
+    for (const sprite of vintageCache.values()) sprite.canvas.width = sprite.canvas.height = 1;
+    vintageCache.clear();
+    vintageCachePixels = 0;
   });
   window.addEventListener('pageshow', event => {
     if (event.persisted) { disposed = false; render(); }

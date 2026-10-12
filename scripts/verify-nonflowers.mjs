@@ -12,7 +12,7 @@ const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const base = process.env.VERIFY_BASE_URL || 'http://127.0.0.1:3000';
 const results = [];
 try {
-  for (const mobile of [true, false]) {
+  for (const mobile of process.env.VERIFY_QUICK ? [true] : [true, false]) {
     const context = await browser.newContext({ viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 }, deviceScaleFactor: mobile ? 2 : 1, acceptDownloads: true });
     const page = await context.newPage();
     const errors = [];
@@ -63,7 +63,8 @@ try {
     await frame.getByRole('radio', { name: '혼합 · 원본 + 빈티지' }).check();
     assert.equal(await frame.locator('#meadow').getAttribute('data-mode'), 'vintage');
     const start = Date.now();
-    for (let i = 0; i < 12; i++) {
+    const repetitions = process.env.VERIFY_QUICK ? 1 : 12;
+    for (let i = 0; i < repetitions; i++) {
       await frame.locator('#regenerate').click();
       await ready();
       const next = await image();
@@ -77,23 +78,34 @@ try {
       assert(Number(await frame.locator('#meadow').getAttribute('data-vintage-front')) > 0);
       assert.equal(await frame.locator('canvas').count(), 1, 'DOM canvases must not accumulate');
     }
-    const renderMs = (Date.now() - start) / 12;
+    const renderMs = (Date.now() - start) / repetitions;
     const meadowSeed = await frame.locator('#meadow').getAttribute('data-seed');
     const formerMixedSeed = await frame.locator('#meadow').getAttribute('data-mixed-seed');
+    const addStart = Date.now();
     await frame.locator('#mixed-regenerate').click();
     await ready();
+    const firstAddMs = Date.now() - addStart;
+    const firstAddWork = await frame.locator('#meadow').evaluate(canvas => ({ original: Number(canvas.dataset.originalMs), vintage: Number(canvas.dataset.vintageMs), reusedVintage: Number(canvas.dataset.reusedVintage) }));
     assert.equal(await frame.locator('#meadow').getAttribute('data-seed'), meadowSeed, 'Mixed-only regeneration must preserve the vintage seed');
     assert.notEqual(await frame.locator('#meadow').getAttribute('data-mixed-seed'), formerMixedSeed);
     assert.equal(await frame.locator('#meadow').getAttribute('data-original-plants'), '2', 'Mixed-only generation must add a flower');
+    assert.equal(await frame.locator('#meadow').getAttribute('data-generated-originals'), '1');
+    assert.equal(await frame.locator('#meadow').getAttribute('data-reused-originals'), '1');
+    assert(Number(await frame.locator('#meadow').getAttribute('data-reused-vintage')) > 0);
     assert([45, 50, 55].includes(Number(await frame.locator('#mixed-size').inputValue())));
     assert(Number(await frame.locator('#mixed-stem').inputValue()) >= 80 && Number(await frame.locator('#mixed-stem').inputValue()) <= 400);
     assert(Number(await frame.locator('#mixed-petal').inputValue()) >= 60 && Number(await frame.locator('#mixed-petal').inputValue()) <= 180);
     assert(Number(await frame.locator('#meadow').getAttribute('data-vintage-behind')) > 0);
     assert(Number(await frame.locator('#meadow').getAttribute('data-vintage-front')) > 0);
     previous = await image();
+    const secondAddStart = Date.now();
     await frame.locator('#mixed-regenerate').click();
     await ready();
+    const secondAddMs = Date.now() - secondAddStart;
+    const secondAddWork = await frame.locator('#meadow').evaluate(canvas => ({ original: Number(canvas.dataset.originalMs), vintage: Number(canvas.dataset.vintageMs), reusedVintage: Number(canvas.dataset.reusedVintage) }));
     assert.equal(await frame.locator('#meadow').getAttribute('data-original-plants'), '3');
+    assert.equal(await frame.locator('#meadow').getAttribute('data-generated-originals'), '1');
+    assert.equal(await frame.locator('#meadow').getAttribute('data-reused-originals'), '2');
     assert.equal((await frame.locator('#meadow').getAttribute('data-mixed-depths')).split(',').length, 3);
     assert.notEqual(await image(), previous, 'Each added mixed flower must change the artwork');
     const earlierDepths = (await frame.locator('#meadow').getAttribute('data-mixed-depths')).split(',').slice(0, 2);
@@ -102,6 +114,8 @@ try {
       input.dispatchEvent(new Event('input', { bubbles: true }));
     });
     await frame.waitForFunction(() => document.querySelector('#meadow').dataset.mixedDepth === '0.2500' && document.querySelector('#meadow').getAttribute('aria-busy') === 'false');
+    assert.equal(await frame.locator('#meadow').getAttribute('data-generated-originals'), '0');
+    assert.equal(await frame.locator('#meadow').getAttribute('data-reused-originals'), '3');
     assert.deepEqual((await frame.locator('#meadow').getAttribute('data-mixed-depths')).split(',').slice(0, 2), earlierDepths);
     previous = await image();
     await frame.locator('#show-vintage').uncheck();
@@ -144,7 +158,8 @@ try {
     });
     assert.equal(await frame.evaluate(() => document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight), false);
     assert.deepEqual(errors, []);
-    results.push({ viewport: mobile ? 'mobile' : 'desktop', regenerated: 12, meanRegenerationMs: Math.round(renderMs), errors });
+    results.push({ viewport: mobile ? 'mobile' : 'desktop', regenerated: repetitions, meanRegenerationMs: Math.round(renderMs), firstAddMs, secondAddMs,
+      firstAddWork, secondAddWork, errors });
     console.log(JSON.stringify(results.at(-1)));
     await context.close();
   }

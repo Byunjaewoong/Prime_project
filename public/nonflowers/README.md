@@ -52,6 +52,13 @@ reopened.
 Rendering yields between small plant batches, caps the backing canvas at 3.2M
 pixels, cancels superseded generations and releases replaced canvases. Resizing
 recomposes for the new aspect ratio; no continuously running animation is used.
+Mixed plants are cached as cropped transparent sprites keyed by their seed and
+shape controls. Vintage flower sprites are cached under a mobile/desktop pixel
+budget; changing the vintage composition or viewport invalidates that cache.
+Adding a plant therefore generates only its new geometry while the existing
+flowers are drawn from sprites in depth order. The upstream filter skips fully
+transparent pixels, which preserves its visible noise and color while avoiding
+millions of needless noise evaluations per generated plant.
 
 The bundled Material Icons font is from Google's Material Design Icons project
 and is licensed under Apache 2.0; its license text is in fonts/LICENSE.

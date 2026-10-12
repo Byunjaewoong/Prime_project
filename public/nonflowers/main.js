@@ -1206,11 +1206,16 @@ var Layer = new function(){
     var imgd = ctx.getImageData(0, 0,
       ctx.canvas.width, ctx.canvas.height);
     var pix = imgd.data;
+    var width = ctx.canvas.width;
     for (var i = 0, n = pix.length; i < n; i += 4) {
-      var [r,g,b,a] = pix.slice(i,i+4)
-      var x = (i/4)%(ctx.canvas.width)
-      var y = Math.floor((i/4)/(ctx.canvas.width))
-      var [r1,g1,b1,a1] = f(x,y,r,g,b,a)
+      var a = pix[i+3];
+      // Fully transparent pixels cannot affect the image. Avoid Perlin noise
+      // work over the large empty area around a plant.
+      if (a === 0) continue;
+      var pixel = i / 4;
+      var x = pixel % width;
+      var y = Math.floor(pixel / width);
+      var [r1,g1,b1,a1] = f(x,y,pix[i],pix[i+1],pix[i+2],a)
         pix[i  ] = r1
         pix[i+1] = g1
         pix[i+2] = b1
@@ -1251,11 +1256,12 @@ var Layer = new function(){
     var imgd = ctx.getImageData(0, 0,
       ctx.canvas.width, ctx.canvas.height);
     var pix = imgd.data;
+    var width = ctx.canvas.width;
     for (var i = 0, n = pix.length; i < n; i += 4) {
-      var [r,g,b,a] = pix.slice(i,i+4)
-      var x = (i/4)%(ctx.canvas.width)
-      var y = Math.floor((i/4)/(ctx.canvas.width))
-      if (a > 0.001){
+      if (pix[i+3] > 0){
+        var pixel = i / 4;
+        var x = pixel % width;
+        var y = Math.floor(pixel / width);
         if (x < xmin){xmin = x}
         if (x > xmax){xmax = x}
         if (y < ymin){ymin = y}
