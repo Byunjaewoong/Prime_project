@@ -9,6 +9,7 @@
   const toggle = document.getElementById('menu-toggle');
   const status = document.getElementById('status');
   const generateButton = document.getElementById('regenerate');
+  const mixedGenerateButton = document.getElementById('mixed-regenerate');
   const downloadButton = document.getElementById('download');
   const toneInput = document.getElementById('tone');
   const tau = Math.PI * 2;
@@ -26,8 +27,14 @@
   const query = new URLSearchParams(location.search);
   const querySeed = Number(query.get('seed'));
   if (Number.isSafeInteger(querySeed) && querySeed > 1 && querySeed <= 0xffffffff) seed = querySeed;
+  const queryMixedSeed = Number(query.get('mixedSeed'));
+  let mixedSeed = Number.isSafeInteger(queryMixedSeed) && queryMixedSeed > 1 && queryMixedSeed <= 0xffffffff
+    ? queryMixedSeed : 2 + ((seed ^ 0x6d2b79f5) >>> 0) % 4294967293;
   let mode = query.get('mode') === 'mixed' ? 'mixed' : 'vintage';
   let pendingMode = mode;
+  const vintageToggle = document.getElementById('show-vintage');
+  let showVintage = query.get('vintage') !== '0';
+  vintageToggle.checked = showVintage;
   document.querySelector(`input[name="flower-mode"][value="${mode}"]`).checked = true;
   const bloomInput = document.getElementById('bloom-size');
   const stemInput = document.getElementById('stem-length');
@@ -344,7 +351,7 @@
 
   async function render() {
     const id = ++generation;
-    generateButton.disabled = downloadButton.disabled = true;
+    generateButton.disabled = mixedGenerateButton.disabled = downloadButton.disabled = true;
     canvas.setAttribute('aria-busy', 'true');
     status.hidden = false;
     status.textContent = '꽃을 그리고 있습니다…';
@@ -373,7 +380,7 @@
     // The tallest layer is airy; lower layers gain larger, more crowded blooms.
     for (let row = 0; row < 7; row++) {
       for (let col = -1; col <= columns; col++) {
-        const depth = row / 6;
+        const depth = Math.max(0, Math.min(1, (row + random(-.35, .35)) / 6));
         const x = (col + random(.05, .95)) / columns * worldWidth;
         const y = 160 + row * 180 / stemScale + random(-72, 72);
         const isUmbel = Math.random() < .43;
@@ -381,18 +388,41 @@
         if (!isUmbel) vintageCount++;
         items.push({ x, y, depth, kind: isUmbel ? 'umbel' : color[0] > 200 && color[0] < 300 ? 'blue' : 'cosmos',
           size: (isUmbel ? random(26, 48) : random(27, 43) * (.85 + depth * .45)) * bloomScale, color });
-        if (row > 1 && Math.random() < .7) items.push({ x: x + random(-40, 40), y: y + random(35, 80), depth,
+        if (row > 1 && Math.random() < .7) items.push({ x: x + random(-40, 40), y: y + random(35, 80), depth: Math.max(0, Math.min(1, depth + random(-.08, .08))),
           kind: 'umbel', size: random(15, 29) * bloomScale, color: pick([[32, .30, .97], [15, .39, .9]]) });
       }
     }
+    // Each vintage plant has its own depth and random stream. Changing the
+    // original flower or hiding the meadow cannot change vintage silhouettes.
+    items.forEach((item, index) => {
+      item.paintSeed = 2 + ((seed ^ Math.imul(index + 1, 0x9e3779b9)) >>> 0) % 4294967293;
+    });
+    items.sort((a, b) => a.depth - b.depth);
+    const mixedDepth = .15 + (((mixedSeed ^ 0xa511e9b3) >>> 0) / 4294967296) * .7;
+    let mixedDrawn = false;
+    let vintageBehind = 0;
+    let vintageFront = 0;
     try {
       for (let i = 0; i < items.length; i++) {
         if (id !== generation || disposed) return;
-        plant(painter, items[i], worldHeight);
+        if (mode === 'mixed' && !mixedDrawn && items[i].depth >= mixedDepth) {
+          Prng.s = mixedSeed;
+          originalKind = originalPlant(painter, worldWidth, worldHeight);
+          mixedDrawn = true;
+        }
+        if (showVintage) {
+          Prng.s = items[i].paintSeed;
+          plant(painter, items[i], worldHeight);
+          if (mixedDrawn) vintageFront++;
+          else vintageBehind++;
+        }
         if (i % 4 === 3) await new Promise(resolve => setTimeout(resolve, 0));
       }
       if (id !== generation || disposed) return;
-      if (mode === 'mixed') originalKind = originalPlant(painter, worldWidth, worldHeight);
+      if (mode === 'mixed' && !mixedDrawn) {
+        Prng.s = mixedSeed;
+        originalKind = originalPlant(painter, worldWidth, worldHeight);
+      }
       canvas.width = width; canvas.height = height;
       if (flowers) { flowers.width = flowers.height = 1; }
       flowers = working;
@@ -402,7 +432,14 @@
       canvas.dataset.mode = mode;
       canvas.dataset.originalPlants = String(mode === 'mixed' ? 1 : 0);
       canvas.dataset.originalKind = originalKind;
-      canvas.dataset.vintageFlowers = String(vintageCount);
+      canvas.dataset.vintageFlowers = String(showVintage ? vintageCount : 0);
+      canvas.dataset.vintageVisible = String(showVintage);
+      canvas.dataset.vintageBehind = String(vintageBehind);
+      canvas.dataset.vintageFront = String(vintageFront);
+      canvas.dataset.mixedDepth = mode === 'mixed' ? mixedDepth.toFixed(4) : '';
+      canvas.dataset.mixedSeed = mode === 'mixed' ? String(mixedSeed) : '';
+      document.getElementById('mixed-edition-row').hidden = mode !== 'mixed';
+      document.getElementById('mixed-edition').value = mixedSeed.toString(16).toUpperCase().padStart(8, '0');
       status.hidden = true;
       downloadButton.disabled = false;
     } catch (error) {
@@ -412,7 +449,7 @@
     } finally {
       if (working !== flowers) working.width = working.height = 1;
       if (id === generation) {
-        generateButton.disabled = false;
+        generateButton.disabled = mixedGenerateButton.disabled = false;
         canvas.setAttribute('aria-busy', 'false');
       }
     }
@@ -455,6 +492,10 @@
     url.searchParams.set('seed', String(seed));
     if (mode === 'mixed') url.searchParams.set('mode', 'mixed');
     else url.searchParams.delete('mode');
+    if (mode === 'mixed') url.searchParams.set('mixedSeed', String(mixedSeed));
+    else url.searchParams.delete('mixedSeed');
+    if (showVintage) url.searchParams.delete('vintage');
+    else url.searchParams.set('vintage', '0');
     for (const [name, value, fallback] of [
       ['bloom', bloomInput.value, '85'], ['stem', stemInput.value, '115'], ['quality', resolutionInput.value, '2'],
       ['mixedSize', mixedSizeInput.value, '50'], ['mixedStem', mixedStemInput.value, '120'], ['mixedPetal', mixedPetalInput.value, '100'],
@@ -486,10 +527,34 @@
     if (mode === 'mixed') scheduleComposition();
   });
   resolutionInput.addEventListener('change', scheduleComposition);
+  vintageToggle.addEventListener('change', () => {
+    showVintage = vintageToggle.checked;
+    scheduleComposition();
+  });
+  mixedGenerateButton.addEventListener('click', () => {
+    const randomStep = (min, max, step) => min + Math.floor(newSeed() / 0x100000000 * ((max - min) / step + 1)) * step;
+    let next = newSeed();
+    while (next === mixedSeed) next = newSeed();
+    mixedSeed = next;
+    mixedSizeInput.value = String(randomStep(45, 55, 5));
+    mixedStemInput.value = String(randomStep(80, 400, 10));
+    mixedPetalInput.value = String(randomStep(60, 180, 5));
+    for (const [input, output] of [[mixedSizeInput, 'mixed-size-value'], [mixedStemInput, 'mixed-stem-value'], [mixedPetalInput, 'mixed-petal-value']]) {
+      document.getElementById(output).value = `${input.value}%`;
+    }
+    mode = pendingMode = 'mixed';
+    document.querySelector('input[name="flower-mode"][value="mixed"]').checked = true;
+    mixedControls.hidden = false;
+    vintageControls.hidden = true;
+    clearTimeout(controlsTimer);
+    updateUrl();
+    render();
+  });
   generateButton.addEventListener('click', () => {
     let next = newSeed();
     while (next === seed) next = newSeed();
     seed = next;
+    mixedSeed = newSeed();
     mode = pendingMode;
     clearTimeout(controlsTimer);
     updateUrl();

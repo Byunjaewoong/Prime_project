@@ -24,6 +24,13 @@ h1 { font: italic 29px/1.2 Georgia, serif; font-weight: 400; margin: 25px 0 9px;
 .mode-options input:checked + span { background: #354a3d; border-color: #354a3d; color: #f5edda; }
 .mode-options input:focus-visible + span { outline: 2px solid #8b3d36; outline-offset: 3px; }
 .mode-hint { clear: both; margin: 10px 0 0; color: #788175; font: 9px/1.6 sans-serif; }
+.visibility-row { display: flex; align-items: center; justify-content: space-between; position: relative; margin-top: 18px; font: 10px sans-serif; color: #59665a; cursor: pointer; }
+.visibility-row input { position: absolute; right: 0; width: 40px; height: 24px; margin: 0; opacity: 0; cursor: pointer; }
+.switch-track { width: 40px; height: 24px; border-radius: 15px; background: #a9afa6; transition: background .2s; pointer-events: none; }
+.switch-track::after { content: ''; display: block; width: 18px; height: 18px; margin: 3px; border-radius: 50%; background: #fff9ed; transition: transform .2s; }
+.visibility-row input:checked + .switch-track { background: #354a3d; }
+.visibility-row input:checked + .switch-track::after { transform: translateX(16px); }
+.visibility-row input:focus-visible + .switch-track { outline: 2px solid #8b3d36; outline-offset: 3px; }
 .composition-controls { display: grid; gap: 17px; }
 .composition-controls legend { margin-bottom: 0; }
 .control-row { display: grid; gap: 8px; font: 10px sans-serif; color: #59665a; }
@@ -33,6 +40,8 @@ h1 { font: italic 29px/1.2 Georgia, serif; font-weight: 400; margin: 25px 0 9px;
 .quality-row { font: 10px sans-serif; color: #59665a; }
 .quality-row select { max-width: 178px; padding: 7px 9px; color: #354a3d; background: #fff9ed; border: 1px solid #62736466; border-radius: 0; cursor: pointer; }
 .composition-controls .mode-hint { margin: -6px 0 0; }
+.mixed-generate { width: 100%; padding: 11px 12px; border: 1px solid #354a3d; background: transparent; color: #354a3d; text-align: left; font: 11px sans-serif; }
+.mixed-generate span { margin-right: 7px; font-size: 17px; vertical-align: -1px; }
 fieldset { padding: 22px 0; border: 0; border-top: 1px solid #3f4a362b; margin: 0; min-width: 0; }
 legend { float: left; width: 100%; font: 11px sans-serif; margin: 0 0 18px; }
 legend span { float: right; font: 9px monospace; letter-spacing: .09em; color: #737b70; }

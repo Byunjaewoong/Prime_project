@@ -27,6 +27,7 @@
           <label><input type="radio" name="flower-mode" value="mixed"><span>혼합 · 원본 + 빈티지</span></label>
         </div>
         <p class="mode-hint">선택 후 랜덤 재생성을 누르면 적용됩니다.</p>
+        <label class="visibility-row" for="show-vintage"><span>빈티지 꽃 표시</span><input id="show-vintage" type="checkbox" checked role="switch"><span class="switch-track" aria-hidden="true"></span></label>
       </fieldset>
       <fieldset id="vintage-controls" class="composition-controls">
         <legend>빈티지 꽃 <span>VINTAGE PLANT</span></legend>
@@ -39,6 +40,7 @@
         <label class="control-row" for="mixed-stem"><span>줄기 길이 <output id="mixed-stem-value">120%</output></span><input id="mixed-stem" type="range" min="80" max="400" step="10" value="120"></label>
         <label class="control-row" for="mixed-petal"><span>꽃 길이 · 꽃잎 <output id="mixed-petal-value">100%</output></span><input id="mixed-petal" type="range" min="60" max="180" step="5" value="100"></label>
         <p class="mode-hint">원본 식물에만 적용됩니다.</p>
+        <button id="mixed-regenerate" class="mixed-generate" type="button"><span>↻</span> 믹싱모드 꽃 랜덤 생성</button>
       </fieldset>
       <fieldset class="composition-controls">
         <legend>출력 <span>RESOLUTION</span></legend>
@@ -60,6 +62,7 @@
       <button id="regenerate" class="generate"><span>↻</span> 랜덤 재생성 <small>NEW COMPOSITION</small></button>
       <button id="download" class="download">이미지 저장 <span>↓ PNG</span></button>
       <div class="edition">EDITION <output id="edition">—</output></div>
+      <div id="mixed-edition-row" class="edition" hidden>MIXED FLOWER <output id="mixed-edition">—</output></div>
       <footer>Based on <a href="https://github.com/LingDong-/nonflowers" target="_blank" rel="noopener noreferrer">Nonflowers by Lingdong Huang ↗</a><br>Procedural botanical paintings · MIT</footer>
     </aside>
     <button id="menu-toggle" class="menu-toggle" aria-label="메뉴 열기" aria-controls="menu" aria-expanded="false">M</button>
