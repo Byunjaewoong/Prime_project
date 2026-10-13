@@ -386,10 +386,14 @@
 
   // Pack against painted silhouettes, including the spaces between petals and
   // bent branches. The second pass uses those spaces instead of a regular grid.
-  async function drawPattern(painter, worldWidth, worldHeight, id) {
+  async function drawPattern(painter, worldWidth, worldHeight, viewWidth, viewHeight, id) {
     const cell = 5;
     const cols = Math.ceil(worldWidth / cell);
     const rows = Math.ceil(worldHeight / cell);
+    const viewLeft = Math.floor((worldWidth - viewWidth) / (2 * cell));
+    const viewTop = Math.floor((worldHeight - viewHeight) / (2 * cell));
+    const viewRight = Math.min(cols, Math.ceil((worldWidth + viewWidth) / (2 * cell)));
+    const viewBottom = Math.min(rows, Math.ceil((worldHeight + viewHeight) / (2 * cell)));
     const occupied = new Uint8Array(cols * rows);
     const distance = new Uint16Array(cols * rows);
     const spacing = Number(patternSpacingInput.value);
@@ -398,9 +402,12 @@
     const size = Number(patternSizeInput.value);
     const stem = Number(patternStemInput.value);
     const stemRatio = Number(patternRatioInput.value) / 100;
-    const maxCount = Math.max(70, Math.min(220, Math.ceil(worldWidth * worldHeight / 8500)));
+    // The packing canvas includes a bleed outside the viewport. Its budget must
+    // grow with that area, especially on wide desktop monitors.
+    const maxCount = Math.max(70, Math.ceil(worldWidth * worldHeight / 6500));
     const motifPoolSize = 28;
     let coverage = 0;
+    let viewCoverage = 0;
     let hasPainted = false;
     const rand = (() => {
       let state = seed >>> 0;
@@ -429,13 +436,13 @@
         const flower = { seed: flowerSeed,
           size: kind === 'head' ? Math.max(24, Math.round(size * (.75 + .18 * sizeJitter))) : size,
           stem, petal: 100 };
-        const key = `${kind}:${originalKey(flower, worldWidth, worldHeight)}`;
+        const key = `${kind}:${originalKey(flower, viewWidth, viewHeight)}`;
         if (failedKeys.has(key)) continue;
         let sprite = patternCache.get(key);
         if (!sprite) {
           Prng.s = flowerSeed;
           try {
-            sprite = originalPlant(worldWidth, worldHeight, flower, kind === 'head');
+            sprite = originalPlant(viewWidth, viewHeight, flower, kind === 'head');
           } catch (error) {
             if (kind === 'head' && error.message === 'Original Nonflowers plant has no visible pixels') {
               failedKeys.add(key);
@@ -491,14 +498,16 @@
     }
 
     function fits(shape, left, top) {
-      let inside = 0;
+      let inside = 0, overlap = 0;
       for (const [x, y] of shape.points) {
         const gx = left + x, gy = top + y;
         if (gx < 0 || gx >= cols || gy < 0 || gy >= rows) continue;
-        if (occupied[gy * cols + gx]) return null;
+        if (occupied[gy * cols + gx]) overlap++;
         inside++;
       }
-      if (inside < shape.points.length * .66) return null;
+      // Natural stems and blossoms can cross in the image. A small amount of
+      // overlap lets the painter fill irregular holes between long branches.
+      if (inside < shape.points.length * .66 || overlap > inside * .18) return null;
       let totalGap = 0, far = 0, sampled = 0;
       for (const [x, y] of shape.samples) {
         const gx = left + x, gy = top + y;
@@ -512,7 +521,7 @@
       const cx = left + shape.centroid[0], cy = top + shape.centroid[1];
       const centerGap = hasPainted && cx >= 0 && cx < cols && cy >= 0 && cy < rows
         ? distance[cy * cols + cx] : totalGap / sampled;
-      return { inside, meanGap: (totalGap / sampled * .8 + centerGap * .2) / 10,
+      return { inside, overlap, meanGap: (totalGap / sampled * .8 + centerGap * .2) / 10,
         newArea: far / sampled };
     }
 
@@ -536,6 +545,7 @@
         distance[i] = value;
       }
       let covered = 0;
+      let coveredView = 0;
       for (let y = rows - 1; y >= 0; y--) for (let x = cols - 1; x >= 0; x--) {
         const i = y * cols + x;
         let value = distance[i];
@@ -546,9 +556,13 @@
           if (x + 1 < cols) value = Math.min(value, distance[i + cols + 1] + 14);
         }
         distance[i] = value;
-        if (value <= coverageRadius) covered++;
+        if (value <= coverageRadius) {
+          covered++;
+          if (x >= viewLeft && x < viewRight && y >= viewTop && y < viewBottom) coveredView++;
+        }
       }
       coverage = covered / distance.length;
+      viewCoverage = coveredView / ((viewRight - viewLeft) * (viewBottom - viewTop));
       frontier = [];
       for (let y = 1; y < rows - 1; y++) for (let x = 1; x < cols - 1; x++) {
         const position = y * cols + x;
@@ -561,7 +575,7 @@
       const nextIndex = { stem: 0, head: 0 };
       let stemmed = 0;
       let consecutiveMisses = 0;
-      for (let slot = 0; slot < maxCount && (placements.length < 12 || coverage < .9); slot++) {
+      for (let slot = 0; slot < maxCount && (placements.length < 12 || coverage < .95 || viewCoverage < .97); slot++) {
         if (id !== generation || disposed) return;
         const kind = stemRatio === 1 || (stemRatio > 0 && stemmed / Math.max(1, placements.length) < stemRatio) ? 'stem' : 'head';
         const index = nextIndex[kind]++;
@@ -592,7 +606,8 @@
           // Favor uncovered regions while keeping motifs around the requested gap.
           const targetGap = spacingCells + Math.sqrt(shape.points.length / Math.PI) * .32;
           const score = Math.exp(-Math.abs(fit.meanGap - targetGap) / Math.max(2, targetGap)) * .55 +
-            fit.newArea * .35 + fit.inside / shape.points.length * .1 + rand() * .015;
+            fit.newArea * .35 + fit.inside / shape.points.length * .1 -
+            fit.overlap / fit.inside * .3 + rand() * .015;
           if (!best || score > best.score) best = { shape, left, top, score, sprite, kind };
         }
         if (best) {
@@ -603,7 +618,7 @@
           consecutiveMisses = 0;
         } else {
           consecutiveMisses++;
-          if (consecutiveMisses >= 10) break;
+          if (consecutiveMisses >= 24) break;
         }
         if (slot % 3 === 2) await new Promise(resolve => setTimeout(resolve, 0));
       }
@@ -624,7 +639,7 @@
       patternCache.delete(key);
     }
     return { count: placements.length, stemmed: placements.filter(item => item.kind === 'stem').length,
-      heads: placements.filter(item => item.kind === 'head').length, generated, coverage };
+      heads: placements.filter(item => item.kind === 'head').length, generated, coverage, viewCoverage };
   }
 
   function drawSprite(context, sprite) {
@@ -774,7 +789,16 @@
     let originalMs = 0;
     let vintageMs = 0;
     try {
-      const patternStats = mode === 'pattern' ? await drawPattern(painter, worldWidth, worldHeight, id) : null;
+      const bleedX = worldWidth * .12;
+      const bleedY = worldHeight * .12;
+      const patternStats = mode === 'pattern' ? await (async () => {
+        painter.save();
+        painter.translate(-bleedX, -bleedY);
+        try {
+          return await drawPattern(painter, worldWidth + bleedX * 2, worldHeight + bleedY * 2,
+            worldWidth, worldHeight, id);
+        } finally { painter.restore(); }
+      })() : null;
       if (id !== generation || disposed) return;
       if (mode !== 'pattern') {
         for (const sprite of patternCache.values()) sprite.canvas.width = sprite.canvas.height = 1;
@@ -840,6 +864,7 @@
       canvas.dataset.patternHeads = String(patternStats?.heads || 0);
       canvas.dataset.patternGenerated = String(patternStats?.generated || 0);
       canvas.dataset.patternCoverage = patternStats ? patternStats.coverage.toFixed(3) : '0';
+      canvas.dataset.patternViewCoverage = patternStats ? patternStats.viewCoverage.toFixed(3) : '0';
       document.getElementById('pattern-count').value = patternStats
         ? `${patternStats.count} · ${patternStats.stemmed} stemmed / ${patternStats.heads} flowers · ${Math.round(patternStats.coverage * 100)}% area` : '0';
       document.getElementById('mixed-edition-row').hidden = mode !== 'mixed';

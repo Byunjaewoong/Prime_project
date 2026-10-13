@@ -10,7 +10,12 @@ const output = path.resolve('artifacts/nonflowers-pattern');
 await fs.mkdir(output, { recursive: true });
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 try {
-  for (const [name, viewport] of [['mobile', { width: 390, height: 844 }], ['desktop', { width: 1440, height: 900 }]]) {
+  for (const [name, viewport] of [
+    ['mobile', { width: 390, height: 844 }],
+    ['desktop', { width: 1440, height: 900 }],
+    ['wide', { width: 1920, height: 540 }],
+    ['tall', { width: 540, height: 1200 }],
+  ]) {
     const page = await browser.newPage({ viewport });
     page.setDefaultTimeout(120000);
     const errors = [];
@@ -31,13 +36,18 @@ try {
         stemmed: Number(canvas.dataset.patternStemmed),
         heads: Number(canvas.dataset.patternHeads),
         coverage: Number(canvas.dataset.patternCoverage),
+        viewCoverage: Number(canvas.dataset.patternViewCoverage),
         seed: canvas.dataset.seed,
+        canvasAspect: canvas.width / canvas.height,
+        objectFit: getComputedStyle(canvas).objectFit,
       };
     });
     assert.deepEqual([values.size, values.stem, values.spacing, values.ratio], ['40', '30', '20', '100']);
     assert.equal(values.stemmed, values.count);
     assert.equal(values.heads, 0);
-    assert(values.count > 0 && values.coverage >= .85, `Pattern left too much empty area: ${JSON.stringify(values)}`);
+    assert(values.count > 0 && values.viewCoverage >= .94, `Pattern left too much visible empty area: ${JSON.stringify(values)}`);
+    assert(Math.abs(values.canvasAspect - viewport.width / viewport.height) < .01);
+    assert.equal(values.objectFit, 'cover');
     assert.deepEqual(errors, []);
     await page.screenshot({ path: path.join(output, `${name}-pattern-fill.png`) });
     console.log(JSON.stringify({ viewport: name, ...values, errors }));
@@ -53,6 +63,23 @@ try {
       });
       assert.equal(await page.locator('#meadow').getAttribute('data-pattern-stemmed'), '0');
       assert(Number(await page.locator('#meadow').getAttribute('data-pattern-coverage')) >= .85);
+    }
+    if (name === 'desktop') {
+      await page.setViewportSize({ width: 1000, height: 1100 });
+      await page.waitForFunction(() => {
+        const canvas = document.querySelector('#meadow');
+        return canvas.getAttribute('aria-busy') === 'false' &&
+          Math.abs(canvas.width / canvas.height - 1000 / 1100) < .01;
+      });
+      assert(Number(await page.locator('#meadow').getAttribute('data-pattern-view-coverage')) >= .94);
+    }
+    if (name === 'wide') {
+      await page.locator('#pattern-regenerate').evaluate(button => button.click());
+      await page.waitForFunction(previousSeed => {
+        const canvas = document.querySelector('#meadow');
+        return canvas.dataset.seed !== previousSeed && canvas.getAttribute('aria-busy') === 'false';
+      }, values.seed);
+      assert(Number(await page.locator('#meadow').getAttribute('data-pattern-view-coverage')) >= .94);
     }
     await page.close();
   }

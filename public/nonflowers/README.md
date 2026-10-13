@@ -69,9 +69,12 @@ The default is 40% stemmed size, 30% stem length, 20 units of spacing, and a
 100:0 stemmed-to-cluster ratio. A five-unit grid records painted silhouette
 area. An approximate distance field measures the gap across sampled painted
 pixels and each motif's center of mass, so spacing is judged over the whole
-shape. Placement also favors uncovered regions. The number of motifs adapts
-to the canvas area and stops near 90% spatial coverage (or when no fitting
-space remains), with a bounded seed pool and placement budget for performance.
+shape. Placement also favors uncovered regions. The pattern extends 12% beyond
+every viewport edge so changing the window does not expose a hard border. The
+number of motifs scales with canvas area, and placement stops near 95% total
+and 97% visible spatial coverage (or when no fitting space remains). A bounded
+seed pool keeps the original flower raster work manageable. During resize the
+previous canvas keeps its proportions until the new composition is ready.
 Regenerate pattern chooses a new seed; the controls and seed are saved in the
 URL. Cached sprites are reused when spacing and ratio change, and the PNG
 export includes the entire composition.
