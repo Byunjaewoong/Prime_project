@@ -8,6 +8,8 @@
   const menu = document.getElementById('menu');
   const toggle = document.getElementById('menu-toggle');
   const status = document.getElementById('status');
+  const statusLabel = document.getElementById('status-label');
+  const patternProgress = document.getElementById('pattern-progress');
   const generateButton = document.getElementById('regenerate');
   const mixedGenerateButton = document.getElementById('mixed-regenerate');
   const downloadButton = document.getElementById('download');
@@ -405,7 +407,7 @@
     // The packing canvas includes a bleed outside the viewport. Its budget must
     // grow with that area, especially on wide desktop monitors.
     const maxCount = Math.max(70, Math.ceil(worldWidth * worldHeight / 6500));
-    const motifPoolSize = 28;
+    const motifPoolSize = 50;
     let coverage = 0;
     let viewCoverage = 0;
     let hasPainted = false;
@@ -424,6 +426,12 @@
     const placements = [];
     let frontier = [];
     let generated = 0;
+    function updateProgress() {
+      if (id !== generation || disposed) return;
+      const percent = Math.min(99, Math.floor(Math.min(coverage / .95, viewCoverage / .97) * 100));
+      patternProgress.value = percent;
+      statusLabel.textContent = `패턴 생성 중 · ${percent}% · 꽃 ${placements.length}개 배치`;
+    }
 
     async function prototype(kind, index) {
       // Keep a varied, bounded motif pool so filling a large screen does not
@@ -580,6 +588,7 @@
         const kind = stemRatio === 1 || (stemRatio > 0 && stemmed / Math.max(1, placements.length) < stemRatio) ? 'stem' : 'head';
         const index = nextIndex[kind]++;
         const item = await prototype(kind, index);
+        if (id !== generation || disposed) return;
         if (!item) {
           if (++consecutiveMisses >= 10) break;
           continue;
@@ -613,6 +622,7 @@
         if (best) {
           reserve(best.shape, best.left, best.top);
           placements.push(best);
+          updateProgress();
           activeKeys.add(key);
           if (kind === 'stem') stemmed++;
           consecutiveMisses = 0;
@@ -723,7 +733,9 @@
     generateButton.disabled = mixedGenerateButton.disabled = patternGenerateButton.disabled = downloadButton.disabled = true;
     canvas.setAttribute('aria-busy', 'true');
     status.hidden = false;
-    status.textContent = '꽃을 그리고 있습니다…';
+    statusLabel.textContent = mode === 'pattern' ? '패턴 생성 중 · 0% · 꽃 0개 배치' : '꽃을 그리고 있습니다…';
+    patternProgress.hidden = mode !== 'pattern';
+    patternProgress.value = 0;
     // The previous composition stays visible until the new one is complete.
     // Pixel and plant budgets bound memory/work on phones and large monitors.
     const cssWidth = Math.max(1, innerWidth);
@@ -870,11 +882,13 @@
       document.getElementById('mixed-edition-row').hidden = mode !== 'mixed';
       document.getElementById('mixed-edition').value = mixedSeed.toString(16).toUpperCase().padStart(8, '0');
       document.getElementById('mixed-count').value = String(currentMixedFlowers.length);
+      if (mode === 'pattern') patternProgress.value = 100;
       status.hidden = true;
       downloadButton.disabled = false;
     } catch (error) {
       console.error('Nonflowers composition failed', error);
-      status.textContent = '생성을 완료하지 못했습니다. 메뉴에서 다시 생성해 주세요.';
+      statusLabel.textContent = '생성을 완료하지 못했습니다. 메뉴에서 다시 생성해 주세요.';
+      patternProgress.hidden = true;
       downloadButton.disabled = !flowers;
     } finally {
       if (working !== flowers) working.width = working.height = 1;

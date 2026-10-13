@@ -22,6 +22,12 @@ try {
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`${base}/nonflowers/index.html?mode=pattern&seed=12345`);
     await page.waitForFunction(() => {
+      const status = document.querySelector('#status');
+      const progress = document.querySelector('#pattern-progress');
+      return !status.hidden && !progress.hidden && progress.value > 0 && progress.value < 100 &&
+        status.textContent.includes('패턴 생성 중');
+    });
+    await page.waitForFunction(() => {
       const canvas = document.querySelector('#meadow');
       return canvas?.getAttribute('aria-busy') === 'false' && document.querySelector('#status').hidden;
     });
@@ -33,6 +39,7 @@ try {
         spacing: document.querySelector('#pattern-spacing').value,
         ratio: document.querySelector('#pattern-ratio').value,
         count: Number(canvas.dataset.patternCount),
+        generated: Number(canvas.dataset.patternGenerated),
         stemmed: Number(canvas.dataset.patternStemmed),
         heads: Number(canvas.dataset.patternHeads),
         coverage: Number(canvas.dataset.patternCoverage),
@@ -45,6 +52,9 @@ try {
     assert.deepEqual([values.size, values.stem, values.spacing, values.ratio], ['40', '30', '20', '100']);
     assert.equal(values.stemmed, values.count);
     assert.equal(values.heads, 0);
+    if (name === 'wide') assert.equal(values.generated, 50);
+    assert.equal(await page.locator('#pattern-progress').evaluate(progress => progress.value), 100);
+    assert.equal(await page.locator('#status').isHidden(), true);
     assert(values.count > 0 && values.viewCoverage >= .94, `Pattern left too much visible empty area: ${JSON.stringify(values)}`);
     assert(Math.abs(values.canvasAspect - viewport.width / viewport.height) < .01);
     assert.equal(values.objectFit, 'cover');

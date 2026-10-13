@@ -11,7 +11,10 @@
   </head>
   <body>
     <canvas id="meadow" role="img" aria-label="종이 위에 생성된 Nonflower 패턴"></canvas>
-    <div id="status" role="status" aria-live="polite">꽃을 그리고 있습니다…</div>
+    <div id="status" role="status" aria-live="polite" hidden>
+      <span id="status-label">꽃을 그리고 있습니다…</span>
+      <progress id="pattern-progress" max="100" value="0" hidden aria-label="패턴 생성 진행도"></progress>
+    </div>
     <aside id="menu" class="panel" aria-label="꽃 패턴 설정" hidden>
       <div class="panel-heading"><span>Nonflowers</span><nav class="menu-links" aria-label="Nonflowers navigation">
         <a href="/" target="_top" aria-label="Home">⌂</a>

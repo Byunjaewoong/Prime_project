@@ -73,8 +73,10 @@ shape. Placement also favors uncovered regions. The pattern extends 12% beyond
 every viewport edge so changing the window does not expose a hard border. The
 number of motifs scales with canvas area, and placement stops near 95% total
 and 97% visible spatial coverage (or when no fitting space remains). A bounded
-seed pool keeps the original flower raster work manageable. During resize the
-previous canvas keeps its proportions until the new composition is ready.
+50-seed model pool keeps the original flower raster work manageable while
+reducing repeated silhouettes. A visible progress bar shows the spatial fill
+percentage and placed flower count. During resize the previous canvas keeps
+its proportions until the new composition is ready.
 Regenerate pattern chooses a new seed; the controls and seed are saved in the
 URL. Cached sprites are reused when spacing and ratio change, and the PNG
 export includes the entire composition.
