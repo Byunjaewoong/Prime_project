@@ -14,7 +14,7 @@ import DragOnlyRange from "../Painted/DragOnlyRange";
 import LeafSelector from "./LeafSelector";
 import styles from "./brench.module.css";
 
-const INITIAL_GROWTH = .14;
+const INITIAL_GROWTH = 1;
 
 const controls = [
   { key: "height", label: "나무 높이", min: 6, max: 14, step: .25 },
@@ -36,6 +36,21 @@ const presets = [
   { name: "직립형", values: { spread: .65, angle: 30, curvature: .5, branches: 7, depth: 3 } },
   { name: "굽은 고목", values: { spread: 1, angle: 55, curvature: 1.7, branches: 6, depth: 3 } },
 ] as const;
+
+function randomBranchSettings(previous: BranchSettings): BranchSettings {
+  let seed = Math.floor(Math.random() * 0x100000000);
+  if (seed === previous.seed) seed = (seed + 1) >>> 0;
+  const next: BranchSettings = {
+    ...previous,
+    seed,
+    leafType: LEAF_TYPES[Math.floor(Math.random() * LEAF_TYPES.length)].id,
+  };
+  for (const control of controls) {
+    const steps = Math.round((control.max - control.min) / control.step);
+    next[control.key] = Number((control.min + Math.floor(Math.random() * (steps + 1)) * control.step).toFixed(2));
+  }
+  return next;
+}
 
 type Viewer = {
   scene: THREE.Scene;
@@ -68,6 +83,7 @@ export default function BrenchExperience() {
   const recoveryAttemptsRef = useRef(0);
   const [canvasVersion, setCanvasVersion] = useState(0);
   const [settings, setSettings] = useState(DEFAULT_BRANCH_SETTINGS);
+  const [modelReady, setModelReady] = useState(false);
   const [contrast, setContrast] = useState(1);
   const [wind, setWind] = useState(DEFAULT_WIND_SETTINGS);
   const [zoom, setZoom] = useState(1);
@@ -75,6 +91,14 @@ export default function BrenchExperience() {
   const [controlsOpen, setControlsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [branchCount, setBranchCount] = useState(0);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      setSettings(previous => randomBranchSettings(previous));
+      setModelReady(true);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -250,7 +274,7 @@ export default function BrenchExperience() {
 
   useEffect(() => {
     const viewer = viewerRef.current;
-    if (!viewer) return;
+    if (!viewer || !modelReady) return;
     // Coalesce expensive geometry changes while menu sliders are being dragged.
     const timer = window.setTimeout(() => {
       let next: ReturnType<typeof createBranch> | null = null;
@@ -276,7 +300,7 @@ export default function BrenchExperience() {
       if (!viewer.renderer.getContext().isContextLost()) setError(null);
     }, viewer.budget.maxStems < 420 ? 250 : 100);
     return () => window.clearTimeout(timer);
-  }, [settings, canvasVersion]);
+  }, [settings, canvasVersion, modelReady]);
 
   useEffect(() => {
     viewerRef.current?.setLighting(contrast);
@@ -299,21 +323,14 @@ export default function BrenchExperience() {
   const setValue = (key: Exclude<keyof BranchSettings, "leafType">, value: number) => {
     setSettings(previous => ({ ...previous, [key]: value }));
   };
-  const regenerate = () => setSettings(previous => ({ ...previous, seed: Math.floor(Math.random() * 0xffffffff) }));
-  const randomizeModel = () => setSettings(previous => {
-    let seed = Math.floor(Math.random() * 0x100000000);
-    if (seed === previous.seed) seed = (seed + 1) >>> 0;
-    const next: BranchSettings = {
-      ...previous,
-      seed,
-      leafType: LEAF_TYPES[Math.floor(Math.random() * LEAF_TYPES.length)].id,
-    };
-    for (const control of controls) {
-      const steps = Math.round((control.max - control.min) / control.step);
-      next[control.key] = Number((control.min + Math.floor(Math.random() * (steps + 1)) * control.step).toFixed(2));
-    }
-    return next;
-  });
+  const regenerate = () => {
+    updateGrowth(100);
+    setSettings(previous => ({ ...previous, seed: Math.floor(Math.random() * 0x100000000) }));
+  };
+  const randomizeModel = () => {
+    updateGrowth(100);
+    setSettings(previous => randomBranchSettings(previous));
+  };
   const resetView = () => {
     setZoom(1);
     const viewer = viewerRef.current;
