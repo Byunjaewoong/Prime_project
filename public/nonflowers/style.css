@@ -43,9 +43,10 @@ legend { padding: 0; margin-bottom: 12px; }
 .control-row input { width: 100%; margin: 0; accent-color: #d2e2ea; cursor: pointer; }
 .quality-row { font-size: 11px; color: #ffffffd4; }
 .quality-row select { max-width: 165px; padding: 6px; border: 1px solid #ffffff40; border-radius: 4px; background: #17202a; color: #fff; cursor: pointer; font-size: 10px; }
-.swatches { display: flex; justify-content: space-between; gap: 5px; }
-.swatches button { position: relative; width: 30px; height: 30px; border: 1px solid #ffffff40; border-radius: 50%; background: var(--swatch); }
+.swatches { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); justify-items: center; gap: 11px 5px; padding: 4px 0; }
+.swatches button { position: relative; width: 30px; height: 30px; border: 1px solid #ffffff40; border-radius: 50%; background: var(--swatch); cursor: pointer; }
 .swatches button[aria-pressed="true"]::after { content: ''; position: absolute; inset: -4px; border: 1px solid #fff; border-radius: 50%; }
+.swatches button:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
 .custom-tone { display: flex; align-items: center; justify-content: space-between; color: #ffffffd4; font-size: 11px; }
 .custom-tone input { width: 40px; height: 27px; padding: 2px; border: 1px solid #ffffff40; border-radius: 4px; background: transparent; cursor: pointer; }
 .edition { display: flex; justify-content: space-between; color: #ffffff91; font-size: 9px; letter-spacing: .1em; }

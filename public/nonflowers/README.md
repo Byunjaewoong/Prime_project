@@ -8,7 +8,7 @@ CSS host the full-screen vintage wildflower composition in pattern.js.
 pattern.js reuses the upstream seeded PRNG, Perlin noise, paper, leaf and
 variable-width stroke primitives. It adds scalloped petals with pigment washes,
 veins and stamens, umbel clusters, layered meadow placement, and paper controls.
-The six tone presets and custom color picker recompose cached flowers without
+The eighteen tone presets and custom color picker recompose cached flowers without
 changing the arrangement. Random regeneration chooses a fresh crypto seed;
 the iframe URL's numeric seed reproduces the arrangement at the same viewport.
 The menu also exports the full composition as PNG, including its selected tone.
