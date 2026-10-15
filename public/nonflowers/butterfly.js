@@ -3,7 +3,6 @@
   'use strict';
   const TAU = Math.PI * 2;
   const clamp = (v, low, high) => Math.max(low, Math.min(high, v));
-  const smooth = t => t * t * (3 - 2 * t);
 
   window.createButterflyGarden = canvas => {
     const context = canvas.getContext('2d');
@@ -102,6 +101,25 @@
         (-a[key] + 3 * c[key] - 3 * d[key] + e[key]) * u * u * u);
       return { x: at('x'), y: at('y') };
     }
+    // Each waypoint is reached with the wings folded. Keep a straight glide
+    // while they open, and round the corner only around that folded phase.
+    function flightPoint(b, cursor) {
+      const points = b.flightRoute;
+      const corner = Math.round(cursor), turnWindow = .18;
+      if (corner > 0 && corner < points.length - 1 && Math.abs(cursor - corner) < turnWindow) {
+        const a = points[corner - 1], p = points[corner], c = points[corner + 1];
+        const u = (cursor - corner + turnWindow) / (2 * turnWindow);
+        const at = key => {
+          const start = p[key] + (a[key] - p[key]) * turnWindow;
+          const end = p[key] + (c[key] - p[key]) * turnWindow;
+          return (1 - u) ** 2 * start + 2 * (1 - u) * u * p[key] + u * u * end;
+        };
+        return { x: at('x'), y: at('y') };
+      }
+      const index = Math.min(points.length - 2, Math.floor(cursor));
+      const u = cursor - index, a = points[index], c = points[index + 1];
+      return { x: a.x + (c.x - a.x) * u, y: a.y + (c.y - a.y) * u };
+    }
     function draw(b) {
       const perched = b.state === 'perched';
       context.save(); context.translate(b.x, b.y); context.rotate(b.angle);
@@ -143,15 +161,12 @@
         b.age += dt;
         if (b.state === 'flying') {
           const t = Math.min(1, b.age / b.duration);
-          const arrival = smooth(clamp((t - .82) / .18, 0, 1));
-          b.phase += dt * TAU * (b.frequency * (1 - arrival) + 1.8 * arrival);
-          const p = point(b, t), next = point(b, Math.min(1, t + .008));
-          const bob = Math.sin(Math.PI * t) * (1 - arrival);
-          b.x = p.x + Math.sin(b.phase * .5 + b.twist) * 3.5 * bob;
-          b.y = p.y + Math.cos(b.phase) * 2.3 * bob;
-          const heading = Math.atan2(next.y - p.y, next.x - p.x) + Math.PI / 2;
-          const turn = Math.atan2(Math.sin(heading - b.angle), Math.cos(heading - b.angle));
-          b.angle += turn * Math.min(1, dt * 7) * (1 - arrival * .9);
+          const cursor = (1 - (1 - t) ** 1.15) * b.cycles;
+          b.phase = Math.PI * 1.5 + cursor * TAU;
+          const p = flightPoint(b, cursor);
+          const next = flightPoint(b, Math.min(b.cycles, cursor + .0001));
+          b.x = p.x; b.y = p.y;
+          if (t < 1) b.angle = Math.atan2(next.y - p.y, next.x - p.x) + Math.PI / 2;
           if (t === 1) { b.x = b.target.x; b.y = b.target.y; b.state = 'perched'; counters(); }
         } else b.phase += dt * TAU / b.restPeriod;
         draw(b);
@@ -174,10 +189,12 @@
       }
       route.push({ ...target });
       if (butterflies.length >= 12) butterflies.shift();
-      butterflies.push({ x, y, target, route, state: 'flying', age: 0, wing: 1,
+      const duration = clamp(distance / 90 + 3, 4, 10);
+      const cycles = Math.round(duration * (3 + random()) / 1.15);
+      const flightRoute = Array.from({ length: cycles + 1 }, (_, i) => point({ route }, i / cycles));
+      butterflies.push({ x, y, target, route, flightRoute, cycles, state: 'flying', age: 0, wing: .13,
         angle: Math.atan2(route[1].y - y, route[1].x - x) + Math.PI / 2,
-        duration: clamp(distance / 90 + 3, 4, 10), phase: random() * TAU,
-        frequency: 6 + random() * 2, twist: random() * TAU, restPeriod: 3.5 + random() * 2,
+        duration, phase: Math.PI * 1.5, restPeriod: 4.5 + random() * 2,
         size: 19 + random() * 6 });
       counters();
       if (!frame && !document.hidden) { last = 0; frame = requestAnimationFrame(animate); }
@@ -197,7 +214,8 @@
           .map(p => ({ x: p.x * width / sceneWidth, y: p.y * height / sceneHeight }));
         counters();
       },
-      snapshot: () => butterflies.map(b => ({ x: b.x, y: b.y, target: { ...b.target }, state: b.state, wing: b.wing })),
+      snapshot: () => butterflies.map(b => ({ x: b.x, y: b.y, target: { ...b.target }, state: b.state,
+        wing: b.wing, phase: b.phase, angle: b.angle })),
     };
   };
 })();

@@ -85,8 +85,9 @@ Click the painting to release a watercolor white butterfly. Original flower
 targets are sampled from the petal layer before it is combined with stems and
 leaves; sprite cropping, scaling and pattern rotations carry these sites into
 the final canvas. Hidden or offscreen sites are rejected before landing.
-Butterflies follow randomized curved routes with wingbeat bobbing, slow down
-to land, then fold and unfold their wings on a slower cycle. Their painted
+Butterflies glide between randomized waypoints and turn as the wings fold,
+with roughly three to four wingbeats per second at takeoff. Both flight and
+wingbeats slow down to land; perched wings open and close every 4.5–6.5 seconds. Their painted
 wing sprites and animation use an independent random stream and overlay canvas.
 Up to twelve butterflies can remain in the scene; a new composition clears
 them, and animation pauses when the browser tab is hidden.

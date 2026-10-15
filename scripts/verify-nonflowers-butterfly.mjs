@@ -28,6 +28,16 @@ try {
   const prng = await page.evaluate(() => Prng.s);
   await page.mouse.click(75, 110);
   await page.waitForFunction(() => window.testGarden.snapshot().length === 1);
+  await page.evaluate(() => {
+    window.flightSamples = [];
+    const sample = () => {
+      const [b] = window.testGarden.snapshot();
+      if (!b || b.state !== 'flying') return;
+      window.flightSamples.push({ ...b, now: performance.now() });
+      requestAnimationFrame(sample);
+    };
+    sample();
+  });
   const route = [];
   for (let i = 0; i < 60; i++) {
     const [b] = await page.evaluate(() => window.testGarden.snapshot());
@@ -41,6 +51,18 @@ try {
   assert(Math.hypot(end.x - end.target.x, end.y - end.target.y) < .1, 'Feet must reach the selected petal');
   const deviation = Math.max(...route.map(b => Math.abs(dy * (b.x - start.x) - dx * (b.y - start.y)) / Math.max(1, Math.hypot(dx, dy))));
   assert(deviation > 10, `Flight path was too straight: ${deviation}`);
+  const samples = await page.evaluate(() => window.flightSamples);
+  let turning = 0, foldedTurning = 0;
+  for (let i = 1; i < samples.length; i++) {
+    const a = samples[i - 1], b = samples[i];
+    const yaw = Math.abs(Math.atan2(Math.sin(b.angle - a.angle), Math.cos(b.angle - a.angle)));
+    turning += yaw;
+    if (Math.min(a.wing, b.wing) < .5) foldedTurning += yaw;
+  }
+  assert(turning > .2 && foldedTurning / turning > .95, 'Direction changes must coincide with folded wings');
+  const early = samples.find(b => b.now - samples[0].now >= 800);
+  const wingbeatsPerSecond = (early.phase - samples[0].phase) / (Math.PI * 2) / ((early.now - samples[0].now) / 1000);
+  assert(wingbeatsPerSecond > 1.5 && wingbeatsPerSecond < 4.3, `Unexpected wingbeat speed: ${wingbeatsPerSecond}`);
   const wings = [];
   let rest;
   for (let i = 0; i < 8; i++) {
@@ -68,8 +90,12 @@ try {
   await page.waitForFunction(() => document.querySelector('#butterflies').dataset.perched === '1', null, { timeout: 16000 });
   await page.screenshot({ path: 'artifacts/nonflowers-butterfly/pattern-perched.png' });
   await page.setViewportSize({ width: 390, height: 844 });
-  await ready();
+  await page.waitForFunction(() => {
+    const canvas = document.querySelector('#meadow');
+    return canvas.getAttribute('aria-busy') === 'false' &&
+      Math.abs(canvas.width / canvas.height - 390 / 844) < .001;
+  });
   assert.equal(await page.locator('#butterflies').getAttribute('data-count'), '0');
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ deviation, patternTargets, originalLanding: end.target, errors }));
+  console.log(JSON.stringify({ deviation, wingbeatsPerSecond, foldedTurnRatio: foldedTurning / turning, patternTargets, originalLanding: end.target, errors }));
 } finally { await browser.close(); }
