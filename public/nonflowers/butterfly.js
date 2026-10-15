@@ -5,6 +5,7 @@
   const clamp = (v, low, high) => Math.max(low, Math.min(high, v));
   const SHUTTER_SECONDS = 1 / 48; // 180° exposure at a virtual 24 fps.
   const EXPOSURE_SAMPLES = 5;
+  const GROUP_EXPOSURE_SAMPLES = 3;
 
   window.createButterflyGarden = canvas => {
     const context = canvas.getContext('2d');
@@ -75,6 +76,11 @@
       return sprite;
     }
     const fore = wing(false), hind = wing(true);
+    const wingPair = document.createElement('canvas');
+    wingPair.width = 160; wingPair.height = 165;
+    const wingContext = wingPair.getContext('2d');
+    wingContext.drawImage(hind, 0, 5);
+    wingContext.drawImage(fore, 0, 0);
     const poseCanvas = document.createElement('canvas');
     const exposureCanvas = document.createElement('canvas');
     const poseContext = poseCanvas.getContext('2d');
@@ -150,8 +156,7 @@
         context.save();
         context.scale(side * scale * opening, scale);
         context.rotate((perched ? .1 : .045 * Math.cos(b.phase)) * side);
-        context.drawImage(hind, -14, -75);
-        context.drawImage(fore, -14, -80);
+        context.drawImage(wingPair, -14, -80);
         context.restore();
       }
       context.fillStyle = '#7c8063'; context.beginPath(); context.ellipse(0, 1, 1.5, 7, 0, 0, TAU); context.fill();
@@ -186,15 +191,15 @@
       return { ...b, x: p.x, y: p.y, phase: Math.PI * 1.5 + beatCursor * TAU,
         angle: Math.atan2(after.y - before.y, after.x - before.x) + Math.PI / 2 };
     }
-    function drawExposure(b) {
+    function drawExposure(b, samples) {
       // Average complete poses with additive premultiplied alpha. Averaging
       // poses avoids dark trails and keeps a stationary white wing opaque.
       exposureContext.setTransform(1, 0, 0, 1, 0, 0);
       exposureContext.clearRect(0, 0, exposureCanvas.width, exposureCanvas.height);
       exposureContext.globalCompositeOperation = 'lighter';
-      exposureContext.globalAlpha = 1 / EXPOSURE_SAMPLES;
-      for (let i = 0; i < EXPOSURE_SAMPLES; i++) {
-        const pose = flightPose(b, Math.max(0, b.age - SHUTTER_SECONDS * i / (EXPOSURE_SAMPLES - 1)));
+      exposureContext.globalAlpha = 1 / samples;
+      for (let i = 0; i < samples; i++) {
+        const pose = i === 0 ? b : flightPose(b, Math.max(0, b.age - SHUTTER_SECONDS * i / (samples - 1)));
         poseContext.setTransform(1, 0, 0, 1, 0, 0);
         poseContext.clearRect(0, 0, poseCanvas.width, poseCanvas.height);
         poseContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
@@ -208,6 +213,8 @@
       const dt = last ? Math.min((now - last) / 1000, .05) : 0;
       last = now;
       context.clearRect(0, 0, width, height);
+      const exposureSamples = butterflies.filter(b => b.state === 'flying').length >= 4
+        ? GROUP_EXPOSURE_SAMPLES : EXPOSURE_SAMPLES;
       for (const b of butterflies) {
         if (b.pendingLaunch) {
           b.pendingLaunch.delay -= dt;
@@ -223,7 +230,7 @@
           if (b.age >= b.duration) { b.x = b.target.x; b.y = b.target.y; b.state = 'perched'; counters(); }
         } else b.phase += dt * TAU / b.restPeriod;
         b.wing = wingOpening(b);
-        if (b.state === 'flying') drawExposure(b);
+        if (b.state === 'flying') drawExposure(b, exposureSamples);
         else draw(b, context);
       }
       if (butterflies.length && !document.hidden) frame = requestAnimationFrame(animate);
