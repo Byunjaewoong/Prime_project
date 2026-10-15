@@ -209,6 +209,13 @@
       last = now;
       context.clearRect(0, 0, width, height);
       for (const b of butterflies) {
+        if (b.pendingLaunch) {
+          b.pendingLaunch.delay -= dt;
+          if (b.pendingLaunch.delay <= 0) {
+            const { target, detour, speedFactor } = b.pendingLaunch;
+            launch(b, b.x, b.y, target, { detour, speedFactor });
+          }
+        }
         b.age += dt;
         if (b.state === 'flying') {
           const pose = flightPose(b, b.age);
@@ -221,23 +228,36 @@
       }
       if (butterflies.length && !document.hidden) frame = requestAnimationFrame(animate);
     }
-    function chooseTarget(x, y, previous) {
+    function chooseTarget(x, y, previous, minDistance = 65) {
       const different = targets.filter(p => !previous || Math.hypot(p.x - previous.x, p.y - previous.y) > 40);
       if (!different.length) return null;
-      const candidates = different.filter(p => Math.hypot(p.x - x, p.y - y) > 65 &&
+      const candidates = different.filter(p => Math.hypot(p.x - x, p.y - y) > minDistance &&
         Math.hypot(p.x - x, p.y - y) < Math.max(500, width * .65));
       const pool = candidates.length ? candidates : different;
       return pool[Math.floor(random() * pool.length)];
     }
-    function launch(b, x, y, target) {
+    function launch(b, x, y, target, { detour = false, speedFactor = 1 } = {}) {
       const dx = target.x - x, dy = target.y - y, distance = Math.hypot(dx, dy);
-      const route = [{ x, y }], bends = 3 + Math.floor(random() * 2);
-      for (let i = 1; i < bends; i++) {
-        const t = i / bends;
-        const offset = (random() < .5 ? -1 : 1) * Math.min(30, distance * .07)
-          * (.6 + random() * .4) * Math.sin(Math.PI * t);
-        route.push({ x: clamp(x + dx * t - dy / Math.max(1, distance) * offset, 14, width - 14),
-          y: clamp(y + dy * t + dx / Math.max(1, distance) * offset, 14, height - 14) });
+      const route = [{ x, y }];
+      if (detour && distance > 80) {
+        const nx = -dy / distance, ny = dx / distance;
+        const radius = Math.min(130 + random() * 65, Math.max(75, distance * .48), Math.min(width, height) * .25);
+        const side = random() < .5 ? -1 : 1;
+        const arc = [[.17, .65], [.38, 1.3], [.62, 1.35], [.82, .7]];
+        for (const [along, sideways] of arc) route.push({
+          x: clamp(x + dx * along + nx * radius * sideways * side, 14, width - 14),
+          y: clamp(y + dy * along + ny * radius * sideways * side, 14, height - 14),
+        });
+      } else {
+        detour = false;
+        const bends = 3 + Math.floor(random() * 2);
+        for (let i = 1; i < bends; i++) {
+          const t = i / bends;
+          const offset = (random() < .5 ? -1 : 1) * Math.min(30, distance * .07)
+            * (.6 + random() * .4) * Math.sin(Math.PI * t);
+          route.push({ x: clamp(x + dx * t - dy / Math.max(1, distance) * offset, 14, width - 14),
+            y: clamp(y + dy * t + dx / Math.max(1, distance) * offset, 14, height - 14) });
+        }
       }
       route.push({ ...target });
       // Equal arc-length steps remove the speed jumps caused by unequal
@@ -247,7 +267,7 @@
       for (let i = 1; i < guide.length; i++) lengths.push(lengths[i - 1] + Math.hypot(
         guide[i].x - guide[i - 1].x, guide[i].y - guide[i - 1].y));
       const length = lengths.at(-1);
-      const duration = clamp(length / (90 * .84), 4, 12);
+      const duration = clamp(length / (90 * .84 * speedFactor), detour ? 3.5 : 2.8, 18);
       const cycles = Math.max(8, Math.round(duration * (3 + random() * .6) * .84));
       let segment = 1;
       const flightRoute = Array.from({ length: cycles + 1 }, (_, i) => {
@@ -258,6 +278,7 @@
         return { x: a.x + (c.x - a.x) * u, y: a.y + (c.y - a.y) * u };
       });
       Object.assign(b, { x, y, target, route, flightRoute, cycles, state: 'flying', age: 0, wing: .13,
+        pendingLaunch: null, detour, speedFactor,
         angle: Math.atan2(route[1].y - y, route[1].x - x) + Math.PI / 2,
         duration, phase: Math.PI * 1.5 });
       counters();
@@ -274,11 +295,19 @@
     }
     function scatter() {
       let moved = 0;
-      for (const b of butterflies) {
-        if (b.state !== 'perched') continue;
-        const target = chooseTarget(b.x, b.y, b.target);
+      const settled = butterflies.filter(b => b.state === 'perched' && !b.pendingLaunch);
+      for (let i = settled.length - 1; i > 0; i--) {
+        const j = Math.floor(random() * (i + 1));
+        [settled[i], settled[j]] = [settled[j], settled[i]];
+      }
+      for (const [index, b] of settled.entries()) {
+        const options = { detour: settled.length >= 3 && index === 1 || random() < .28,
+          speedFactor: .72 + random() * .58 };
+        const target = chooseTarget(b.x, b.y, b.target, options.detour ? 100 : 65);
         if (!target) continue;
-        launch(b, b.x, b.y, target);
+        const delay = settled.length === 1 ? 0 : index * (.22 + random() * .18);
+        if (delay) b.pendingLaunch = { target, delay, ...options };
+        else launch(b, b.x, b.y, target, options);
         moved++;
       }
       return moved;
@@ -298,7 +327,8 @@
         counters();
       },
       snapshot: () => butterflies.map(b => ({ x: b.x, y: b.y, target: { ...b.target }, state: b.state,
-        wing: b.wing, phase: b.phase, angle: b.angle, age: b.age, duration: b.duration })),
+        wing: b.wing, phase: b.phase, angle: b.angle, age: b.age, duration: b.duration,
+        detour: b.detour, speedFactor: b.speedFactor, waiting: Boolean(b.pendingLaunch) })),
     };
   };
 })();

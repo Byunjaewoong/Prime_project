@@ -96,5 +96,7 @@ wing sprites and animation use an independent random stream and overlay canvas.
 Once perched, butterflies fly to another petal after a strong phone shake or a
 fast desktop mouse movement. Small movements and repeated triggers are ignored;
 on iOS, the first canvas tap also requests motion-sensor access.
+When several butterflies are startled together, their departures are staggered,
+their cruising speeds vary, and some make a broad curved detour before landing.
 Up to twelve butterflies can remain in the scene; a new composition clears
 them, and animation pauses when the browser tab is hidden.

@@ -129,6 +129,26 @@ try {
   await page.mouse.click(150, 180);
   await page.waitForFunction(() => document.querySelector('#butterflies').dataset.perched === '1', null, { timeout: 16000 });
   await page.screenshot({ path: 'artifacts/nonflowers-butterfly/pattern-perched.png' });
+  await page.evaluate(() => {
+    window.testGarden.spawn(260, 180);
+    window.testGarden.spawn(360, 180);
+    window.testGarden.spawn(460, 180);
+  });
+  await page.waitForFunction(() => document.querySelector('#butterflies').dataset.perched === '4', null, { timeout: 16000 });
+  await page.evaluate(() => {
+    const event = new Event('devicemotion');
+    Object.defineProperty(event, 'acceleration', { value: { x: 16, y: 0, z: 0 } });
+    window.dispatchEvent(event);
+  });
+  const scattered = await page.evaluate(() => window.testGarden.snapshot());
+  assert.equal(scattered.filter(b => b.state === 'flying').length, 1, 'Butterflies should not all take off together');
+  assert.equal(scattered.filter(b => b.waiting).length, 3, 'Remaining butterflies need staggered departures');
+  await page.waitForFunction(() => window.testGarden.snapshot().every(b => b.state === 'flying'), null, { timeout: 2500 });
+  const group = await page.evaluate(() => window.testGarden.snapshot());
+  assert(Math.max(...group.map(b => b.age)) - Math.min(...group.map(b => b.age)) > .3,
+    'Individual takeoff times should visibly differ');
+  assert(group.some(b => b.detour), 'At least one butterfly should take a broad arc');
+  assert(new Set(group.map(b => b.speedFactor.toFixed(2))).size >= 3, 'Butterflies should have distinct cruising speeds');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForFunction(() => {
     const canvas = document.querySelector('#meadow');
