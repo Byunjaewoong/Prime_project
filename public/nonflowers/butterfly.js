@@ -221,12 +221,15 @@
       }
       if (butterflies.length && !document.hidden) frame = requestAnimationFrame(animate);
     }
-    function spawn(x, y) {
-      if (!targets.length) return false;
-      const candidates = targets.filter(p => Math.hypot(p.x - x, p.y - y) > 65 &&
+    function chooseTarget(x, y, previous) {
+      const different = targets.filter(p => !previous || Math.hypot(p.x - previous.x, p.y - previous.y) > 40);
+      if (!different.length) return null;
+      const candidates = different.filter(p => Math.hypot(p.x - x, p.y - y) > 65 &&
         Math.hypot(p.x - x, p.y - y) < Math.max(500, width * .65));
-      const pool = candidates.length ? candidates : targets;
-      const target = pool[Math.floor(random() * pool.length)];
+      const pool = candidates.length ? candidates : different;
+      return pool[Math.floor(random() * pool.length)];
+    }
+    function launch(b, x, y, target) {
       const dx = target.x - x, dy = target.y - y, distance = Math.hypot(dx, dy);
       const route = [{ x, y }], bends = 3 + Math.floor(random() * 2);
       for (let i = 1; i < bends; i++) {
@@ -237,7 +240,6 @@
           y: clamp(y + dy * t + dx / Math.max(1, distance) * offset, 14, height - 14) });
       }
       route.push({ ...target });
-      if (butterflies.length >= 12) butterflies.shift();
       // Equal arc-length steps remove the speed jumps caused by unequal
       // waypoint spacing. Small turns then require only a gentle folded bank.
       const guide = Array.from({ length: 257 }, (_, i) => point({ route }, i / 256));
@@ -255,13 +257,31 @@
         const a = guide[segment - 1], c = guide[segment];
         return { x: a.x + (c.x - a.x) * u, y: a.y + (c.y - a.y) * u };
       });
-      butterflies.push({ x, y, target, route, flightRoute, cycles, state: 'flying', age: 0, wing: .13,
+      Object.assign(b, { x, y, target, route, flightRoute, cycles, state: 'flying', age: 0, wing: .13,
         angle: Math.atan2(route[1].y - y, route[1].x - x) + Math.PI / 2,
-        duration, phase: Math.PI * 1.5, restPeriod: 4.5 + random() * 2,
-        size: 19 + random() * 6 });
+        duration, phase: Math.PI * 1.5 });
       counters();
       if (!frame && !document.hidden) { last = 0; frame = requestAnimationFrame(animate); }
+    }
+    function spawn(x, y) {
+      const target = chooseTarget(x, y);
+      if (!target) return false;
+      if (butterflies.length >= 12) butterflies.shift();
+      const b = { size: 19 + random() * 6, restPeriod: 4.5 + random() * 2 };
+      butterflies.push(b);
+      launch(b, x, y, target);
       return true;
+    }
+    function scatter() {
+      let moved = 0;
+      for (const b of butterflies) {
+        if (b.state !== 'perched') continue;
+        const target = chooseTarget(b.x, b.y, b.target);
+        if (!target) continue;
+        launch(b, b.x, b.y, target);
+        moved++;
+      }
+      return moved;
     }
     function visibility() {
       cancelAnimationFrame(frame); frame = 0; last = 0;
@@ -270,7 +290,7 @@
     document.addEventListener('visibilitychange', visibility);
     resize(); counters();
     return {
-      spawn, clear,
+      spawn, scatter, clear,
       setScene(points, w, h) {
         clear(); resize(); sceneWidth = w; sceneHeight = h;
         targets = points.filter(p => p.x > 8 && p.x < w - 8 && p.y > 8 && p.y < h - 8)

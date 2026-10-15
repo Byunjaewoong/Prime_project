@@ -93,5 +93,8 @@ cruising speed, with a small forward pulse as the wings open. Flight rendering
 averages five poses over 1/48 second (a virtual 24 fps, 180-degree shutter),
 giving wings and body a short motion blur without accumulating trails. Their painted
 wing sprites and animation use an independent random stream and overlay canvas.
+Once perched, butterflies fly to another petal after a strong phone shake or a
+fast desktop mouse movement. Small movements and repeated triggers are ignored;
+on iOS, the first canvas tap also requests motion-sensor access.
 Up to twelve butterflies can remain in the scene; a new composition clears
 them, and animation pauses when the browser tab is hidden.

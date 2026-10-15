@@ -951,7 +951,50 @@
   document.addEventListener('keydown', event => { if (event.key === 'Escape' && !menu.hidden) setMenu(false); });
   canvas.addEventListener('click', event => {
     if (!menu.hidden) { setMenu(false); return; }
+    // iOS only releases motion data after a direct user gesture.
+    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function' && !motionPermissionAsked) {
+      motionPermissionAsked = true;
+      DeviceMotionEvent.requestPermission().catch(() => {});
+    }
     butterflyGarden.spawn(event.clientX, event.clientY);
+  });
+  let motionPermissionAsked = false;
+  let lastScatter = 0;
+  let lastMouse = null;
+  let lastMotionPeak = 0;
+  let gravityBaseline = null;
+  const scatterIfReady = () => {
+    const now = performance.now();
+    if (now - lastScatter < 1400) return;
+    if (butterflyGarden.scatter()) lastScatter = now;
+  };
+  canvas.addEventListener('pointermove', event => {
+    if (event.pointerType !== 'mouse') return;
+    const now = performance.now();
+    if (lastMouse) {
+      const dt = now - lastMouse.time;
+      const distance = Math.hypot(event.clientX - lastMouse.x, event.clientY - lastMouse.y);
+      if (dt >= 8 && dt <= 120 && distance >= 35 && distance / dt > 1.8) scatterIfReady();
+    }
+    lastMouse = { x: event.clientX, y: event.clientY, time: now };
+  });
+  window.addEventListener('devicemotion', event => {
+    const raw = event.acceleration;
+    const withGravity = event.accelerationIncludingGravity;
+    if (!raw && !withGravity) return;
+    const axes = [raw?.x, raw?.y, raw?.z];
+    const hasRaw = axes.some(value => Number.isFinite(value));
+    let magnitude;
+    if (hasRaw) magnitude = Math.hypot(...axes.map(value => Number.isFinite(value) ? value : 0));
+    else {
+      const sample = [withGravity.x, withGravity.y, withGravity.z].map(value => Number.isFinite(value) ? value : 0);
+      if (!gravityBaseline) gravityBaseline = sample;
+      magnitude = Math.hypot(...sample.map((value, index) => value - gravityBaseline[index]));
+      gravityBaseline = gravityBaseline.map((value, index) => value * .88 + sample[index] * .12);
+    }
+    const now = performance.now();
+    if (magnitude > 15 || (magnitude > 8 && now - lastMotionPeak < 500)) scatterIfReady();
+    if (magnitude > 8) lastMotionPeak = now;
   });
   document.getElementById('swatches').addEventListener('click', event => {
     const button = event.target.closest('[data-tone]');

@@ -87,6 +87,36 @@ try {
   await page.screenshot({ path: 'artifacts/nonflowers-butterfly/perched.png' });
   await page.screenshot({ path: 'artifacts/nonflowers-butterfly/wing-detail.png', clip: {
     x: Math.max(0, Math.min(780, end.x - 60)), y: Math.max(0, Math.min(680, end.y - 60)), width: 120, height: 120 } });
+  await page.evaluate(() => {
+    const motion = strength => {
+      const event = new Event('devicemotion');
+      Object.defineProperty(event, 'acceleration', { value: { x: strength, y: 0, z: 0 } });
+      window.dispatchEvent(event);
+    };
+    motion(4);
+  });
+  assert.equal((await page.evaluate(() => window.testGarden.snapshot()))[0].state, 'perched', 'Small movements must not scatter');
+  await page.evaluate(() => {
+    const event = new Event('devicemotion');
+    Object.defineProperty(event, 'acceleration', { value: { x: 16, y: 0, z: 0 } });
+    window.dispatchEvent(event);
+  });
+  const [shaken] = await page.evaluate(() => window.testGarden.snapshot());
+  assert.equal(shaken.state, 'flying', 'A strong phone shake must restart flight');
+  assert(Math.hypot(shaken.target.x - end.target.x, shaken.target.y - end.target.y) > 40, 'Shake must choose a different flower');
+  await page.waitForFunction(() => window.testGarden.snapshot()[0].state === 'perched', null, { timeout: 16000 });
+  const [beforeMouse] = await page.evaluate(() => window.testGarden.snapshot());
+  await page.evaluate(async () => {
+    const move = x => document.getElementById('meadow').dispatchEvent(new PointerEvent('pointermove', {
+      pointerType: 'mouse', clientX: x, clientY: 240 }));
+    move(120);
+    await new Promise(resolve => setTimeout(resolve, 35));
+    move(360);
+  });
+  const [startled] = await page.evaluate(() => window.testGarden.snapshot());
+  assert.equal(startled.state, 'flying', 'Fast mouse movement must restart flight');
+  assert(Math.hypot(startled.target.x - beforeMouse.target.x, startled.target.y - beforeMouse.target.y) > 40,
+    'Mouse movement must choose a different flower');
   await page.getByRole('button', { name: '메뉴 열기', exact: true }).click();
   assert.equal(await page.locator('#butterflies').getAttribute('data-count'), '1');
   await page.locator('#mixed-regenerate').click();
