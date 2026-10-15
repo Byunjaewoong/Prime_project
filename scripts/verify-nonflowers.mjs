@@ -77,7 +77,7 @@ try {
       assert(Number(await frame.locator('#meadow').getAttribute('data-vintage-flowers')) > 0);
       assert(Number(await frame.locator('#meadow').getAttribute('data-vintage-behind')) > 0);
       assert(Number(await frame.locator('#meadow').getAttribute('data-vintage-front')) > 0);
-      assert.equal(await frame.locator('canvas').count(), 1, 'DOM canvases must not accumulate');
+      assert.equal(await frame.locator('canvas').count(), 2, 'Only the painting and butterfly overlay canvases should remain');
     }
     const renderMs = (Date.now() - start) / repetitions;
     const meadowSeed = await frame.locator('#meadow').getAttribute('data-seed');

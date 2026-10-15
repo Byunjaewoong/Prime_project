@@ -909,6 +909,23 @@ function genParams(options){
   return PAR
 }
 
+// Sample only the original painted petal layer, without advancing its PRNG.
+// Coordinates are returned in the destination canvas after the plant is fitted.
+function collectFlowerSites(ctx, bounds, xref, yref, sites){
+  if (!sites || bounds.xmax < bounds.xmin || bounds.ymax < bounds.ymin) return
+  var width = bounds.xmax-bounds.xmin+1, height = bounds.ymax-bounds.ymin+1
+  var pixels = ctx.getImageData(bounds.xmin,bounds.ymin,width,height).data
+  var step = Math.max(12,Math.ceil(Math.sqrt(width*height/180)))
+  for (var y=0;y<height;y+=step) for (var x=0;x<width;x+=step){
+    var best=40, px=-1, py=-1
+    for (var j=y;j<Math.min(height,y+step);j+=3) for (var i=x;i<Math.min(width,x+step);i+=3){
+      var alpha=pixels[(j*width+i)*4+3]
+      if(alpha>best){best=alpha;px=i;py=j}
+    }
+    if(px>=0) sites.push({x:xref+bounds.xmin+px,y:yref+bounds.ymin+py})
+  }
+}
+
 // generate a woody plant
 function woody(args){
   var args =(args != undefined) ? args : {};
@@ -1028,6 +1045,8 @@ function woody(args){
   var yref = yof-bd.ymax
   if (!args.flowersOnly) Layer.blit(ctx,lay0,{ble:"multiply",xof:xref,yof:yref})
   Layer.blit(ctx,lay1,{ble:"normal",xof:xref,yof:yref})
+
+  collectFlowerSites(lay1,b2,xref,yref,args.flowerSites)
 
   return renderScale
 }
@@ -1171,6 +1190,8 @@ function herbal(args){
   var yref = yof-bd.ymax
   if (!args.flowersOnly) Layer.blit(ctx,lay0,{ble:"multiply",xof:xref,yof:yref})
   Layer.blit(ctx,lay1,{ble:"normal",xof:xref,yof:yref})
+
+  collectFlowerSites(lay1,b2,xref,yref,args.flowerSites)
 
   return renderScale
 }

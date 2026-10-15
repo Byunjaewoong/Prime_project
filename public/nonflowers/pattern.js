@@ -5,6 +5,7 @@
   'use strict';
   const canvas = document.getElementById('meadow');
   const ctx = canvas.getContext('2d', { alpha: false });
+  const butterflyGarden = window.createButterflyGarden(document.getElementById('butterflies'));
   const menu = document.getElementById('menu');
   const toggle = document.getElementById('menu-toggle');
   const status = document.getElementById('status');
@@ -357,10 +358,11 @@
       par.flowerChance = Math.max(par.flowerChance, .16);
     }
     let geometryScale;
-    if (kind === 'woody') geometryScale = woody({ ctx: source, xof: sourceSize / 2, yof: sourceSize - 50, PAR: par, branchLength: 400 * stemScale, flowersOnly });
+    const flowerSites = [];
+    if (kind === 'woody') geometryScale = woody({ ctx: source, xof: sourceSize / 2, yof: sourceSize - 50, PAR: par, branchLength: 400 * stemScale, flowersOnly, flowerSites });
     else {
       par.stemLength *= stemScale;
-      geometryScale = herbal({ ctx: source, xof: sourceSize / 2, yof: sourceSize, PAR: par, adaptiveCanvas: true, flowersOnly });
+      geometryScale = herbal({ ctx: source, xof: sourceSize / 2, yof: sourceSize, PAR: par, adaptiveCanvas: true, flowersOnly, flowerSites });
     }
     const painted = solidifyPigment(source);
     const bounds = Layer.bound(source);
@@ -379,8 +381,16 @@
     const sprite = document.createElement('canvas');
     sprite.width = width; sprite.height = height;
     sprite.getContext('2d').drawImage(source.canvas, bounds.xmin, bounds.ymin, width, height, 0, 0, width, height);
+    const pixels = sprite.getContext('2d').getImageData(0, 0, width, height).data;
+    const sites = flowerSites.filter((_, i) => i % Math.max(1, Math.ceil(flowerSites.length / 24)) === 0)
+      .map(p => {
+        const x = Math.round(p.x - bounds.xmin), y = Math.round(p.y - bounds.ymin);
+        const index = (y * width + x) * 4;
+        return { x: x / width, y: y / height, color: Array.from(pixels.slice(index, index + 3)),
+          visible: x >= 0 && x < width && y >= 0 && y < height && pixels[index + 3] > 180 };
+      }).filter(p => p.visible);
     source.canvas.width = source.canvas.height = 1;
-    return { canvas: sprite, kind, x: centerX - width * scale / 2, y: baseY - height * scale, width: width * scale, height: height * scale };
+    return { canvas: sprite, kind, sites, x: centerX - width * scale / 2, y: baseY - height * scale, width: width * scale, height: height * scale };
   }
 
   const originalKey = (flower, worldWidth, worldHeight) =>
@@ -388,7 +398,7 @@
 
   // Pack against painted silhouettes, including the spaces between petals and
   // bent branches. The second pass uses those spaces instead of a regular grid.
-  async function drawPattern(painter, worldWidth, worldHeight, viewWidth, viewHeight, id) {
+  async function drawPattern(painter, worldWidth, worldHeight, viewWidth, viewHeight, id, landingSites) {
     const cell = 5;
     const cols = Math.ceil(worldWidth / cell);
     const rows = Math.ceil(worldHeight / cell);
@@ -640,6 +650,11 @@
       painter.save();
       painter.translate((item.left + item.shape.w / 2) * cell, (item.top + item.shape.h / 2) * cell);
       painter.rotate(item.shape.angle);
+      for (const site of item.sprite.sites) {
+        const p = painter.getTransform().transformPoint({ x: (site.x - .5) * item.sprite.width,
+          y: (site.y - .5) * item.sprite.height });
+        landingSites.push({ x: p.x, y: p.y, color: site.color });
+      }
       painter.drawImage(item.sprite.canvas, -item.sprite.width / 2, -item.sprite.height / 2,
         item.sprite.width, item.sprite.height);
       painter.restore();
@@ -747,6 +762,7 @@
     const working = document.createElement('canvas');
     working.width = width; working.height = height;
     const painter = working.getContext('2d');
+    const landingSites = [];
     const worldHeight = 1350;
     const worldWidth = worldHeight * cssWidth / cssHeight;
     const bloomScale = Number(bloomInput.value) / 100;
@@ -808,7 +824,7 @@
         painter.translate(-bleedX, -bleedY);
         try {
           return await drawPattern(painter, worldWidth + bleedX * 2, worldHeight + bleedY * 2,
-            worldWidth, worldHeight, id);
+            worldWidth, worldHeight, id, landingSites);
         } finally { painter.restore(); }
       })() : null;
       if (id !== generation || disposed) return;
@@ -831,11 +847,15 @@
             generatedOriginals++;
           }
           painter.drawImage(sprite.canvas, sprite.x, sprite.y, sprite.width, sprite.height);
+          for (const site of sprite.sites) landingSites.push({
+            x: (sprite.x + site.x * sprite.width) * width / worldWidth,
+            y: (sprite.y + site.y * sprite.height) * height / worldHeight, color: site.color });
           originalKind = sprite.kind;
           originalMs += performance.now() - start;
         } else {
           const start = performance.now();
           if (drawVintage(painter, layer.item, width, height, worldWidth, worldHeight, vintageCacheLimit)) reusedVintage++;
+          landingSites.push({ x: layer.item.x * width / worldWidth, y: layer.item.y * height / worldHeight });
           vintageMs += performance.now() - start;
           if (layer.depth >= mixedDepth) vintageFront++;
           else vintageBehind++;
@@ -853,6 +873,18 @@
       canvas.width = width; canvas.height = height;
       if (flowers) { flowers.width = flowers.height = 1; }
       flowers = working;
+      // Reject original petals hidden by a later painted layer, and crop bleed
+      // targets to the visible canvas. The animation uses the committed scene.
+      const paintedPixels = painter.getImageData(0, 0, width, height).data;
+      const visibleSites = landingSites.filter((site, index) => {
+        if (index % Math.max(1, Math.ceil(landingSites.length / 4000))) return false;
+        const x = Math.round(site.x), y = Math.round(site.y);
+        if (x < 0 || x >= width || y < 0 || y >= height) return false;
+        const offset = (y * width + x) * 4;
+        return paintedPixels[offset + 3] > 140 && (!site.color || site.color.reduce((sum, c, i) =>
+          sum + Math.abs(c - paintedPixels[offset + i]), 0) < 110);
+      });
+      butterflyGarden.setScene(visibleSites, width, height);
       compose();
       document.getElementById('edition').value = seed.toString(16).toUpperCase().padStart(8, '0');
       canvas.dataset.seed = String(seed);
@@ -917,7 +949,10 @@
   }
   toggle.addEventListener('click', () => setMenu(menu.hidden));
   document.addEventListener('keydown', event => { if (event.key === 'Escape' && !menu.hidden) setMenu(false); });
-  canvas.addEventListener('click', () => { if (!menu.hidden) setMenu(false); });
+  canvas.addEventListener('click', event => {
+    if (!menu.hidden) { setMenu(false); return; }
+    butterflyGarden.spawn(event.clientX, event.clientY);
+  });
   document.getElementById('swatches').addEventListener('click', event => {
     const button = event.target.closest('[data-tone]');
     if (button) setTone(button.dataset.tone);
@@ -1058,11 +1093,13 @@
     }, 'image/png');
   });
   const onResize = () => {
+    butterflyGarden.clear();
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(render, 180);
   };
   window.addEventListener('resize', onResize);
   window.addEventListener('pagehide', () => {
+    butterflyGarden.clear();
     disposed = true; generation++;
     clearTimeout(resizeTimer); clearTimeout(controlsTimer); cancelAnimationFrame(frame);
     for (const sprite of originalCache.values()) sprite.canvas.width = sprite.canvas.height = 1;

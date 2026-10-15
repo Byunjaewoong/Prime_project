@@ -80,3 +80,13 @@ its proportions until the new composition is ready.
 Regenerate pattern chooses a new seed; the controls and seed are saved in the
 URL. Cached sprites are reused when spacing and ratio change, and the PNG
 export includes the entire composition.
+
+Click the painting to release a watercolor white butterfly. Original flower
+targets are sampled from the petal layer before it is combined with stems and
+leaves; sprite cropping, scaling and pattern rotations carry these sites into
+the final canvas. Hidden or offscreen sites are rejected before landing.
+Butterflies follow randomized curved routes with wingbeat bobbing, slow down
+to land, then fold and unfold their wings on a slower cycle. Their painted
+wing sprites and animation use an independent random stream and overlay canvas.
+Up to twelve butterflies can remain in the scene; a new composition clears
+them, and animation pauses when the browser tab is hidden.

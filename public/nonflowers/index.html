@@ -7,10 +7,12 @@
     <title>Nonflowers · A wildflower study</title>
     <link rel="stylesheet" href="style.css">
     <script src="main.js" defer></script>
+    <script src="butterfly.js" defer></script>
     <script src="pattern.js" defer></script>
   </head>
   <body>
     <canvas id="meadow" role="img" aria-label="종이 위에 생성된 Nonflower 패턴"></canvas>
+    <canvas id="butterflies" aria-hidden="true"></canvas>
     <div id="status" role="status" aria-live="polite" hidden>
       <span id="status-label">꽃을 그리고 있습니다…</span>
       <progress id="pattern-progress" max="100" value="0" hidden aria-label="패턴 생성 진행도"></progress>
@@ -21,6 +23,7 @@
         <a href="/works/laboratory" target="_top" aria-label="Laboratory">⚗</a>
       </nav></div>
       <div class="panel-content">
+      <p class="mode-hint">화면을 클릭하면 흰나비가 날아가 꽃잎에 앉습니다.</p>
       <span class="section-title">Composition</span>
       <button id="mixed-regenerate" class="action primary" type="button">↻ nonflower</button>
       <button id="regenerate" class="action" type="button">↻ NEW COMPOSITION</button>
