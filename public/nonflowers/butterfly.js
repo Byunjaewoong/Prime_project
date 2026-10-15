@@ -3,6 +3,8 @@
   'use strict';
   const TAU = Math.PI * 2;
   const clamp = (v, low, high) => Math.max(low, Math.min(high, v));
+  const SHUTTER_SECONDS = 1 / 48; // 180° exposure at a virtual 24 fps.
+  const EXPOSURE_SAMPLES = 5;
 
   window.createButterflyGarden = canvas => {
     const context = canvas.getContext('2d');
@@ -73,12 +75,19 @@
       return sprite;
     }
     const fore = wing(false), hind = wing(true);
+    const poseCanvas = document.createElement('canvas');
+    const exposureCanvas = document.createElement('canvas');
+    const poseContext = poseCanvas.getContext('2d');
+    const exposureContext = exposureCanvas.getContext('2d');
+    let pixelRatio = 1;
 
     function resize() {
       width = innerWidth; height = innerHeight;
       const ratio = Math.min(devicePixelRatio || 1, 2);
+      pixelRatio = ratio;
       canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio);
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      poseCanvas.width = poseCanvas.height = exposureCanvas.width = exposureCanvas.height = Math.ceil(128 * ratio);
     }
     function counters() {
       canvas.dataset.count = String(butterflies.length);
@@ -120,11 +129,14 @@
       const u = cursor - index, a = points[index], c = points[index + 1];
       return { x: a.x + (c.x - a.x) * u, y: a.y + (c.y - a.y) * u };
     }
-    function draw(b) {
+    function wingOpening(b) {
+      const beat = .5 + .5 * Math.sin(b.phase);
+      return b.state === 'perched' ? .10 + .65 * beat ** 2.2 : .13 + .87 * beat;
+    }
+    function draw(b, context) {
       const perched = b.state === 'perched';
       context.save(); context.translate(b.x, b.y); context.rotate(b.angle);
-      const beat = .5 + .5 * Math.sin(b.phase);
-      b.wing = perched ? .10 + .65 * Math.pow(beat, 2.2) : .13 + .87 * beat;
+      const opening = wingOpening(b);
       const scale = b.size / 122;
       // Feet remain anchored while folded wings rise around the thorax.
       if (perched) {
@@ -136,7 +148,7 @@
       }
       for (const side of [-1, 1]) {
         context.save();
-        context.scale(side * scale * b.wing, scale);
+        context.scale(side * scale * opening, scale);
         context.rotate((perched ? .1 : .045 * Math.cos(b.phase)) * side);
         context.drawImage(hind, -14, -75);
         context.drawImage(fore, -14, -80);
@@ -152,6 +164,45 @@
       }
       context.restore();
     }
+    function flightPose(b, age) {
+      const t = clamp(age / b.duration, 0, 1);
+      const launch = .12, brake = .2, area = 1 - (launch + brake) / 2;
+      let travel;
+      if (t < launch) {
+        const u = t / launch;
+        travel = launch * (u ** 3 - .5 * u ** 4);
+      } else if (t <= 1 - brake) travel = t - launch / 2;
+      else {
+        const u = (t - (1 - brake)) / brake;
+        travel = 1 - brake - launch / 2 + brake * (u - u ** 3 + .5 * u ** 4);
+      }
+      const beatCursor = Math.min(b.cycles, travel / area * b.cycles);
+      // A small, continuous push during opening; the stroke returns to its
+      // nominal position at each fold, so it cannot introduce landing drift.
+      const cursor = clamp(beatCursor + .025 * (1 - Math.cos(beatCursor * TAU)), 0, b.cycles);
+      const p = flightPoint(b, cursor);
+      const before = flightPoint(b, Math.max(0, cursor - .00005));
+      const after = flightPoint(b, Math.min(b.cycles, cursor + .00005));
+      return { ...b, x: p.x, y: p.y, phase: Math.PI * 1.5 + beatCursor * TAU,
+        angle: Math.atan2(after.y - before.y, after.x - before.x) + Math.PI / 2 };
+    }
+    function drawExposure(b) {
+      // Average complete poses with additive premultiplied alpha. Averaging
+      // poses avoids dark trails and keeps a stationary white wing opaque.
+      exposureContext.setTransform(1, 0, 0, 1, 0, 0);
+      exposureContext.clearRect(0, 0, exposureCanvas.width, exposureCanvas.height);
+      exposureContext.globalCompositeOperation = 'lighter';
+      exposureContext.globalAlpha = 1 / EXPOSURE_SAMPLES;
+      for (let i = 0; i < EXPOSURE_SAMPLES; i++) {
+        const pose = flightPose(b, Math.max(0, b.age - SHUTTER_SECONDS * i / (EXPOSURE_SAMPLES - 1)));
+        poseContext.setTransform(1, 0, 0, 1, 0, 0);
+        poseContext.clearRect(0, 0, poseCanvas.width, poseCanvas.height);
+        poseContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+        draw({ ...pose, x: 64 + pose.x - b.x, y: 64 + pose.y - b.y }, poseContext);
+        exposureContext.drawImage(poseCanvas, 0, 0);
+      }
+      context.drawImage(exposureCanvas, b.x - 64, b.y - 64, 128, 128);
+    }
     function animate(now) {
       frame = 0;
       const dt = last ? Math.min((now - last) / 1000, .05) : 0;
@@ -160,16 +211,13 @@
       for (const b of butterflies) {
         b.age += dt;
         if (b.state === 'flying') {
-          const t = Math.min(1, b.age / b.duration);
-          const cursor = (1 - (1 - t) ** 1.15) * b.cycles;
-          b.phase = Math.PI * 1.5 + cursor * TAU;
-          const p = flightPoint(b, cursor);
-          const next = flightPoint(b, Math.min(b.cycles, cursor + .0001));
-          b.x = p.x; b.y = p.y;
-          if (t < 1) b.angle = Math.atan2(next.y - p.y, next.x - p.x) + Math.PI / 2;
-          if (t === 1) { b.x = b.target.x; b.y = b.target.y; b.state = 'perched'; counters(); }
+          const pose = flightPose(b, b.age);
+          b.x = pose.x; b.y = pose.y; b.phase = pose.phase; b.angle = pose.angle;
+          if (b.age >= b.duration) { b.x = b.target.x; b.y = b.target.y; b.state = 'perched'; counters(); }
         } else b.phase += dt * TAU / b.restPeriod;
-        draw(b);
+        b.wing = wingOpening(b);
+        if (b.state === 'flying') drawExposure(b);
+        else draw(b, context);
       }
       if (butterflies.length && !document.hidden) frame = requestAnimationFrame(animate);
     }
@@ -180,18 +228,33 @@
       const pool = candidates.length ? candidates : targets;
       const target = pool[Math.floor(random() * pool.length)];
       const dx = target.x - x, dy = target.y - y, distance = Math.hypot(dx, dy);
-      const route = [{ x, y }], bends = 5 + Math.floor(random() * 3);
+      const route = [{ x, y }], bends = 3 + Math.floor(random() * 2);
       for (let i = 1; i < bends; i++) {
         const t = i / bends;
-        const offset = (i % 2 ? -1 : 1) * (25 + random() * 65) * Math.sin(Math.PI * t);
+        const offset = (random() < .5 ? -1 : 1) * Math.min(30, distance * .07)
+          * (.6 + random() * .4) * Math.sin(Math.PI * t);
         route.push({ x: clamp(x + dx * t - dy / Math.max(1, distance) * offset, 14, width - 14),
           y: clamp(y + dy * t + dx / Math.max(1, distance) * offset, 14, height - 14) });
       }
       route.push({ ...target });
       if (butterflies.length >= 12) butterflies.shift();
-      const duration = clamp(distance / 90 + 3, 4, 10);
-      const cycles = Math.round(duration * (3 + random()) / 1.15);
-      const flightRoute = Array.from({ length: cycles + 1 }, (_, i) => point({ route }, i / cycles));
+      // Equal arc-length steps remove the speed jumps caused by unequal
+      // waypoint spacing. Small turns then require only a gentle folded bank.
+      const guide = Array.from({ length: 257 }, (_, i) => point({ route }, i / 256));
+      const lengths = [0];
+      for (let i = 1; i < guide.length; i++) lengths.push(lengths[i - 1] + Math.hypot(
+        guide[i].x - guide[i - 1].x, guide[i].y - guide[i - 1].y));
+      const length = lengths.at(-1);
+      const duration = clamp(length / (90 * .84), 4, 12);
+      const cycles = Math.max(8, Math.round(duration * (3 + random() * .6) * .84));
+      let segment = 1;
+      const flightRoute = Array.from({ length: cycles + 1 }, (_, i) => {
+        const at = length * i / cycles;
+        while (segment < guide.length - 1 && lengths[segment] < at) segment++;
+        const u = (at - lengths[segment - 1]) / Math.max(.0001, lengths[segment] - lengths[segment - 1]);
+        const a = guide[segment - 1], c = guide[segment];
+        return { x: a.x + (c.x - a.x) * u, y: a.y + (c.y - a.y) * u };
+      });
       butterflies.push({ x, y, target, route, flightRoute, cycles, state: 'flying', age: 0, wing: .13,
         angle: Math.atan2(route[1].y - y, route[1].x - x) + Math.PI / 2,
         duration, phase: Math.PI * 1.5, restPeriod: 4.5 + random() * 2,
@@ -215,7 +278,7 @@
         counters();
       },
       snapshot: () => butterflies.map(b => ({ x: b.x, y: b.y, target: { ...b.target }, state: b.state,
-        wing: b.wing, phase: b.phase, angle: b.angle })),
+        wing: b.wing, phase: b.phase, angle: b.angle, age: b.age, duration: b.duration })),
     };
   };
 })();

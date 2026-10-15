@@ -39,7 +39,7 @@ try {
     sample();
   });
   const route = [];
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 80; i++) {
     const [b] = await page.evaluate(() => window.testGarden.snapshot());
     route.push(b);
     if (i === 5) await page.screenshot({ path: 'artifacts/nonflowers-butterfly/flight.png' });
@@ -50,19 +50,29 @@ try {
   assert.equal(end.state, 'perched');
   assert(Math.hypot(end.x - end.target.x, end.y - end.target.y) < .1, 'Feet must reach the selected petal');
   const deviation = Math.max(...route.map(b => Math.abs(dy * (b.x - start.x) - dx * (b.y - start.y)) / Math.max(1, Math.hypot(dx, dy))));
-  assert(deviation > 10, `Flight path was too straight: ${deviation}`);
+  assert(deviation > 6, `Flight path was too straight: ${deviation}`);
   const samples = await page.evaluate(() => window.flightSamples);
   let turning = 0, foldedTurning = 0;
+  const cruiseSpeeds = [], turnsPerBeat = new Map();
   for (let i = 1; i < samples.length; i++) {
     const a = samples[i - 1], b = samples[i];
     const yaw = Math.abs(Math.atan2(Math.sin(b.angle - a.angle), Math.cos(b.angle - a.angle)));
     turning += yaw;
     if (Math.min(a.wing, b.wing) < .5) foldedTurning += yaw;
+    const beat = Math.round((b.phase - Math.PI * 1.5) / (Math.PI * 2));
+    turnsPerBeat.set(beat, (turnsPerBeat.get(beat) || 0) + yaw);
+    if (a.age / a.duration > .2 && b.age / b.duration < .7 && b.age > a.age) {
+      cruiseSpeeds.push(Math.hypot(b.x - a.x, b.y - a.y) / (b.age - a.age));
+    }
   }
   assert(turning > .2 && foldedTurning / turning > .95, 'Direction changes must coincide with folded wings');
-  const early = samples.find(b => b.now - samples[0].now >= 800);
-  const wingbeatsPerSecond = (early.phase - samples[0].phase) / (Math.PI * 2) / ((early.now - samples[0].now) / 1000);
+  const cruise = samples.filter(b => b.age / b.duration > .2 && b.age / b.duration < .7);
+  const wingbeatsPerSecond = (cruise.at(-1).phase - cruise[0].phase) / (Math.PI * 2) / (cruise.at(-1).age - cruise[0].age);
   assert(wingbeatsPerSecond > 1.5 && wingbeatsPerSecond < 4.3, `Unexpected wingbeat speed: ${wingbeatsPerSecond}`);
+  const speedRatio = Math.max(...cruiseSpeeds) / Math.min(...cruiseSpeeds);
+  const maxTurn = Math.max(...turnsPerBeat.values()) * 180 / Math.PI;
+  assert(speedRatio < 1.65, `Cruising speed varied too abruptly: ${speedRatio}`);
+  assert(maxTurn < 32, `A single folded turn was too sharp: ${maxTurn}`);
   const wings = [];
   let rest;
   for (let i = 0; i < 8; i++) {
@@ -97,5 +107,5 @@ try {
   });
   assert.equal(await page.locator('#butterflies').getAttribute('data-count'), '0');
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ deviation, wingbeatsPerSecond, foldedTurnRatio: foldedTurning / turning, patternTargets, originalLanding: end.target, errors }));
+  console.log(JSON.stringify({ deviation, wingbeatsPerSecond, speedRatio, maxTurn, foldedTurnRatio: foldedTurning / turning, patternTargets, originalLanding: end.target, errors }));
 } finally { await browser.close(); }

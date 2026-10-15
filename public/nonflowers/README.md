@@ -87,7 +87,11 @@ leaves; sprite cropping, scaling and pattern rotations carry these sites into
 the final canvas. Hidden or offscreen sites are rejected before landing.
 Butterflies glide between randomized waypoints and turn as the wings fold,
 with roughly three to four wingbeats per second at takeoff. Both flight and
-wingbeats slow down to land; perched wings open and close every 4.5–6.5 seconds. Their painted
+wingbeats slow down to land; perched wings open and close every 4.5–6.5 seconds.
+The gently wandering route is sampled at equal distances to maintain an even
+cruising speed, with a small forward pulse as the wings open. Flight rendering
+averages five poses over 1/48 second (a virtual 24 fps, 180-degree shutter),
+giving wings and body a short motion blur without accumulating trails. Their painted
 wing sprites and animation use an independent random stream and overlay canvas.
 Up to twelve butterflies can remain in the scene; a new composition clears
 them, and animation pauses when the browser tab is hidden.
