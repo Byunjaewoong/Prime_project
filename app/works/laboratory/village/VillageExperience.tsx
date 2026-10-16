@@ -56,6 +56,7 @@ export default function VillageExperience() {
             <span>{preset.label}</span>
           </button>)}
       </div>
+      <p className={styles.paletteHint}>스펙트럼·믹스는 건물마다 색을 새로 조합합니다.</p>
       <label className={styles.control}><span>건물 크기 <output>{size}%</output></span><input aria-label="건물 크기" type="range" min="65" max="140" step="5" value={size} onChange={e => setSize(Number(e.target.value))} /></label>
       {mode === "village" && <label className={styles.control}><span>겹침 밀도 <output>{density}%</output></span><input aria-label="겹침 밀도" type="range" min="80" max="140" step="5" value={density} onChange={e => setDensity(Number(e.target.value))} /></label>}
       <button className={styles.action} onClick={() => setSeed(crypto.getRandomValues(new Uint32Array(1))[0])}>↻ 새로 생성</button>

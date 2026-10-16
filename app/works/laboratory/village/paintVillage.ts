@@ -1,4 +1,4 @@
-import { tintVillageColor, villagePalettes, type VillagePaletteId } from "./villagePalettes";
+import { generateBuildingColors, tintVillageColor, villagePalettes, type VillagePaletteId } from "./villagePalettes";
 
 type Point = [number, number];
 type Options = { seed: number; mode: "single" | "village"; size: number; density: number; palette: VillagePaletteId };
@@ -171,12 +171,15 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
     line([[crownX-7,crownY-2],[crownX+rand(-3,3),crownY-rand(3,7)],[crownX+8,crownY+rand(0,4)]],"#328d78",2.4);
     ctx.restore();
   }
+  let buildingIndex=0;
   function house(x: number, base: number, s: number) {
     ctx.save(); ctx.translate(x, base); ctx.scale(s,s);
     const w = rand(65,105), h = rand(64,145), d = rand(12,52);
     const side = rand()<.47?-1:1, dx=side*d, rise=rand(4,26);
     const lean=rand(-5,5), tilt=rand(-4,4);
-    const wall = pick(walls), roof = pick(roofs), flat = rand() < .56;
+    const sampledWall = pick(walls), sampledRoof = pick(roofs), flat = rand() < .56;
+    const generated = generateBuildingColors(options.palette, options.seed, buildingIndex++);
+    const wall = generated?.wall ?? sampledWall, roof = generated?.roof ?? sampledRoof;
     const inkStyle=rand();
     // Some houses are described by pigment alone; others keep broken contour
     // strokes. Faces decide independently whether an outline helps them read.
@@ -289,14 +292,16 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
     const wingW=rand(w*.48,w*.79), wingH=h*rand(.48,.79);
     const wingX=wingSide<0?-wingW*rand(.48,.76):w-wingW*rand(.26,.45);
     const wingD=rand(8,25)*side;
-    const wingTop=-wingH, wingWall=rand()<.72?wall:pick(walls);
+    const sampledWing=rand()<.72?wall:pick(walls);
+    const wingTop=-wingH, wingWall=generated?.wing ?? sampledWing;
     const wingFront:Point[]=[[wingX,0],[wingX+wingW,0],[wingX+wingW+rand(-2,3),wingTop+rand(-2,2)],[wingX+rand(-2,2),wingTop]];
     const wingEdge=wingSide<0?wingX:wingX+wingW;
     poly([[wingEdge,0],[wingEdge+wingD,-7],[wingEdge+wingD,wingTop-14],[wingEdge,wingTop]],wingWall,sideOutline);
     poly([[wingEdge,0],[wingEdge+wingD,-7],[wingEdge+wingD,wingTop-14],[wingEdge,wingTop]],"#46362e24",false);
     poly(wingFront,wingWall,frontOutline);
+    const sampledWingRoof=rand()<.68?roof:pick(roofs);
     poly([[wingX-3,wingTop-7],[wingX+wingW+3,wingTop-7],[wingX+wingW+wingD+3,wingTop-19],[wingX+wingD-3,wingTop-19]],
-      rand()<.68?roof:pick(roofs),roofOutline);
+      generated?.wingRoof ?? sampledWingRoof,roofOutline);
     poly([[wingX-3,wingTop-5],[wingX+wingW+3,wingTop-5],[wingX+wingW+3,wingTop+rand(6,12)],[wingX-3,wingTop+rand(5,11)]],"#332d2e37",false);
     for(let i=0;i<Math.max(1,Math.floor(wingW/28));i++) {
       const wx=wingX+9+i*(wingW-15)/Math.max(1,Math.floor(wingW/28));
@@ -304,8 +309,8 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
     }
     if(rand()<.53) {
       const towerW=rand(18,32), towerH=rand(20,40), towerX=lean+rand(w*.13,w*.6);
-      poly([[towerX,top],[towerX+towerW,top],[towerX+towerW,top-towerH],[towerX,top-towerH]],wall,frontOutline);
-      poly([[towerX+towerW,top],[towerX+towerW+dx*.4,top-rise*.4],[towerX+towerW+dx*.4,top-towerH-rise*.4],[towerX+towerW,top-towerH]],wall,sideOutline);
+      poly([[towerX,top],[towerX+towerW,top],[towerX+towerW,top-towerH],[towerX,top-towerH]],generated?.tower ?? wall,frontOutline);
+      poly([[towerX+towerW,top],[towerX+towerW+dx*.4,top-rise*.4],[towerX+towerW+dx*.4,top-towerH-rise*.4],[towerX+towerW,top-towerH]],generated?.tower ?? wall,sideOutline);
       poly([[towerX-3,top-towerH],[towerX+towerW+3,top-towerH],[towerX+towerW+dx*.4+3,top-towerH-rise*.4],[towerX+dx*.4-3,top-towerH-rise*.4]],roof,roofOutline);
       box(towerX+5,top-towerH+7,7,9,"#85c0c5",frameOutline);
     }

@@ -30,7 +30,7 @@ try {
   await page.getByRole('button',{name:'메뉴 열기'}).click();
   const beforePalette=await canvas.evaluate(c=>({image:c.toDataURL(),seed:c.dataset.seed,buildings:c.dataset.buildings}));
   const paletteImages=new Set([beforePalette.image]);
-  for (const [name,id] of [['트로피컬','tropical'],['캔디','candy'],['카니발','carnival'],['지중해','mediterranean'],['석양','sunset']]) {
+  for (const [name,id] of [['스펙트럼','spectrum'],['파스텔 믹스','pastelMix'],['안료 믹스','pigmentMix'],['트로피컬','tropical'],['캔디','candy'],['카니발','carnival'],['지중해','mediterranean'],['석양','sunset']]) {
     await page.getByRole('button',{name:`${name} 색상`}).click();
     await page.waitForFunction(id=>document.querySelector('canvas')?.dataset.palette===id,id);
     const result=await canvas.evaluate(c=>({image:c.toDataURL(),seed:c.dataset.seed,buildings:c.dataset.buildings}));
@@ -39,6 +39,11 @@ try {
     assert.equal(result.seed,beforePalette.seed,'Palette changed the seed');
     assert.equal(result.buildings,beforePalette.buildings,'Palette changed the composition');
     if (id==='carnival') await canvas.screenshot({path:'artifacts/village/carnival.png'});
+    if (id==='spectrum') {
+      await page.keyboard.press('Escape');
+      await canvas.screenshot({path:'artifacts/village/spectrum.png'});
+      await page.getByRole('button',{name:'메뉴 열기'}).click();
+    }
   }
   await page.keyboard.press('Escape');
   await page.screenshot({path:'artifacts/village/sunset.png'});

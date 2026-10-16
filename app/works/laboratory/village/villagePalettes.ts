@@ -1,4 +1,19 @@
 export const villagePalettes = {
+  spectrum: {
+    label: "스펙트럼", swatches: ["#e66d82", "#e6bd64", "#68b8ba"],
+    walls: ["#e66d82", "#e6bd64", "#68b8ba"], roofs: ["#3f628e", "#6f4b80", "#397d72"],
+    ink: "#57454c", hue: 0, saturation: 1, lightness: 0,
+  },
+  pastelMix: {
+    label: "파스텔 믹스", swatches: ["#e8a9cb", "#b5d9b1", "#b7b9e6"],
+    walls: ["#e8a9cb", "#b5d9b1", "#b7b9e6"], roofs: ["#778db0", "#957fa9", "#6c9b91"],
+    ink: "#65586b", hue: 12, saturation: .85, lightness: .01,
+  },
+  pigmentMix: {
+    label: "안료 믹스", swatches: ["#b66b56", "#6d8d9a", "#c3a65f"],
+    walls: ["#b66b56", "#6d8d9a", "#c3a65f"], roofs: ["#4b626c", "#655571", "#4e7263"],
+    ink: "#54473e", hue: -12, saturation: .8, lightness: -.01,
+  },
   painted: {
     label: "컬러풀", swatches: ["#e9918a", "#086d98", "#087568"],
     walls: ["#e9918a", "#e8b2a0", "#f0d7a6", "#efe2bd", "#d6676c", "#c3464b", "#58b9b0", "#dbac8e", "#f0c3b0", "#853e34"],
@@ -57,10 +72,44 @@ export const villagePalettes = {
 
 export type VillagePaletteId = keyof typeof villagePalettes;
 
+const generatedStyles = {
+  spectrum: { saturation: [50, 84], lightness: [45, 78], roofLightness: [27, 49] },
+  pastelMix: { saturation: [43, 76], lightness: [68, 85], roofLightness: [42, 61] },
+  pigmentMix: { saturation: [32, 64], lightness: [43, 74], roofLightness: [28, 47] },
+} as const;
+
+// Colour randomness has its own stream so a colour change cannot alter the
+// geometry. Golden-angle hue spacing separates neighbouring houses, while
+// continuous saturation/lightness sampling avoids a short repeating swatch list.
+export function generateBuildingColors(id: VillagePaletteId, seed: number, index: number) {
+  if (!(id in generatedStyles)) return null;
+  const style = generatedStyles[id as keyof typeof generatedStyles];
+  let state = (seed ^ Math.imul(index + 1, 0x9e3779b9)) >>> 0;
+  const random = (a: number, b: number) => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return a + state / 4294967296 * (b - a);
+  };
+  const hue = ((seed % 360) + index * 137.508 + random(-23, 23)) % 360;
+  const saturation = random(style.saturation[0], style.saturation[1]);
+  const lightness = random(style.lightness[0], style.lightness[1]);
+  const color = (h: number, s: number, l: number) =>
+    `hsl(${((h % 360 + 360) % 360).toFixed(2)} ${Math.max(12, Math.min(90, s)).toFixed(2)}% ${Math.max(24, Math.min(88, l)).toFixed(2)}%)`;
+  const roofHue = hue + random(125, 220);
+  const roofLightness = random(style.roofLightness[0], style.roofLightness[1]);
+  const wingHue = hue + (random(0, 1) < .28 ? random(100, 170) : random(-38, 38));
+  return {
+    wall: color(hue, saturation, lightness),
+    roof: color(roofHue, saturation * random(.65, .95), roofLightness),
+    wing: color(wingHue, saturation + random(-12, 8), lightness + random(-9, 8)),
+    wingRoof: color(roofHue + random(-32, 32), saturation * random(.6, .9), roofLightness + random(-6, 8)),
+    tower: color(hue + random(-24, 24), saturation + random(-8, 8), lightness + random(-7, 9)),
+  };
+}
+
 // The remaining hand-painted details keep their original value and opacity,
 // while following the selected palette's hue and saturation.
 export function tintVillageColor(hex: string, paletteId: VillagePaletteId) {
-  if (paletteId === "painted") return hex;
+  if (paletteId === "painted" || !hex.startsWith("#")) return hex;
   const palette = villagePalettes[paletteId];
   // Semantic wall, roof and contour colours are already selected for this
   // palette. Only the shared details and foliage need a hue adjustment.
