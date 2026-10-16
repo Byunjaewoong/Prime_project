@@ -49,11 +49,14 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
     [...left,...right.reverse()].forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));
     ctx.closePath(); ctx.fillStyle=color; ctx.fill();
   };
+  let edgeChance = 1;
   const poly = (points: Point[], fill: string, line = true, weight = 1.15) => {
     ctx.beginPath();
     points.forEach(([x, y], i) => { if (!i) ctx.moveTo(x+rand(-1.1,1.1),y+rand(-1.1,1.1)); else ctx.lineTo(x+rand(-1.1,1.1),y+rand(-1.1,1.1)); });
     ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
-    if (line) for(let i=0;i<points.length;i++) paintedLine([points[i],points[(i+1)%points.length]],ink,weight);
+    if (line) for(let i=0;i<points.length;i++) {
+      if(rand()<edgeChance) paintedLine([points[i],points[(i+1)%points.length]],ink,weight);
+    }
   };
   const box = (x: number, y: number, w: number, h: number, fill: string, line = false) => poly([[x,y],[x+w,y],[x+w,y+h],[x,y+h]], fill, line);
   const line = (points: Point[], color: string, weight: number) => {
@@ -80,12 +83,21 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
     const side = rand()<.47?-1:1, dx=side*d, rise=rand(4,26);
     const lean=rand(-5,5), tilt=rand(-4,4);
     const wall = pick(walls), roof = pick(roofs), flat = rand() < .56;
+    const inkStyle=rand();
+    // Some houses are described by pigment alone; others keep broken contour
+    // strokes. Faces decide independently whether an outline helps them read.
+    const fillOnly=inkStyle<.27;
+    edgeChance=fillOnly?0:inkStyle<.66?rand(.46,.72):rand(.82,1);
+    const frontOutline=!fillOnly&&rand()<.88;
+    const sideOutline=!fillOnly&&rand()<.64;
+    const roofOutline=!fillOnly&&rand()<.82;
+    const frameOutline=!fillOnly&&rand()<.76;
     const top = -h;
     const doorX=rand(8,w-23);
     const edge=side>0?w:0, edgeTop=edge+lean, edgeY=top+(side>0?tilt:0);
     const sideFace: Point[]=[[edge,0],[edge+dx,-rise],[edgeTop+dx,edgeY-rise],[edgeTop,edgeY]];
-    poly(sideFace,wall); poly(sideFace,"#573c3629",false);
-    poly([[0,0],[w,0],[w+lean,top+tilt],[lean,top]], wall);
+    poly(sideFace,wall,sideOutline); poly(sideFace,"#573c3629",false);
+    poly([[0,0],[w,0],[w+lean,top+tilt],[lean,top]], wall,frontOutline);
     // The local axes follow this building's individual leaning facade.
     ctx.save(); ctx.transform(1,tilt/w,-lean/h,1,0,0);
     box(0,-8,w,6,"#9f494334");
@@ -96,34 +108,34 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
       for(let col=0;col<cols;col++) {
         const wx=9+col*(w-14)/cols, ww=rand(9,16), wh=rand(11,19);
         if(wy+wh > -28 && wx < doorX+18 && wx+ww > doorX-3) continue;
-        box(wx-2,wy-2,ww+4,wh+4,pick(["#f8ebd0","#e9e7d4"]),true);
+        box(wx-2,wy-2,ww+4,wh+4,pick(["#f8ebd0","#e9e7d4"]),frameOutline);
         box(wx,wy,ww,wh,pick(["#9cd3d9","#71b9cc","#293f3c","#f0bb36"]));
         line([[wx+ww*.5,wy],[wx+ww*.5,wy+wh]],"#f9e8c9",1.7);
       }
-      if(row && rand()<.55) line([[0,wy-9],[w,wy-9]],"#f4cbb0",2);
+      if(row && !fillOnly && rand()<.55) line([[0,wy-9],[w,wy-9]],"#f4cbb0",2);
     }
-    box(doorX,-25,15,25,pick(["#583c32","#3c7471","#ba693f"]),true);
+    box(doorX,-25,15,25,pick(["#583c32","#3c7471","#ba693f"]),frameOutline);
     box(doorX+2,-23,3,21,"#f2cfaa"); oval(doorX+12,-12,1,1,"#f9df9c");
     ctx.restore();
     // Narrow side windows follow the receding wall rather than facing the viewer.
     if(d>25) for(let row=0;row<floors;row++) {
       const sy=top+18+row*(h-20)/floors;
       const a=edge+dx*.28,b=edge+dx*.69;
-      poly([[a,sy-rise*.28-4],[b,sy-rise*.69-5],[b,sy-rise*.69+8],[a,sy-rise*.28+9]],"#eadac1");
+      poly([[a,sy-rise*.28-4],[b,sy-rise*.69-5],[b,sy-rise*.69+8],[a,sy-rise*.28+9]],"#eadac1",frameOutline);
       poly([[a+side*2,sy-rise*.28-2],[b-side*2,sy-rise*.69-3],[b-side*2,sy-rise*.69+5],[a+side*2,sy-rise*.28+6]],"#497f83",false);
     }
     const roofL:Point=[lean,top], roofR:Point=[w+lean,top+tilt];
     const backL:Point=[lean+dx,top-rise], backR:Point=[w+lean+dx,top+tilt-rise];
     if(flat) {
-      poly([roofL,roofR,backR,backL],roof);
-      poly([[lean-3,top-7],[w+lean+2,top+tilt-7],[w+lean+2,top+tilt+3],[lean-3,top+3]],wall);
+      poly([roofL,roofR,backR,backL],roof,roofOutline);
+      poly([[lean-3,top-7],[w+lean+2,top+tilt-7],[w+lean+2,top+tilt+3],[lean-3,top+3]],wall,frontOutline);
       const near:Point=side>0?roofR:roofL, far:Point=side>0?backR:backL;
-      poly([[near[0],near[1]-7],[far[0],far[1]-7],[far[0],far[1]+3],[near[0],near[1]+3]],wall);
-      line([[lean-3,top-7],[w+lean+2,top+tilt-7]],"#f4cfb6",2);
+      poly([[near[0],near[1]-7],[far[0],far[1]-7],[far[0],far[1]+3],[near[0],near[1]+3]],wall,sideOutline);
+      if(!fillOnly) line([[lean-3,top-7],[w+lean+2,top+tilt-7]],"#f4cfb6",2);
       const tx=lean+rand(10,w*.65)+dx*.3, ty=top-rise*.5;
       if(rand()<.72) {
         const th=rand(13,23);
-        box(tx,ty-th,12,th,"#c8e5d9",true); oval(tx+6,ty-th,6,2.5,"#f4efd7");
+        box(tx,ty-th,12,th,"#c8e5d9",frameOutline); oval(tx+6,ty-th,6,2.5,"#f4efd7");
         box(tx+1,ty-7,10,6,"#65b7ca"); line([[tx+2,ty-th],[tx+3,ty-th-6],[tx+10,ty-th-6],[tx+11,ty-th]],"#e7e8d3",1.5);
       }
       if(rand()<.45) {
@@ -133,12 +145,13 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
       }
       if(rand()<.32) { box(w*.55,top-3,20,3,"#f8e9c7"); for(let i=0;i<6;i++) line([[w*.55+i*3,top-3],[w*.55+i*3,top-12]],ink,.8); }
     } else {
-      poly([[roofL[0]-5,roofL[1]],[roofR[0]+5,roofR[1]],[backR[0]+4,backR[1]-14],[backL[0]-4,backL[1]-14]],roof,true,1.7);
-      for(let i=0;i<15;i++) {
-        const rx=lean-2+i*(w+5)/15, ry=top+tilt*i/15;
+      poly([[roofL[0]-5,roofL[1]],[roofR[0]+5,roofR[1]],[backR[0]+4,backR[1]-14],[backL[0]-4,backL[1]-14]],roof,roofOutline,1.7);
+      const hatches=fillOnly?0:inkStyle<.66?7:15;
+      for(let i=0;i<hatches;i++) {
+        const rx=lean-2+i*(w+5)/Math.max(1,hatches), ry=top+tilt*i/Math.max(1,hatches);
         line([[rx,ry-1],[rx+dx*.48+rand(-1,1),ry-rise*.5-6],[rx+dx,ry-rise-12]],pick(["#084e7080","#48a5c280","#205e7b"]),rand(1,2.3));
       }
-      box(lean+w*.65+dx*.3,top-rise-25,8,15,"#dfb598",true);
+      box(lean+w*.65+dx*.3,top-rise-25,8,15,"#dfb598",frameOutline);
     }
     // Sparse pigment marks preserve the opaque, hand-painted colour blocks.
     for(let i=0;i<38;i++) {
