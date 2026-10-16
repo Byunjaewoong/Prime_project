@@ -72,14 +72,65 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
   };
   function palm(x: number, y: number, s: number) {
     ctx.save(); ctx.translate(x,y); ctx.scale(s,s);
-    line([[0,0],[-4,-24],[0,-57]], "#76654b", 3.5);
-    for (let i=0;i<9;i++) {
-      const a = i / 8 * Math.PI * 1.7 - Math.PI * 1.35;
-      const ex = Math.cos(a)*rand(20,34), ey = -57+Math.sin(a)*rand(15,26)+8;
-      ctx.beginPath(); ctx.moveTo(0,-57); ctx.quadraticCurveTo(ex*.8,-78,ex,ey);
-      ctx.quadraticCurveTo(ex*.45,-55,0,-57); ctx.fillStyle = pick(["#075d56","#087568","#278c79"]); ctx.fill();
-      for(let j=1;j<5;j++) { const t=j/5; line([[ex*t,-57+(ey+57)*t-9*Math.sin(t*Math.PI)],[ex*t+3,-48+(ey+57)*t]], "#146e60", 2); }
+    const crownY=-57;
+    poly([[1,1],[-3,-5],[-6,-22],[-5,-39],[-2,crownY+2],[2,crownY+1],[0,-39],[-1,-22],[4,-4]],"#715b40",false);
+    line([[-3,-8],[-4,-27],[-1,crownY+3]],"#a38b60",1.5);
+    const canopy:Point[]=[[-29,crownY+2],[-25,crownY-7],[-17,crownY-10],[-13,crownY-17],
+      [-4,crownY-15],[3,crownY-21],[13,crownY-14],[23,crownY-16],[29,crownY-7],
+      [27,crownY+1],[19,crownY+5],[13,crownY+11],[4,crownY+7],[-4,crownY+12],
+      [-15,crownY+7],[-23,crownY+10]];
+    poly(canopy,"#075b54",false);
+    ctx.save(); clipFace(canopy);
+    for(let i=0;i<9;i++) {
+      const cy=crownY-16+i*3.4;
+      line([[-30,cy+rand(-3,3)],[-18,cy+rand(-4,4)],[-8,cy+rand(-4,5)],
+        [4,cy+rand(-4,4)],[17,cy+rand(-4,4)],[30,cy+rand(-3,3)]],
+        pick(["#064a47","#107266","#398e7d","#286a67"]),rand(1.1,3.1));
     }
+    ctx.restore();
+    // Overlapping, curved fronds form one continuous silhouette. Each frond
+    // is then clipped so its winding pigment bands stay inside the foliage.
+    const fronds=11;
+    for(let i=0;i<fronds;i++) {
+      const a=-Math.PI*.98+i/(fronds-1)*Math.PI*1.9+rand(-.12,.12);
+      const length=rand(24,40), bend=rand(-6,7), droop=rand(3,12);
+      const spine: Point[]=[];
+      for(let j=0;j<=9;j++) {
+        const t=j/9;
+        spine.push([Math.cos(a)*length*t+Math.sin(a)*bend*Math.sin(Math.PI*t),
+          crownY+Math.sin(a)*length*t-Math.cos(a)*bend*Math.sin(Math.PI*t)+droop*t*t]);
+      }
+      const left:Point[]=[], right:Point[]=[];
+      for(let j=0;j<spine.length;j++) {
+        const t=j/9, before=spine[Math.max(0,j-1)], after=spine[Math.min(9,j+1)];
+        const vx=after[0]-before[0],vy=after[1]-before[1],vl=Math.hypot(vx,vy)||1;
+        const breadth=(3.5+rand(-.6,.6))*Math.pow(Math.sin(Math.PI*(.03+t*.94)),.72)*(1-t*.28);
+        const nick=j>1&&j<9?rand(-1.8,1.8):0;
+        left.push([spine[j][0]-vy/vl*(breadth+nick),spine[j][1]+vx/vl*(breadth+nick)]);
+        right.push([spine[j][0]+vy/vl*(breadth-nick),spine[j][1]-vx/vl*(breadth-nick)]);
+      }
+      const shape=[...left,...right.reverse()];
+      ctx.save(); clipFace(shape);
+      poly(shape,pick(["#07564e","#096d61","#117b68","#238974","#176c65"]),false);
+      // Meandering stripes and small side strokes read as colour boundaries
+      // inside a single painted crown, rather than separate geometric leaves.
+      const bands=["#054d49","#0c6259","#369681","#65a991","#123e42"];
+      for(let k=-2;k<=2;k++) {
+        const stripe:Point[]=spine.map(([sx,sy],j)=>{
+          const t=j/9, wiggle=Math.sin(t*11+k*1.7+i)*1.7;
+          return [sx+Math.sin(a)*(k*1.55+wiggle)*Math.sin(Math.PI*t),
+            sy-Math.cos(a)*(k*1.55+wiggle)*Math.sin(Math.PI*t)];
+        });
+        line(stripe,bands[(k+2+i)%bands.length],rand(1.2,2.8));
+      }
+      for(let j=2;j<9;j+=2) {
+        const [sx,sy]=spine[j];
+        line([[sx-3,sy+rand(-2,2)],[sx+rand(-1,2),sy+2],[sx+4,sy+rand(0,4)]],pick(bands),rand(.7,1.4));
+      }
+      ctx.restore();
+    }
+    poly([[-9,crownY+4],[-13,crownY-2],[-6,crownY-9],[3,crownY-10],[12,crownY-3],[9,crownY+5],[1,crownY+8]],"#09685d",false);
+    line([[-8,crownY-2],[-2,crownY-5],[4,crownY-3],[9,crownY+2]],"#328d78",2.4);
     ctx.restore();
   }
   function house(x: number, base: number, s: number) {
@@ -194,6 +245,32 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
       }
       box(lean+w*.65+dx*.3,top-rise-25,8,15,"#dfb598",frameOutline);
     }
+    // Attach a shorter wing to the facade, producing L-shaped and stepped
+    // rooflines. Occasionally a narrow upper storey rises behind the wing.
+    const wingSide=rand()<.5?-1:1;
+    const wingW=rand(w*.48,w*.79), wingH=h*rand(.48,.79);
+    const wingX=wingSide<0?-wingW*rand(.48,.76):w-wingW*rand(.26,.45);
+    const wingD=rand(8,25)*side;
+    const wingTop=-wingH, wingWall=rand()<.72?wall:pick(walls);
+    const wingFront:Point[]=[[wingX,0],[wingX+wingW,0],[wingX+wingW+rand(-2,3),wingTop+rand(-2,2)],[wingX+rand(-2,2),wingTop]];
+    const wingEdge=wingSide<0?wingX:wingX+wingW;
+    poly([[wingEdge,0],[wingEdge+wingD,-7],[wingEdge+wingD,wingTop-14],[wingEdge,wingTop]],wingWall,sideOutline);
+    poly([[wingEdge,0],[wingEdge+wingD,-7],[wingEdge+wingD,wingTop-14],[wingEdge,wingTop]],"#46362e24",false);
+    poly(wingFront,wingWall,frontOutline);
+    poly([[wingX-3,wingTop-7],[wingX+wingW+3,wingTop-7],[wingX+wingW+wingD+3,wingTop-19],[wingX+wingD-3,wingTop-19]],
+      rand()<.68?roof:pick(roofs),roofOutline);
+    poly([[wingX-3,wingTop-5],[wingX+wingW+3,wingTop-5],[wingX+wingW+3,wingTop+rand(6,12)],[wingX-3,wingTop+rand(5,11)]],"#332d2e37",false);
+    for(let i=0;i<Math.max(1,Math.floor(wingW/28));i++) {
+      const wx=wingX+9+i*(wingW-15)/Math.max(1,Math.floor(wingW/28));
+      box(wx,wingTop+17,rand(9,15),rand(12,17),pick(["#7dbdcb","#e9dbb9","#334c4b"]),frameOutline);
+    }
+    if(rand()<.53) {
+      const towerW=rand(18,32), towerH=rand(20,40), towerX=lean+rand(w*.13,w*.6);
+      poly([[towerX,top],[towerX+towerW,top],[towerX+towerW,top-towerH],[towerX,top-towerH]],wall,frontOutline);
+      poly([[towerX+towerW,top],[towerX+towerW+dx*.4,top-rise*.4],[towerX+towerW+dx*.4,top-towerH-rise*.4],[towerX+towerW,top-towerH]],wall,sideOutline);
+      poly([[towerX-3,top-towerH],[towerX+towerW+3,top-towerH],[towerX+towerW+dx*.4+3,top-towerH-rise*.4],[towerX+dx*.4-3,top-towerH-rise*.4]],roof,roofOutline);
+      box(towerX+5,top-towerH+7,7,9,"#85c0c5",frameOutline);
+    }
     // Sparse pigment marks preserve the opaque, hand-painted colour blocks.
     for(let i=0;i<38;i++) {
       const px=rand(2,w-2), py=rand(top+5,-3);
@@ -204,7 +281,7 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
       palm(palmX,palmY,palmScale);
     }
     ctx.restore();
-    return w+d;
+    return w+d+wingW*.24;
   }
   let count=0;
   if(options.mode === "single") {
@@ -214,16 +291,16 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
     // Back-to-front rows become larger toward the viewer. Overscan conceals
     // the canvas boundary; staggered foundations avoid a repeated tile grid.
     const unit = Math.max(75, Math.min(135,width/8))*options.size;
-    let y=-unit*.4, row=0;
+    let y=-unit*.25, row=0;
     while(y < height+unit*2.3 && row<100) {
       const depth=Math.max(0,Math.min(1,y/height));
-      const s=unit/95*(.66+depth*.67);
+      const s=unit/95*(.38+depth*1.12);
       let x=-150*s-rand(0,70)*s;
       while(x < width+120*s) {
         const buildingWidth=house(x,y+rand(-8,12)*s,s); count++;
         x+=buildingWidth*s*.82;
       }
-      y+=unit*(.36+depth*.20)/options.density; row++;
+      y+=unit*(.25+depth*.34)/options.density; row++;
     }
   }
   canvas.dataset.buildings=String(count);
