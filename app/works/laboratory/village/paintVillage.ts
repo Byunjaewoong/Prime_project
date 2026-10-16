@@ -1,0 +1,139 @@
+type Point = [number, number];
+type Options = { seed: number; mode: "single" | "village"; size: number; density: number };
+
+// Everything, including brush irregularity, comes from the same saved seed.
+export function paintVillage(canvas: HTMLCanvasElement, width: number, height: number, options: Options) {
+  const context = canvas.getContext("2d");
+  if (!context) return;
+  const ctx: CanvasRenderingContext2D = context;
+  const ratio = Math.min(devicePixelRatio || 1, 2);
+  canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio);
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, width, height);
+  let state = options.seed;
+  const rand = (a = 0, b = 1) => {
+    state = (state + 0x6d2b79f5) | 0;
+    let t = Math.imul(state ^ state >>> 15, 1 | state);
+    t ^= t + Math.imul(t ^ t >>> 7, 61 | t);
+    return a + (((t ^ t >>> 14) >>> 0) / 4294967296) * (b - a);
+  };
+  const pick = <T,>(list: T[]): T => list[Math.floor(rand(0, list.length))];
+  const walls = ["#e9918a", "#e8b2a0", "#f0d7a6", "#efe2bd", "#d6676c", "#c3464b", "#58b9b0", "#dbac8e", "#f0c3b0", "#853e34"];
+  const roofs = ["#086d98", "#135070", "#2789ad", "#3c6070", "#72c7bb", "#8bbfc4"];
+  const ink = "#603e36";
+  const poly = (points: Point[], fill: string, line = true, weight = 1.15) => {
+    ctx.beginPath();
+    points.forEach(([x, y], i) => { if (!i) ctx.moveTo(x, y); else ctx.lineTo(x + rand(-.35, .35), y + rand(-.35, .35)); });
+    ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
+    if (line) { ctx.strokeStyle = ink; ctx.lineWidth = weight; ctx.lineJoin = "round"; ctx.stroke(); }
+  };
+  const box = (x: number, y: number, w: number, h: number, fill: string, line = false) => poly([[x,y],[x+w,y],[x+w,y+h],[x,y+h]], fill, line);
+  const line = (points: Point[], color: string, weight: number) => {
+    ctx.beginPath(); points.forEach(([x,y], i) => i ? ctx.lineTo(x,y) : ctx.moveTo(x,y));
+    ctx.strokeStyle = color; ctx.lineWidth = weight; ctx.lineCap = "round"; ctx.stroke();
+  };
+  const oval = (x: number, y: number, rx: number, ry: number, color: string) => {
+    ctx.beginPath(); ctx.ellipse(x,y,rx,ry,0,0,Math.PI*2); ctx.fillStyle = color; ctx.fill();
+  };
+  function palm(x: number, y: number, s: number) {
+    ctx.save(); ctx.translate(x,y); ctx.scale(s,s);
+    line([[0,0],[-4,-24],[0,-57]], "#76654b", 3.5);
+    for (let i=0;i<9;i++) {
+      const a = i / 8 * Math.PI * 1.7 - Math.PI * 1.35;
+      const ex = Math.cos(a)*rand(20,34), ey = -57+Math.sin(a)*rand(15,26)+8;
+      ctx.beginPath(); ctx.moveTo(0,-57); ctx.quadraticCurveTo(ex*.8,-78,ex,ey);
+      ctx.quadraticCurveTo(ex*.45,-55,0,-57); ctx.fillStyle = pick(["#075d56","#087568","#278c79"]); ctx.fill();
+      for(let j=1;j<5;j++) { const t=j/5; line([[ex*t,-57+(ey+57)*t-9*Math.sin(t*Math.PI)],[ex*t+3,-48+(ey+57)*t]], "#146e60", 2); }
+    }
+    ctx.restore();
+  }
+  function house(x: number, base: number, s: number) {
+    ctx.save(); ctx.translate(x, base); ctx.scale(s,s);
+    const w = rand(65,105), h = rand(64,145), d = rand(18,35), rise = d*.48;
+    const wall = pick(walls), roof = pick(roofs), flat = rand() < .56;
+    const top = -h;
+    const doorX=rand(8,w-23);
+    // Receding side and shared roof plane give every house a consistent viewpoint.
+    poly([[w,0],[w+d,-rise],[w+d,top-rise],[w,top]], wall);
+    poly([[w,0],[w+d,-rise],[w+d,top-rise],[w,top]], "#573c3629", false);
+    poly([[0,0],[w,0],[w,top],[0,top]], wall);
+    box(0,-8,w,6,"#9f494334");
+    const floors = Math.max(1, Math.round(h/44));
+    for(let row=0;row<floors;row++) {
+      const wy=top+16+row*(h-22)/floors;
+      const cols = Math.floor(rand(2,4));
+      for(let col=0;col<cols;col++) {
+        const wx=9+col*(w-14)/cols, ww=rand(9,16), wh=rand(11,19);
+        if(wy+wh > -28 && wx < doorX+18 && wx+ww > doorX-3) continue;
+        box(wx-2,wy-2,ww+4,wh+4,pick(["#f8ebd0","#e9e7d4"]),true);
+        box(wx,wy,ww,wh,pick(["#9cd3d9","#71b9cc","#293f3c","#f0bb36"]));
+        line([[wx+ww*.5,wy],[wx+ww*.5,wy+wh]],"#f9e8c9",1.7);
+      }
+      if(row && rand()<.55) line([[0,wy-9],[w,wy-9]],"#f4cbb0",2);
+    }
+    box(doorX,-25,15,25,pick(["#583c32","#3c7471","#ba693f"]),true);
+    box(doorX+2,-23,3,21,"#f2cfaa"); oval(doorX+12,-12,1,1,"#f9df9c");
+    // Narrow side windows follow the receding wall rather than facing the viewer.
+    if(d>22) for(let row=0;row<floors;row++) {
+      const sy=top+18+row*(h-20)/floors;
+      poly([[w+8,sy-4],[w+17,sy-8],[w+17,sy+5],[w+8,sy+9]],"#eadac1");
+      poly([[w+10,sy-3],[w+15,sy-5],[w+15,sy+3],[w+10,sy+5]],"#497f83",false);
+    }
+    if(flat) {
+      poly([[-3,top],[w+2,top],[w+d+3,top-rise], [d-3,top-rise]],roof);
+      poly([[-3,top-7],[w+2,top-7],[w+2,top+3],[-3,top+3]],wall);
+      poly([[w+2,top-7],[w+d+3,top-rise-7],[w+d+3,top-rise+3],[w+2,top+3]],wall);
+      line([[-3,top-7],[w+2,top-7],[w+d+3,top-rise-7]],"#f4cfb6",2);
+      const tx=rand(10,w*.65), ty=top-rise*.5;
+      if(rand()<.72) {
+        const th=rand(13,23);
+        box(tx,ty-th,12,th,"#c8e5d9",true); oval(tx+6,ty-th,6,2.5,"#f4efd7");
+        box(tx+1,ty-7,10,6,"#65b7ca"); line([[tx+2,ty-th],[tx+3,ty-th-6],[tx+10,ty-th-6],[tx+11,ty-th]],"#e7e8d3",1.5);
+      }
+      if(rand()<.45) {
+        const ax=w*.75, ay=top-rise*.6;
+        line([[ax,ay],[ax+3,ay-21]],ink,1.5); oval(ax+3,ay-22,10,4,"#e9e1c8");
+        line([[ax+3,ay-22],[ax+10,ay-29]],ink,1);
+      }
+      if(rand()<.32) { box(w*.55,top-3,20,3,"#f8e9c7"); for(let i=0;i<6;i++) line([[w*.55+i*3,top-3],[w*.55+i*3,top-12]],ink,.8); }
+    } else {
+      poly([[-5,top],[w+5,top],[w+d+4,top-rise-14],[d-4,top-rise-14]],roof,true,1.7);
+      for(let i=0;i<15;i++) {
+        const rx=-2+i*(w+5)/15;
+        line([[rx,top-1],[rx+d*.48+rand(-1,1),top-rise*.5-6],[rx+d,top-rise-12]],pick(["#084e7080","#48a5c280","#205e7b"]),rand(1,2.3));
+      }
+      box(w*.65,top-rise-25,8,15,"#dfb598",true);
+    }
+    // Sparse pigment marks preserve the opaque, hand-painted colour blocks.
+    for(let i=0;i<38;i++) {
+      const px=rand(2,w-2), py=rand(top+5,-3);
+      box(px,py,rand(.4,2),rand(.4,2.4),pick(["#fff1da18","#633b3010"]));
+    }
+    if(rand()<.3) palm(w+d+rand(-4,9),options.mode === "village" ? -h*.62 : -2,rand(.8,1.3));
+    ctx.restore();
+    return w+d;
+  }
+  let count=0;
+  if(options.mode === "single") {
+    const s = Math.min(width/230,height/290,2.4)*options.size;
+    house(width/2-65*s,height/2+65*s,s); count=1;
+  } else {
+    // Back-to-front rows become larger toward the viewer. Overscan conceals
+    // the canvas boundary; staggered foundations avoid a repeated tile grid.
+    const unit = Math.max(75, Math.min(135,width/8))*options.size;
+    let y=-unit*.4, row=0;
+    while(y < height+unit*2.3 && row<100) {
+      const depth=Math.max(0,Math.min(1,y/height));
+      const s=unit/95*(.66+depth*.67);
+      let x=-150*s-rand(0,70)*s;
+      while(x < width+120*s) {
+        const buildingWidth=house(x,y+rand(-8,12)*s,s); count++;
+        x+=buildingWidth*s*.82;
+      }
+      y+=unit*(.36+depth*.20)/options.density; row++;
+    }
+  }
+  canvas.dataset.buildings=String(count);
+  canvas.dataset.seed=String(options.seed);
+  canvas.dataset.mode=options.mode;
+}
