@@ -76,39 +76,68 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
   };
   function palm(x: number, y: number, s: number) {
     ctx.save(); ctx.translate(x,y); ctx.scale(s,s);
-    const crownY=-57;
-    poly([[1,1],[-3,-5],[-6,-22],[-5,-39],[-2,crownY+2],[2,crownY+1],[0,-39],[-1,-22],[4,-4]],"#715b40",false);
-    line([[-3,-8],[-4,-27],[-1,crownY+3]],"#a38b60",1.5);
-    const canopy:Point[]=[[-29,crownY+2],[-25,crownY-7],[-17,crownY-10],[-13,crownY-17],
-      [-4,crownY-15],[3,crownY-21],[13,crownY-14],[23,crownY-16],[29,crownY-7],
-      [27,crownY+1],[19,crownY+5],[13,crownY+11],[4,crownY+7],[-4,crownY+12],
-      [-15,crownY+7],[-23,crownY+10]];
-    poly(canopy,"#075b54",false);
+    const crownX=rand(-8,8), crownY=rand(-65,-50);
+    const canopyWidth=rand(21,34), canopyHeight=rand(13,23);
+    const canopyCenterY=crownY-rand(3,8);
+    const lobePhase=rand(0,Math.PI*2), lobeCount=Math.floor(rand(3,7));
+    const trunk:Point[]=[[0,0],[rand(-5,2),-17],[crownX*.55+rand(-3,3),-36],[crownX,crownY+3]];
+    line(trunk,"#715b40",rand(3,5));
+    line([[1,-5],[trunk[1][0]+1,-19],[crownX+1,crownY+4]],"#a38b60",1.5);
+    const canopy:Point[]=Array.from({length:24},(_,i)=>{
+      const angle=i/24*Math.PI*2;
+      const lobe=1+.13*Math.sin(angle*lobeCount+lobePhase)+.07*Math.sin(angle*(lobeCount+4)-lobePhase)+rand(-.085,.085);
+      return [crownX+Math.cos(angle)*canopyWidth*lobe,
+        canopyCenterY+Math.sin(angle)*canopyHeight*lobe];
+    });
+    poly(canopy,pick(["#075b54","#07564e","#09685d","#117064"]),false);
     ctx.save(); clipFace(canopy);
-    for(let i=0;i<9;i++) {
-      const cy=crownY-16+i*3.4;
-      line([[-30,cy+rand(-3,3)],[-18,cy+rand(-4,4)],[-8,cy+rand(-4,5)],
-        [4,cy+rand(-4,4)],[17,cy+rand(-4,4)],[30,cy+rand(-3,3)]],
-        pick(["#064a47","#107266","#398e7d","#286a67"]),rand(1.1,3.1));
+    // A different flow direction, wavelength and split pattern is sampled for
+    // every crown; the clipped ribbons become its internal colour boundaries.
+    const flowAngle=rand(-1.45,1.45), flowCount=Math.floor(rand(5,12));
+    const flow:[number,number]=[Math.cos(flowAngle),Math.sin(flowAngle)];
+    const normal:[number,number]=[-flow[1],flow[0]];
+    const reach=Math.max(canopyWidth,canopyHeight)*1.7;
+    for(let i=0;i<flowCount;i++) {
+      const offset=(i-(flowCount-1)/2)*rand(3.2,5.2);
+      const amplitude=rand(2,6), frequency=rand(.09,.23), phase=rand(0,Math.PI*2);
+      const ribbon:Point[]=[];
+      for(let j=0;j<=10;j++) {
+        const along=(j/10*2-1)*reach;
+        const wave=Math.sin(along*frequency+phase)*amplitude+Math.sin(along*frequency*2.1-phase)*amplitude*.3;
+        ribbon.push([crownX+flow[0]*along+normal[0]*(offset+wave),
+          canopyCenterY+flow[1]*along+normal[1]*(offset+wave)]);
+      }
+      line(ribbon,pick(["#064a47","#107266","#398e7d","#286a67","#65a991"]),rand(1.2,3.4));
+      if(rand()<.5) {
+        const start=Math.floor(rand(2,7)), [px,py]=ribbon[start];
+        line([[px,py],[px+flow[0]*7+normal[0]*rand(-6,6),py+flow[1]*7+normal[1]*rand(-6,6)],
+          [px+flow[0]*13+normal[0]*rand(-9,9),py+flow[1]*13+normal[1]*rand(-9,9)]],
+          pick(["#064a47","#398e7d","#65a991"]),rand(.8,1.7));
+      }
     }
     ctx.restore();
     // Overlapping, curved fronds form one continuous silhouette. Each frond
     // is then clipped so its winding pigment bands stay inside the foliage.
-    const fronds=11;
+    const fronds=Math.floor(rand(7,15));
+    const fanStart=rand(-Math.PI*1.13,-Math.PI*.83);
+    const fanArc=rand(Math.PI*1.48,Math.PI*2.03);
+    const fanLean=rand(-.18,.18), lengthScale=rand(.8,1.22);
+    const bands=["#054d49","#0c6259","#369681","#65a991","#123e42"];
     for(let i=0;i<fronds;i++) {
-      const a=-Math.PI*.98+i/(fronds-1)*Math.PI*1.9+rand(-.12,.12);
-      const length=rand(24,40), bend=rand(-6,7), droop=rand(3,12);
+      const a=fanStart+i/(fronds-1)*fanArc+fanLean+rand(-.17,.17);
+      const length=rand(21,43)*lengthScale, bend=rand(-11,11), droop=rand(1,16);
+      const leafWidth=rand(2.7,5.8);
       const spine: Point[]=[];
       for(let j=0;j<=9;j++) {
         const t=j/9;
-        spine.push([Math.cos(a)*length*t+Math.sin(a)*bend*Math.sin(Math.PI*t),
+        spine.push([crownX+Math.cos(a)*length*t+Math.sin(a)*bend*Math.sin(Math.PI*t),
           crownY+Math.sin(a)*length*t-Math.cos(a)*bend*Math.sin(Math.PI*t)+droop*t*t]);
       }
       const left:Point[]=[], right:Point[]=[];
       for(let j=0;j<spine.length;j++) {
         const t=j/9, before=spine[Math.max(0,j-1)], after=spine[Math.min(9,j+1)];
         const vx=after[0]-before[0],vy=after[1]-before[1],vl=Math.hypot(vx,vy)||1;
-        const breadth=(3.5+rand(-.6,.6))*Math.pow(Math.sin(Math.PI*(.03+t*.94)),.72)*(1-t*.28);
+        const breadth=(leafWidth+rand(-.7,.7))*Math.pow(Math.sin(Math.PI*(.03+t*.94)),.72)*(1-t*.28);
         const nick=j>1&&j<9?rand(-1.8,1.8):0;
         left.push([spine[j][0]-vy/vl*(breadth+nick),spine[j][1]+vx/vl*(breadth+nick)]);
         right.push([spine[j][0]+vy/vl*(breadth-nick),spine[j][1]-vx/vl*(breadth-nick)]);
@@ -118,23 +147,28 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
       poly(shape,pick(["#07564e","#096d61","#117b68","#238974","#176c65"]),false);
       // Meandering stripes and small side strokes read as colour boundaries
       // inside a single painted crown, rather than separate geometric leaves.
-      const bands=["#054d49","#0c6259","#369681","#65a991","#123e42"];
-      for(let k=-2;k<=2;k++) {
+      const stripeCount=Math.floor(rand(2,6)), stripePhase=rand(0,Math.PI*2), stripeFrequency=rand(6,16);
+      for(let k=0;k<stripeCount;k++) {
         const stripe:Point[]=spine.map(([sx,sy],j)=>{
-          const t=j/9, wiggle=Math.sin(t*11+k*1.7+i)*1.7;
-          return [sx+Math.sin(a)*(k*1.55+wiggle)*Math.sin(Math.PI*t),
-            sy-Math.cos(a)*(k*1.55+wiggle)*Math.sin(Math.PI*t)];
+          const t=j/9, wiggle=Math.sin(t*stripeFrequency+stripePhase+k*1.7)*rand(.5,2.2);
+          const across=(k-(stripeCount-1)/2)*rand(1.1,2)+wiggle;
+          return [sx+Math.sin(a)*across*Math.sin(Math.PI*t),
+            sy-Math.cos(a)*across*Math.sin(Math.PI*t)];
         });
-        line(stripe,bands[(k+2+i)%bands.length],rand(1.2,2.8));
+        line(stripe,pick(bands),rand(1.1,2.9));
       }
-      for(let j=2;j<9;j+=2) {
+      for(let j=Math.floor(rand(2,4));j<9;j+=Math.floor(rand(2,4))) {
         const [sx,sy]=spine[j];
-        line([[sx-3,sy+rand(-2,2)],[sx+rand(-1,2),sy+2],[sx+4,sy+rand(0,4)]],pick(bands),rand(.7,1.4));
+        line([[sx-rand(2,5),sy+rand(-3,2)],[sx+rand(-2,2),sy+rand(0,3)],[sx+rand(2,5),sy+rand(0,5)]],pick(bands),rand(.7,1.4));
       }
       ctx.restore();
     }
-    poly([[-9,crownY+4],[-13,crownY-2],[-6,crownY-9],[3,crownY-10],[12,crownY-3],[9,crownY+5],[1,crownY+8]],"#09685d",false);
-    line([[-8,crownY-2],[-2,crownY-5],[4,crownY-3],[9,crownY+2]],"#328d78",2.4);
+    const heart:Point[]=Array.from({length:9},(_,i)=>{
+      const a=i/9*Math.PI*2, radius=rand(7,13);
+      return [crownX+Math.cos(a)*radius,crownY+Math.sin(a)*radius*.8];
+    });
+    poly(heart,pick(["#09685d","#07564e","#117b68"]),false);
+    line([[crownX-7,crownY-2],[crownX+rand(-3,3),crownY-rand(3,7)],[crownX+8,crownY+rand(0,4)]],"#328d78",2.4);
     ctx.restore();
   }
   function house(x: number, base: number, s: number) {
