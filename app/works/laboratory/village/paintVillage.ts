@@ -149,18 +149,19 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
       [edgeTop,edgeY+drop*.9]],"#332c3035",false);
     ctx.restore();
     if(palmPresent && rand()<.75) {
-      // Foliage is projected back toward the wall; the real tree is drawn
-      // later in front, while this muted silhouette stays inside the facade.
-      ctx.save(); clipFace(frontFace);
-      const sx=side>0?w-24:24, sy=Math.max(top+35,-h*.47);
-      ctx.save(); ctx.translate(sx,sy); ctx.scale(palmScale,palmScale);
-      line([[10,35],[5,13],[0,0]],"#24534d38",5);
+      // The tree grows just beyond the outer side corner. Project its shadow
+      // back onto that nearest wall, using the wall's receding axis and clip.
+      ctx.save(); clipFace(sideFace);
+      ctx.transform(side,-rise/d,0,1,edge,0);
+      const shadowX=d*.66, shadowY=palmY-18;
+      ctx.translate(shadowX,shadowY); ctx.scale(palmScale*.82,palmScale*.82);
+      line([[5,38],[4,15],[0,0]],"#24534d40",4.2);
       for(let i=0;i<8;i++) {
         const a=-Math.PI*.95+i*Math.PI*.26;
-        const ex=Math.cos(a)*rand(19,34), ey=Math.sin(a)*rand(14,27);
-        poly([[0,0],[ex*.55,ey-8],[ex,ey+rand(0,7)],[ex*.42,ey+6]],"#24534d33",false);
+        const ex=Math.cos(a)*rand(15,27), ey=Math.sin(a)*rand(10,20);
+        poly([[0,0],[ex*.55,ey-5],[ex,ey+rand(0,5)],[ex*.42,ey+4]],"#24534d38",false);
       }
-      ctx.restore(); ctx.restore();
+      ctx.restore();
     }
     const roofL:Point=[lean,top], roofR:Point=[w+lean,top+tilt];
     const backL:Point=[lean+dx,top-rise], backR:Point=[w+lean+dx,top+tilt-rise];
