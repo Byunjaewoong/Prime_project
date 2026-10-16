@@ -65,6 +65,11 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
   const oval = (x: number, y: number, rx: number, ry: number, color: string) => {
     ctx.beginPath(); ctx.ellipse(x,y,rx,ry,0,0,Math.PI*2); ctx.fillStyle = color; ctx.fill();
   };
+  const clipFace = (points: Point[]) => {
+    ctx.beginPath();
+    points.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));
+    ctx.closePath(); ctx.clip();
+  };
   function palm(x: number, y: number, s: number) {
     ctx.save(); ctx.translate(x,y); ctx.scale(s,s);
     line([[0,0],[-4,-24],[0,-57]], "#76654b", 3.5);
@@ -94,10 +99,15 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
     const frameOutline=!fillOnly&&rand()<.76;
     const top = -h;
     const doorX=rand(8,w-23);
+    const palmPresent=rand()<.3;
+    const palmX=(side>0?w+dx:dx)+rand(-4,9);
+    const palmY=options.mode === "village" ? -h*.62 : -2;
+    const palmScale=rand(.8,1.3);
+    const frontFace: Point[]=[[0,0],[w,0],[w+lean,top+tilt],[lean,top]];
     const edge=side>0?w:0, edgeTop=edge+lean, edgeY=top+(side>0?tilt:0);
     const sideFace: Point[]=[[edge,0],[edge+dx,-rise],[edgeTop+dx,edgeY-rise],[edgeTop,edgeY]];
     poly(sideFace,wall,sideOutline); poly(sideFace,"#573c3629",false);
-    poly([[0,0],[w,0],[w+lean,top+tilt],[lean,top]], wall,frontOutline);
+    poly(frontFace,wall,frontOutline);
     // The local axes follow this building's individual leaning facade.
     ctx.save(); ctx.transform(1,tilt/w,-lean/h,1,0,0);
     box(0,-8,w,6,"#9f494334");
@@ -123,6 +133,34 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
       const a=edge+dx*.28,b=edge+dx*.69;
       poly([[a,sy-rise*.28-4],[b,sy-rise*.69-5],[b,sy-rise*.69+8],[a,sy-rise*.28+9]],"#eadac1",frameOutline);
       poly([[a+side*2,sy-rise*.28-2],[b-side*2,sy-rise*.69-3],[b-side*2,sy-rise*.69+5],[a+side*2,sy-rise*.28+6]],"#497f83",false);
+    }
+    // A projecting roof darkens the wall below it. Clip each wash to the
+    // painted plane, so its irregular lower edge reads as cast shade.
+    const drop=flat?rand(9,16):rand(14,25);
+    ctx.save(); clipFace(frontFace);
+    poly([[lean-4,top+2],[w+lean+4,top+tilt+2],
+      [w+lean+3,top+tilt+drop],[w*.69+lean,top+tilt*.69+drop-rand(0,5)],
+      [w*.37+lean,top+tilt*.37+drop+rand(-3,3)],[lean-3,top+drop-rand(0,4)]],
+      "#453a3a36",false);
+    ctx.restore();
+    ctx.save(); clipFace(sideFace);
+    poly([[edgeTop,edgeY+1],[edgeTop+dx,edgeY-rise+1],
+      [edgeTop+dx,edgeY-rise+drop*.8],[edgeTop+dx*.55,edgeY-rise*.55+drop],
+      [edgeTop,edgeY+drop*.9]],"#332c3035",false);
+    ctx.restore();
+    if(palmPresent && rand()<.75) {
+      // Foliage is projected back toward the wall; the real tree is drawn
+      // later in front, while this muted silhouette stays inside the facade.
+      ctx.save(); clipFace(frontFace);
+      const sx=side>0?w-24:24, sy=Math.max(top+35,-h*.47);
+      ctx.save(); ctx.translate(sx,sy); ctx.scale(palmScale,palmScale);
+      line([[10,35],[5,13],[0,0]],"#24534d38",5);
+      for(let i=0;i<8;i++) {
+        const a=-Math.PI*.95+i*Math.PI*.26;
+        const ex=Math.cos(a)*rand(19,34), ey=Math.sin(a)*rand(14,27);
+        poly([[0,0],[ex*.55,ey-8],[ex,ey+rand(0,7)],[ex*.42,ey+6]],"#24534d33",false);
+      }
+      ctx.restore(); ctx.restore();
     }
     const roofL:Point=[lean,top], roofR:Point=[w+lean,top+tilt];
     const backL:Point=[lean+dx,top-rise], backR:Point=[w+lean+dx,top+tilt-rise];
@@ -158,7 +196,7 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
       const px=rand(2,w-2), py=rand(top+5,-3);
       box(px,py,rand(.4,2),rand(.4,2.4),pick(["#fff1da18","#633b3010"]));
     }
-    if(rand()<.3) palm((side>0?w+dx:dx)+rand(-4,9),options.mode === "village" ? -h*.62 : -2,rand(.8,1.3));
+    if(palmPresent) palm(palmX,palmY,palmScale);
     ctx.restore();
     return w+d;
   }
