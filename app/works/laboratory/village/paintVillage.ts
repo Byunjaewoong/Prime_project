@@ -1,5 +1,7 @@
+import { tintVillageColor, villagePalettes, type VillagePaletteId } from "./villagePalettes";
+
 type Point = [number, number];
-type Options = { seed: number; mode: "single" | "village"; size: number; density: number };
+type Options = { seed: number; mode: "single" | "village"; size: number; density: number; palette: VillagePaletteId };
 
 // Everything, including brush irregularity, comes from the same saved seed.
 export function paintVillage(canvas: HTMLCanvasElement, width: number, height: number, options: Options) {
@@ -17,10 +19,12 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
     t ^= t + Math.imul(t ^ t >>> 7, 61 | t);
     return a + (((t ^ t >>> 14) >>> 0) / 4294967296) * (b - a);
   };
-  const pick = <T,>(list: T[]): T => list[Math.floor(rand(0, list.length))];
-  const walls = ["#e9918a", "#e8b2a0", "#f0d7a6", "#efe2bd", "#d6676c", "#c3464b", "#58b9b0", "#dbac8e", "#f0c3b0", "#853e34"];
-  const roofs = ["#086d98", "#135070", "#2789ad", "#3c6070", "#72c7bb", "#8bbfc4"];
-  const ink = "#603e36";
+  const pick = <T,>(list: readonly T[]): T => list[Math.floor(rand(0, list.length))];
+  const palette = villagePalettes[options.palette];
+  const walls: readonly string[] = palette.walls;
+  const roofs: readonly string[] = palette.roofs;
+  const ink = palette.ink;
+  const tint = (color: string) => tintVillageColor(color, options.palette);
   // NonFlowers' tubify/stroke idea: a line is a filled ribbon with a changing
   // width. The small correlated drift keeps long walls from looking ruled.
   const paintedLine = (points: Point[], color: string, weight: number) => {
@@ -47,13 +51,13 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
     if(!left.length) return;
     ctx.beginPath();
     [...left,...right.reverse()].forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));
-    ctx.closePath(); ctx.fillStyle=color; ctx.fill();
+    ctx.closePath(); ctx.fillStyle=tint(color); ctx.fill();
   };
   let edgeChance = 1;
   const poly = (points: Point[], fill: string, line = true, weight = 1.15) => {
     ctx.beginPath();
     points.forEach(([x, y], i) => { if (!i) ctx.moveTo(x+rand(-1.1,1.1),y+rand(-1.1,1.1)); else ctx.lineTo(x+rand(-1.1,1.1),y+rand(-1.1,1.1)); });
-    ctx.closePath(); ctx.fillStyle = fill; ctx.fill();
+    ctx.closePath(); ctx.fillStyle = tint(fill); ctx.fill();
     if (line) for(let i=0;i<points.length;i++) {
       if(rand()<edgeChance) paintedLine([points[i],points[(i+1)%points.length]],ink,weight);
     }
@@ -63,7 +67,7 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
     paintedLine(points,color,weight);
   };
   const oval = (x: number, y: number, rx: number, ry: number, color: string) => {
-    ctx.beginPath(); ctx.ellipse(x,y,rx,ry,0,0,Math.PI*2); ctx.fillStyle = color; ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x,y,rx,ry,0,0,Math.PI*2); ctx.fillStyle = tint(color); ctx.fill();
   };
   const clipFace = (points: Point[]) => {
     ctx.beginPath();
@@ -306,4 +310,5 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
   canvas.dataset.buildings=String(count);
   canvas.dataset.seed=String(options.seed);
   canvas.dataset.mode=options.mode;
+  canvas.dataset.palette=options.palette;
 }

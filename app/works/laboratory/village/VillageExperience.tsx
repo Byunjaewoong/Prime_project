@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { paintVillage } from "./paintVillage";
+import { villagePalettes, type VillagePaletteId } from "./villagePalettes";
 import styles from "./village.module.css";
 
 export default function VillageExperience() {
@@ -13,6 +14,7 @@ export default function VillageExperience() {
   const initialSeed = useRef<number | null>(null);
   const [size, setSize] = useState(100);
   const [density, setDensity] = useState(100);
+  const [palette, setPalette] = useState<VillagePaletteId>("painted");
   useEffect(() => {
     const element = canvas.current;
     if (!element) return;
@@ -22,13 +24,13 @@ export default function VillageExperience() {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const rect = element.getBoundingClientRect();
-        if (rect.width && rect.height) paintVillage(element, rect.width, rect.height, { seed: seed || initialSeed.current!, mode, size: size / 100, density: density / 100 });
+        if (rect.width && rect.height) paintVillage(element, rect.width, rect.height, { seed: seed || initialSeed.current!, mode, size: size / 100, density: density / 100, palette });
       });
     };
     const observer = new ResizeObserver(draw);
     observer.observe(element); draw();
     return () => { observer.disconnect(); cancelAnimationFrame(frame); };
-  }, [mode, seed, size, density]);
+  }, [mode, seed, size, density, palette]);
   useEffect(() => {
     const key = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
     window.addEventListener("keydown", key);
@@ -46,6 +48,14 @@ export default function VillageExperience() {
       <div className={styles.heading}><span>VILLAGE</span><Link href="/works/laboratory">← Laboratory</Link></div>
       <span className={styles.label}>COMPOSITION</span>
       <div className={styles.modes}><button aria-pressed={mode === "single"} onClick={() => setMode("single")}>건물 하나</button><button aria-pressed={mode === "village"} onClick={() => setMode("village")}>전체 마을</button></div>
+      <span className={styles.label}>COLOR PRESET</span>
+      <div className={styles.palettes} role="group" aria-label="색상 프리셋">
+        {(Object.entries(villagePalettes) as [VillagePaletteId, typeof villagePalettes[VillagePaletteId]][]).map(([id, preset]) =>
+          <button key={id} className={styles.palette} aria-label={`${preset.label} 색상`} aria-pressed={palette === id} onClick={() => setPalette(id)}>
+            <span className={styles.swatches}>{preset.swatches.map((color, index) => <i key={index} style={{ backgroundColor: color }} />)}</span>
+            <span>{preset.label}</span>
+          </button>)}
+      </div>
       <label className={styles.control}><span>건물 크기 <output>{size}%</output></span><input aria-label="건물 크기" type="range" min="65" max="140" step="5" value={size} onChange={e => setSize(Number(e.target.value))} /></label>
       {mode === "village" && <label className={styles.control}><span>겹침 밀도 <output>{density}%</output></span><input aria-label="겹침 밀도" type="range" min="80" max="140" step="5" value={density} onChange={e => setDensity(Number(e.target.value))} /></label>}
       <button className={styles.action} onClick={() => setSeed(crypto.getRandomValues(new Uint32Array(1))[0])}>↻ 새로 생성</button>

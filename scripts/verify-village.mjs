@@ -27,6 +27,16 @@ try {
     const coverage=await page.evaluate(()=> { const c=document.querySelector('canvas'),ctx=c.getContext('2d'); let filled=0,total=0; for(let y=5;y<c.height;y+=20) for(let x=5;x<c.width;x+=20) { const p=ctx.getImageData(x,y,1,1).data; if(p[0]<250||p[1]<250||p[2]<250)filled++;total++; } return filled/total; });
     assert(coverage>.94,`Coverage too low: ${coverage}`);
   }
+  await page.getByRole('button',{name:'메뉴 열기'}).click();
+  const beforePalette=await canvas.evaluate(c=>({image:c.toDataURL(),seed:c.dataset.seed,buildings:c.dataset.buildings}));
+  await page.getByRole('button',{name:'석양 색상'}).click();
+  await page.waitForFunction(()=>document.querySelector('canvas')?.dataset.palette==='sunset');
+  const afterPalette=await canvas.evaluate(c=>({image:c.toDataURL(),seed:c.dataset.seed,buildings:c.dataset.buildings}));
+  assert.notEqual(afterPalette.image,beforePalette.image,'Palette did not change the drawing');
+  assert.equal(afterPalette.seed,beforePalette.seed,'Palette changed the seed');
+  assert.equal(afterPalette.buildings,beforePalette.buildings,'Palette changed the composition');
+  await page.keyboard.press('Escape');
+  await page.screenshot({path:'artifacts/village/sunset.png'});
   assert.deepEqual(errors,[]);
-  console.log('Single building, regeneration, village coverage, portrait/landscape resize passed.');
+  console.log('Single building, regeneration, village coverage, resize and palette switching passed.');
 } finally { await browser.close(); }
