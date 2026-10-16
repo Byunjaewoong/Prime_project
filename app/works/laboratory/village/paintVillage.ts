@@ -99,12 +99,14 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
     const frameOutline=!fillOnly&&rand()<.76;
     const top = -h;
     const doorX=rand(8,w-23);
-    const palmPresent=rand()<.3;
-    const palmX=(side>0?w+dx:dx)+rand(-4,9);
-    const palmY=options.mode === "village" ? -h*.62 : -2;
-    const palmScale=rand(.8,1.3);
-    const frontFace: Point[]=[[0,0],[w,0],[w+lean,top+tilt],[lean,top]];
     const edge=side>0?w:0, edgeTop=edge+lean, edgeY=top+(side>0?tilt:0);
+    const palmPresent=rand()<.3;
+    // The trunk starts on the ground at the outer side corner. Foreground
+    // houses may cover its lower part, but it never grows from midair.
+    const palmX=edge+dx+rand(-3,7);
+    const palmY=-rise+rand(-1,2);
+    const palmScale=options.mode === "village" ? rand(1.2,1.8) : rand(.9,1.35);
+    const frontFace: Point[]=[[0,0],[w,0],[w+lean,top+tilt],[lean,top]];
     const sideFace: Point[]=[[edge,0],[edge+dx,-rise],[edgeTop+dx,edgeY-rise],[edgeTop,edgeY]];
     poly(sideFace,wall,sideOutline); poly(sideFace,"#573c3629",false);
     poly(frontFace,wall,frontOutline);
@@ -153,7 +155,7 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
       // back onto that nearest wall, using the wall's receding axis and clip.
       ctx.save(); clipFace(sideFace);
       ctx.transform(side,-rise/d,0,1,edge,0);
-      const shadowX=d*.66, shadowY=palmY-18;
+      const shadowX=d*.66, shadowY=palmY-45*palmScale+18;
       ctx.translate(shadowX,shadowY); ctx.scale(palmScale*.82,palmScale*.82);
       line([[5,38],[4,15],[0,0]],"#24534d40",4.2);
       for(let i=0;i<8;i++) {
@@ -197,7 +199,10 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
       const px=rand(2,w-2), py=rand(top+5,-3);
       box(px,py,rand(.4,2),rand(.4,2.4),pick(["#fff1da18","#633b3010"]));
     }
-    if(palmPresent) palm(palmX,palmY,palmScale);
+    if(palmPresent) {
+      oval(palmX,palmY,4.5,2.2,"#2f61554d");
+      palm(palmX,palmY,palmScale);
+    }
     ctx.restore();
     return w+d;
   }
