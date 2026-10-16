@@ -29,12 +29,17 @@ try {
   }
   await page.getByRole('button',{name:'메뉴 열기'}).click();
   const beforePalette=await canvas.evaluate(c=>({image:c.toDataURL(),seed:c.dataset.seed,buildings:c.dataset.buildings}));
-  await page.getByRole('button',{name:'석양 색상'}).click();
-  await page.waitForFunction(()=>document.querySelector('canvas')?.dataset.palette==='sunset');
-  const afterPalette=await canvas.evaluate(c=>({image:c.toDataURL(),seed:c.dataset.seed,buildings:c.dataset.buildings}));
-  assert.notEqual(afterPalette.image,beforePalette.image,'Palette did not change the drawing');
-  assert.equal(afterPalette.seed,beforePalette.seed,'Palette changed the seed');
-  assert.equal(afterPalette.buildings,beforePalette.buildings,'Palette changed the composition');
+  const paletteImages=new Set([beforePalette.image]);
+  for (const [name,id] of [['트로피컬','tropical'],['캔디','candy'],['카니발','carnival'],['지중해','mediterranean'],['석양','sunset']]) {
+    await page.getByRole('button',{name:`${name} 색상`}).click();
+    await page.waitForFunction(id=>document.querySelector('canvas')?.dataset.palette===id,id);
+    const result=await canvas.evaluate(c=>({image:c.toDataURL(),seed:c.dataset.seed,buildings:c.dataset.buildings}));
+    assert(!paletteImages.has(result.image),`${name} palette did not change the drawing`);
+    paletteImages.add(result.image);
+    assert.equal(result.seed,beforePalette.seed,'Palette changed the seed');
+    assert.equal(result.buildings,beforePalette.buildings,'Palette changed the composition');
+    if (id==='carnival') await canvas.screenshot({path:'artifacts/village/carnival.png'});
+  }
   await page.keyboard.press('Escape');
   await page.screenshot({path:'artifacts/village/sunset.png'});
   assert.deepEqual(errors,[]);
