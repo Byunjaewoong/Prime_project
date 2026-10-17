@@ -24,6 +24,17 @@ try {
   const flock=await birds.evaluate(c=>({size:Number(c.dataset.flockSize),direction:c.dataset.flightDirection,frame:c.toDataURL()}));
   assert(flock.size>=2&&flock.size<=6,'Flock size should vary within the intended range');
   assert(['left','right'].includes(flock.direction),'Flock should cross from either side');
+  const silhouette=await birds.evaluate(c=>{
+    const pixels=c.getContext('2d').getImageData(0,0,c.width,c.height).data;
+    let painted=0,nonWhite=0;
+    for(let i=0;i<pixels.length;i+=4)if(pixels[i+3]){
+      painted++;
+      if(pixels[i]!==255||pixels[i+1]!==255||pixels[i+2]!==255)nonWhite++;
+    }
+    return {painted,nonWhite};
+  });
+  assert(silhouette.painted>0,'The flock should be visible');
+  assert.equal(silhouette.nonWhite,0,'Birds should be pure white silhouettes without outlines or eyes');
   await page.waitForTimeout(200);
   assert.notEqual(await birds.evaluate(c=>c.toDataURL()),flock.frame,'Birds should move independently of the painted village');
   await page.keyboard.press('Escape');

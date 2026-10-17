@@ -7,6 +7,8 @@ type Bird = {
   age: number;
   scale: number;
   phase: number;
+  glideLift: number;
+  flapStart: number;
   flapEnd: number;
   nextFlap: number;
 };
@@ -23,81 +25,63 @@ function seededRandom(seed: number) {
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
-function drawWing(ctx: CanvasRenderingContext2D, lift: number, far: boolean) {
-  const rootX = far ? 2 : -5;
-  const tipX = far ? -19 + lift * 4 : -36 + lift * 8;
-  const tipY = far ? -7 - lift * 17 : -10 - lift * 27;
+function drawWing(ctx: CanvasRenderingContext2D, lift: number) {
+  // Pure 180-degree side projection: the two wings overlap into one outline.
+  // The elbow and the feather edge bend independently as the tip rises/falls.
+  const rootX = -5, rootY = -3;
+  const tipX = -29 - lift * 7;
+  const tipY = -12 - lift * 27;
+  const dx = tipX - rootX, dy = tipY - rootY;
+  const length = Math.hypot(dx, dy);
+  const nx = dy / length, ny = -dx / length;
+  const feather = (along: number, width: number): [number, number] =>
+    [rootX + dx * along + nx * width, rootY + dy * along + ny * width];
+  const [f1x, f1y] = feather(.82, 2.3);
+  const [n1x, n1y] = feather(.79, 1.1);
+  const [f2x, f2y] = feather(.64, 4.5);
+  const [n2x, n2y] = feather(.61, 2.5);
+  const [f3x, f3y] = feather(.43, 6.4);
+  const [innerX, innerY] = feather(.2, 7);
   ctx.beginPath();
-  ctx.moveTo(rootX, -3);
-  ctx.bezierCurveTo(rootX - 7, -9, tipX + 11, tipY + 1, tipX, tipY);
-  ctx.bezierCurveTo(tipX + 7, tipY + 6, rootX - 10, 2 + lift * 2, rootX + 5, 2);
+  ctx.moveTo(rootX, rootY);
+  ctx.bezierCurveTo(rootX - 9, rootY - 7 - lift * 4, tipX + 10, tipY - 4, tipX, tipY);
+  ctx.quadraticCurveTo(tipX + nx * 2, tipY + ny * 2, f1x, f1y);
+  ctx.lineTo(n1x, n1y);
+  ctx.quadraticCurveTo(...feather(.69, 5), f2x, f2y);
+  ctx.lineTo(n2x, n2y);
+  ctx.quadraticCurveTo(...feather(.5, 7), f3x, f3y);
+  ctx.quadraticCurveTo(innerX, innerY, rootX + 5, rootY + 5);
   ctx.closePath();
-  ctx.fillStyle = far ? "#dce7e7" : "#fffefa";
-  ctx.strokeStyle = "#536971";
-  ctx.lineWidth = far ? .8 : 1.15;
   ctx.fill();
-  ctx.stroke();
-
-  // A short grey feather edge makes the long, white gliding wing legible
-  // against pale roofs without turning the bird into a dark silhouette.
-  if (!far) {
-    ctx.beginPath();
-    ctx.moveTo(tipX + 6, tipY + 4);
-    ctx.quadraticCurveTo(tipX + 16, tipY + 9, rootX - 8, 1);
-    ctx.strokeStyle = "#91a6aa";
-    ctx.lineWidth = .75;
-    ctx.stroke();
-  }
 }
 
 function drawBird(ctx: CanvasRenderingContext2D, bird: Bird, x: number, y: number) {
-  const flapping = bird.age < bird.flapEnd;
-  const lift = flapping
-    ? Math.sin((bird.age - bird.phase) * Math.PI * 6.2)
-    : .1 + Math.sin(bird.age * 1.4 + bird.phase) * .045;
-  const slope = Math.atan2((bird.endY - bird.startY) * bird.direction, ctx.canvas.clientWidth + 90);
+  let lift = bird.glideLift + Math.sin(bird.age * 1.2 + bird.phase * Math.PI * 2) * .035;
+  if (bird.age >= bird.flapStart && bird.age < bird.flapEnd) {
+    const progress = (bird.age - bird.flapStart) / (bird.flapEnd - bird.flapStart);
+    const envelope = Math.sin(Math.PI * progress) ** 2;
+    lift += envelope * Math.sin(progress * Math.PI * 4.5 + bird.phase * Math.PI * 2) * .95;
+  }
   ctx.save();
   ctx.translate(x, y);
-  ctx.rotate(slope);
   ctx.scale(bird.direction * bird.scale, bird.scale);
-  ctx.shadowColor = "#233a4566";
-  ctx.shadowBlur = 3;
-  ctx.shadowOffsetY = 1;
+  ctx.fillStyle = "#ffffff";
 
-  drawWing(ctx, lift * .72, true);
-
-  // Forked tail, tapered body, rounded head and pointed beak in side profile.
+  // One continuous white silhouette, including the small forked tail and beak.
   ctx.beginPath();
-  ctx.moveTo(-18, 0);
-  ctx.lineTo(-29, -4);
-  ctx.lineTo(-24, 1);
-  ctx.lineTo(-29, 4);
-  ctx.lineTo(-15, 3);
-  ctx.bezierCurveTo(-4, 7, 9, 4, 15, 0);
-  ctx.bezierCurveTo(19, -4, 13, -7, 7, -6);
-  ctx.bezierCurveTo(-3, -7, -13, -4, -18, 0);
+  ctx.moveTo(-16, -2);
+  ctx.quadraticCurveTo(-22, -2, -28, -5);
+  ctx.lineTo(-24, -1);
+  ctx.lineTo(-29, 2);
+  ctx.quadraticCurveTo(-20, 1, -16, 3);
+  ctx.bezierCurveTo(-7, 6, 8, 5, 13, 0);
+  ctx.quadraticCurveTo(17, -1, 22, -2);
+  ctx.quadraticCurveTo(17, -3, 14, -4);
+  ctx.bezierCurveTo(10, -7, 5, -6, 2, -5);
+  ctx.bezierCurveTo(-7, -6, -12, -3, -16, -2);
   ctx.closePath();
-  ctx.fillStyle = "#fffefa";
-  ctx.strokeStyle = "#4f6269";
-  ctx.lineWidth = 1.05;
   ctx.fill();
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.moveTo(15, -3);
-  ctx.lineTo(24, -1);
-  ctx.lineTo(16, 0);
-  ctx.closePath();
-  ctx.fillStyle = "#eee8d3";
-  ctx.fill();
-  ctx.stroke();
-
-  drawWing(ctx, lift, false);
-  ctx.shadowColor = "transparent";
-  ctx.beginPath();
-  ctx.arc(13, -4.1, .8, 0, Math.PI * 2);
-  ctx.fillStyle = "#33434a";
-  ctx.fill();
+  drawWing(ctx, lift);
   ctx.restore();
 }
 
@@ -142,10 +126,12 @@ export function animateVillageBirds(canvas: HTMLCanvasElement, seed: number) {
         speed: random(95, 155),
         delay: index * random(.16, .42),
         age: 0,
-        scale: random(.72, 1.25) * clamp(width / 650, .8, 1.18),
-        phase: random(0, Math.PI * 2),
+        scale: random(.58, .88) * clamp(width / 900, .78, 1.08),
+        phase: random(),
+        glideLift: random(-.12, .16),
+        flapStart: -1,
         flapEnd: -1,
-        nextFlap: random(.8, 4.5),
+        nextFlap: random(1.2, 5),
       };
     });
     canvas.dataset.flockSize = String(count);
@@ -169,11 +155,12 @@ export function animateVillageBirds(canvas: HTMLCanvasElement, seed: number) {
       const x = (bird.direction === 1 ? -55 : width + 55) + bird.direction * bird.speed * travel;
       if (x < -80 || x > width + 80) return false;
       if (bird.age >= bird.nextFlap) {
-        bird.flapEnd = bird.age + random(.65, 1.15);
-        bird.nextFlap = bird.flapEnd + random(2.8, 6.5);
+        bird.flapStart = bird.age;
+        bird.flapEnd = bird.age + random(.9, 1.5);
+        bird.nextFlap = bird.flapEnd + random(4, 8);
       }
       const progress = clamp(bird.speed * travel / (width + 110), 0, 1);
-      const y = bird.startY + (bird.endY - bird.startY) * progress + Math.sin(travel * 1.3 + bird.phase) * 3;
+      const y = bird.startY + (bird.endY - bird.startY) * progress + Math.sin(travel * 1.3 + bird.phase * Math.PI * 2) * 3;
       drawBird(ctx, bird, x, y);
       if (x >= 0 && x <= width) visible++;
       return true;
