@@ -4,12 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { paintVillage } from "./paintVillage";
 import { animateVillageBirds } from "./villageBirds";
+import type { VillageScene } from "./villageScene";
 import { villagePalettes, type VillagePaletteId } from "./villagePalettes";
 import styles from "./village.module.css";
 
 export default function VillageExperience() {
   const canvas = useRef<HTMLCanvasElement>(null);
   const birdCanvas = useRef<HTMLCanvasElement>(null);
+  const scene = useRef<VillageScene>({ roofs: [] });
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"single" | "village">("single");
   const [seed, setSeed] = useState(0);
@@ -26,7 +28,7 @@ export default function VillageExperience() {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const rect = element.getBoundingClientRect();
-        if (rect.width && rect.height) paintVillage(element, rect.width, rect.height, { seed: seed || initialSeed.current!, mode, size: size / 100, density: density / 100, palette });
+        if (rect.width && rect.height) scene.current = paintVillage(element, rect.width, rect.height, { seed: seed || initialSeed.current!, mode, size: size / 100, density: density / 100, palette }) ?? { roofs: [] };
       });
     };
     const observer = new ResizeObserver(draw);
@@ -35,8 +37,8 @@ export default function VillageExperience() {
   }, [mode, seed, size, density, palette]);
   useEffect(() => {
     if (mode !== "village" || !birdCanvas.current) return;
-    return animateVillageBirds(birdCanvas.current, seed || initialSeed.current || 1);
-  }, [mode, seed]);
+    return animateVillageBirds(birdCanvas.current, seed || initialSeed.current || 1, () => scene.current);
+  }, [mode, seed, size, density]);
   useEffect(() => {
     const key = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
     window.addEventListener("keydown", key);

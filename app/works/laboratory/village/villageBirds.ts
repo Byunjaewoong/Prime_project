@@ -1,182 +1,118 @@
-type Bird = {
-  direction: 1 | -1;
-  startY: number;
-  endY: number;
-  speed: number;
-  delay: number;
-  age: number;
-  scale: number;
-  phase: number;
-  glideLift: number;
-  flapStart: number;
-  flapEnd: number;
-  nextFlap: number;
-};
+import type { VillageRoof, VillageScene } from "./villageScene";
 
+type Vec3 = [number, number, number];
+type Knot = { x: number; y: number; base: number; scale: number };
+type Bird = { age: number; delay: number; duration: number; phase: number; offset: number; size: number; path: Knot[] };
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 function seededRandom(seed: number) {
   let state = seed >>> 0;
-  return (min = 0, max = 1) => {
+  return (a = 0, b = 1) => {
     state = (state + 0x6d2b79f5) | 0;
-    let value = Math.imul(state ^ state >>> 15, 1 | state);
-    value ^= value + Math.imul(value ^ value >>> 7, 61 | value);
-    return min + (((value ^ value >>> 14) >>> 0) / 4294967296) * (max - min);
+    let t = Math.imul(state ^ state >>> 15, 1 | state);
+    t ^= t + Math.imul(t ^ t >>> 7, 61 | t);
+    return a + (((t ^ t >>> 14) >>> 0) / 4294967296) * (b - a);
   };
 }
-
-const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-
-function drawWing(ctx: CanvasRenderingContext2D, lift: number) {
-  // Pure 180-degree side projection: the two wings overlap into one outline.
-  // The elbow and the feather edge bend independently as the tip rises/falls.
-  const rootX = -5, rootY = -3;
-  const tipX = -29 - lift * 7;
-  const tipY = -12 - lift * 27;
-  const dx = tipX - rootX, dy = tipY - rootY;
-  const length = Math.hypot(dx, dy);
-  const nx = dy / length, ny = -dx / length;
-  const feather = (along: number, width: number): [number, number] =>
-    [rootX + dx * along + nx * width, rootY + dy * along + ny * width];
-  const [f1x, f1y] = feather(.82, 2.3);
-  const [n1x, n1y] = feather(.79, 1.1);
-  const [f2x, f2y] = feather(.64, 4.5);
-  const [n2x, n2y] = feather(.61, 2.5);
-  const [f3x, f3y] = feather(.43, 6.4);
-  const [innerX, innerY] = feather(.2, 7);
-  ctx.beginPath();
-  ctx.moveTo(rootX, rootY);
-  ctx.bezierCurveTo(rootX - 9, rootY - 7 - lift * 4, tipX + 10, tipY - 4, tipX, tipY);
-  ctx.quadraticCurveTo(tipX + nx * 2, tipY + ny * 2, f1x, f1y);
-  ctx.lineTo(n1x, n1y);
-  ctx.quadraticCurveTo(...feather(.69, 5), f2x, f2y);
-  ctx.lineTo(n2x, n2y);
-  ctx.quadraticCurveTo(...feather(.5, 7), f3x, f3y);
-  ctx.quadraticCurveTo(innerX, innerY, rootX + 5, rootY + 5);
-  ctx.closePath();
-  ctx.fill();
+// Catmull-Rom follows the roof anchors with a continuous tangent at each join.
+function sample(path: Knot[], progress: number): Knot {
+  const u = clamp(progress, 0, .999999) * (path.length - 1), i = Math.floor(u), t = u - i;
+  const p = [path[Math.max(0, i - 1)], path[i], path[i + 1], path[Math.min(path.length - 1, i + 2)]];
+  const field = (key: keyof Knot) => .5 * ((2*p[1][key]) + (-p[0][key]+p[2][key])*t +
+    (2*p[0][key]-5*p[1][key]+4*p[2][key]-p[3][key])*t*t +
+    (-p[0][key]+3*p[1][key]-3*p[2][key]+p[3][key])*t*t*t);
+  return { x:field("x"), y:field("y"), base:field("base"), scale:Math.max(.15,field("scale")) };
 }
-
-function drawBird(ctx: CanvasRenderingContext2D, bird: Bird, x: number, y: number) {
-  let lift = bird.glideLift + Math.sin(bird.age * 1.2 + bird.phase * Math.PI * 2) * .035;
-  if (bird.age >= bird.flapStart && bird.age < bird.flapEnd) {
-    const progress = (bird.age - bird.flapStart) / (bird.flapEnd - bird.flapStart);
-    const envelope = Math.sin(Math.PI * progress) ** 2;
-    lift += envelope * Math.sin(progress * Math.PI * 4.5 + bird.phase * Math.PI * 2) * .95;
+function drawBird(ctx: CanvasRenderingContext2D, bird: Bird, at: Knot, yaw: number, bank: number) {
+  const cycle = (bird.age + bird.phase*8) % 7;
+  const flap = cycle < 1.4 ? Math.sin(cycle/1.4*Math.PI*4)*Math.sin(cycle/1.4*Math.PI)*.75 : .12;
+  const scale = at.scale * bird.size;
+  const project = ([x,y,z]: Vec3) => {
+    const ry = y*Math.cos(bank)-z*Math.sin(bank), rz = y*Math.sin(bank)+z*Math.cos(bank);
+    const wx = x*Math.cos(yaw)-ry*Math.sin(yaw), wy = x*Math.sin(yaw)+ry*Math.cos(yaw);
+    return { x:at.x+wx*scale, y:at.y+(.55*wy-.85*rz)*scale, depth:wy*.85+rz*.55 };
+  };
+  const faces: { points: Vec3[]; color: string }[] = [];
+  const wing = (side: number) => {
+    const points: Vec3[] = [[3,2,1],[1,10,2],[-5,23,0],[-7,20,0],[-6,18,0],[-9,17,0],[-7,15,0],[-9,13,0],[-5,8,1],[-5,2,1]];
+    const pose = ([x,y,z]: Vec3): Vec3 => [x,y*side*Math.cos(flap),z+y*Math.sin(flap)];
+    faces.push({points:points.map(pose),color:side*Math.cos(yaw)>0?"#f9f7ee":"#cbd8dc"});
+    faces.push({points:[[-5,23,0],[-7,20,0],[-6,18,0],[-9,17,0],[-7,15,0],[-3,16,1]].map(p=>pose(p as Vec3)),color:"#53646c"});
+  };
+  wing(-1); wing(1);
+  faces.push({points:[[-6,-2,0],[-14,-4,0],[-12,0,0],[-14,4,0],[-6,2,0]],color:"#e4e9e5"});
+  faces.push({points:[[-9,0,0],[-4,-2,2],[4,-2,3],[9,-1,2],[10,0,1],[7,2,1],[-4,2,0]],color:"#fffdf3"});
+  faces.push({points:[[-9,0,0],[-4,2,0],[7,2,1],[9,0,0],[4,1,-1],[-5,1,-1]],color:"#b4c5cc"});
+  faces.push({points:[[8,-1,1],[13,0,.5],[8,1,1]],color:"#d8b773"});
+  const projected=faces.map(face=>({color:face.color,points:face.points.map(project)}));
+  projected.sort((a,b)=>a.points.reduce((s,p)=>s+p.depth,0)/a.points.length-b.points.reduce((s,p)=>s+p.depth,0)/b.points.length);
+  for(const face of projected) {
+    ctx.beginPath(); face.points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
+    ctx.closePath();ctx.fillStyle=face.color;ctx.fill();
   }
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.scale(bird.direction * bird.scale, bird.scale);
-  ctx.fillStyle = "#ffffff";
-
-  // One continuous white silhouette, including the small forked tail and beak.
-  ctx.beginPath();
-  ctx.moveTo(-16, -2);
-  ctx.quadraticCurveTo(-22, -2, -28, -5);
-  ctx.lineTo(-24, -1);
-  ctx.lineTo(-29, 2);
-  ctx.quadraticCurveTo(-20, 1, -16, 3);
-  ctx.bezierCurveTo(-7, 6, 8, 5, 13, 0);
-  ctx.quadraticCurveTo(17, -1, 22, -2);
-  ctx.quadraticCurveTo(17, -3, 14, -4);
-  ctx.bezierCurveTo(10, -7, 5, -6, 2, -5);
-  ctx.bezierCurveTo(-7, -6, -12, -3, -16, -2);
-  ctx.closePath();
-  ctx.fill();
-  drawWing(ctx, lift);
-  ctx.restore();
 }
-
-export function animateVillageBirds(canvas: HTMLCanvasElement, seed: number) {
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return () => {};
-  const random = seededRandom(seed ^ 0x738fa15d);
-  let width = 0;
-  let height = 0;
-  let birds: Bird[] = [];
-  let idle = 0;
-  let frame = 0;
-  let previous = 0;
-
-  const resize = () => {
-    const rect = canvas.getBoundingClientRect();
-    const nextWidth = Math.max(1, rect.width);
-    const nextHeight = Math.max(1, rect.height);
-    const ratio = Math.min(window.devicePixelRatio || 1, 2);
-    const pixelWidth = Math.round(nextWidth * ratio);
-    const pixelHeight = Math.round(nextHeight * ratio);
-    width = nextWidth;
-    height = nextHeight;
-    if (canvas.width === pixelWidth && canvas.height === pixelHeight) return;
-    canvas.width = pixelWidth;
-    canvas.height = pixelHeight;
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-    birds = [];
-    idle = 0;
+export function animateVillageBirds(canvas: HTMLCanvasElement, seed: number, getScene: () => VillageScene) {
+  const ctx=canvas.getContext("2d"); if(!ctx) return ()=>{};
+  const random=seededRandom(seed^0x738fa15d);
+  let width=0,height=0,frame=0,previous=0,idle=0;
+  let birds:Bird[]=[];
+  const resize=()=>{
+    const rect=canvas.getBoundingClientRect(), ratio=Math.min(devicePixelRatio||1,2);
+    width=rect.width;height=rect.height;
+    canvas.width=Math.round(width*ratio);canvas.height=Math.round(height*ratio);
+    ctx.setTransform(ratio,0,0,ratio,0,0);birds=[];idle=0;
   };
-
-  const makeWave = () => {
-    const direction: 1 | -1 = random() < .5 ? 1 : -1;
-    const count = Math.floor(random(2, 7));
-    const center = random(height * .16, height * .53);
-    birds = Array.from({ length: count }, (_, index) => {
-      const startY = clamp(center + random(-height * .11, height * .11), height * .08, height * .66);
-      return {
-        direction,
-        startY,
-        endY: clamp(startY + random(-height * .13, height * .13), height * .08, height * .7),
-        speed: random(95, 155),
-        delay: index * random(.16, .42),
-        age: 0,
-        scale: random(.58, .88) * clamp(width / 900, .78, 1.08),
-        phase: random(),
-        glideLift: random(-.12, .16),
-        flapStart: -1,
-        flapEnd: -1,
-        nextFlap: random(1.2, 5),
-      };
-    });
-    canvas.dataset.flockSize = String(count);
-    canvas.dataset.flightDirection = direction === 1 ? "right" : "left";
-  };
-
-  const tick = (now: number) => {
-    const dt = previous ? Math.min((now - previous) / 1000, .05) : 0;
-    previous = now;
-    ctx.clearRect(0, 0, width, height);
-    if (!birds.length) {
-      idle -= dt;
-      if (idle <= 0) makeWave();
+  const makeWave=()=>{
+    const roofs=getScene().roofs.filter(r=>r.x>0&&r.x<width&&r.y>height*.04&&r.y<height*.93);
+    if(!roofs.length) return;
+    const direction=random()<.5?1:-1;
+    const startY=random(height*.2,height*.7), slope=random(-.32,.32)*height;
+    const path:Knot[]=[];
+    for(let i=0;i<6;i++) {
+      const fraction=i/5, targetX=fraction*width, targetY=startY+slope*(fraction-.5)+Math.sin(fraction*Math.PI*2)*height*.055;
+      const nearby=roofs.filter(r=>Math.abs(r.x-targetX)<width*.09);
+      const candidates=nearby.length?nearby:roofs;
+      const roof=candidates.reduce((best,r)=>Math.hypot(r.x-targetX,(r.y-targetY)*1.6)<Math.hypot(best.x-targetX,(best.y-targetY)*1.6)?r:best);
+      path.push({x:roof.x,y:roof.y-14*roof.scale,base:roof.base,scale:roof.scale});
     }
-    let visible = 0;
-    const hadBirds = birds.length > 0;
-    birds = birds.filter(bird => {
-      bird.age += dt;
-      if (bird.age < bird.delay) return true;
-      const travel = bird.age - bird.delay;
-      const x = (bird.direction === 1 ? -55 : width + 55) + bird.direction * bird.speed * travel;
-      if (x < -80 || x > width + 80) return false;
-      if (bird.age >= bird.nextFlap) {
-        bird.flapStart = bird.age;
-        bird.flapEnd = bird.age + random(.9, 1.5);
-        bird.nextFlap = bird.flapEnd + random(4, 8);
-      }
-      const progress = clamp(bird.speed * travel / (width + 110), 0, 1);
-      const y = bird.startY + (bird.endY - bird.startY) * progress + Math.sin(travel * 1.3 + bird.phase * Math.PI * 2) * 3;
-      drawBird(ctx, bird, x, y);
-      if (x >= 0 && x <= width) visible++;
-      return true;
+    path[0].x=-45;path[path.length-1].x=width+45;
+    if(direction<0) path.reverse();
+    const count=Math.floor(random(2,6)), duration=(width+90)/random(38,56);
+    birds=Array.from({length:count},(_,i)=>({age:0,delay:i*random(.5,1.1),duration:duration*random(.96,1.04),phase:random(),offset:random(-5,5),size:random(.29,.39),path}));
+    canvas.dataset.flockSize=String(count);canvas.dataset.flightDirection=direction>0?"right":"left";
+  };
+  const maskForeground=(roof:VillageRoof)=>{
+    ctx.beginPath();roof.silhouette.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.closePath();ctx.fill();
+  };
+  const tick=(now:number)=>{
+    const dt=previous?Math.min((now-previous)/1000,.05):0;previous=now;
+    ctx.clearRect(0,0,width,height);
+    if(!birds.length) {idle-=dt;if(idle<=0)makeWave();}
+    const hadBirds=birds.length>0;
+    const active: {bird:Bird;at:Knot;yaw:number;bank:number}[]=[];
+    birds=birds.filter(bird=>{
+      bird.age+=dt;const progress=(bird.age-bird.delay)/bird.duration;
+      if(progress>=1)return false;if(progress<0)return true;
+      const at=sample(bird.path,progress), before=sample(bird.path,progress-.008),after=sample(bird.path,progress+.008);
+      at.y+=bird.offset*at.scale+Math.sin(bird.age*1.1+bird.phase*6.28)*at.scale*.5;
+      const yaw=Math.atan2((after.y-before.y)/.55,after.x-before.x);
+      const ahead=sample(bird.path,progress+.025), behind=sample(bird.path,progress-.025);
+      const a=Math.atan2((at.y-behind.y)/.55,at.x-behind.x), b=Math.atan2((ahead.y-at.y)/.55,ahead.x-at.x);
+      const turn=Math.atan2(Math.sin(b-a),Math.cos(b-a));
+      active.push({bird,at,yaw,bank:clamp(turn*1.1,-.4,.4)});return true;
     });
-    canvas.dataset.visibleBirds = String(visible);
-    if (hadBirds && !birds.length) idle = random(1.2, 3.5);
-    frame = requestAnimationFrame(tick);
+    active.sort((a,b)=>a.at.base-b.at.base);
+    for(const {bird,at,yaw,bank} of active) {
+      drawBird(ctx,bird,at,yaw,bank);
+      // Taller/nearer walls occlude the low flight, tying it to the village.
+      ctx.save();ctx.beginPath();ctx.rect(at.x-30*at.scale,at.y-30*at.scale,60*at.scale,60*at.scale);ctx.clip();
+      ctx.globalCompositeOperation="destination-out";ctx.fillStyle="#000";
+      for(const roof of getScene().roofs) if(roof.base>at.base+8*at.scale&&Math.abs(roof.x-at.x)<180*roof.scale)maskForeground(roof);
+      ctx.restore();
+    }
+    canvas.dataset.visibleBirds=String(active.filter(({at})=>at.x>=0&&at.x<=width).length);
+    if(hadBirds&&!birds.length)idle=random(1.5,3.5);
+    frame=requestAnimationFrame(tick);
   };
-
-  resize();
-  const observer = new ResizeObserver(resize);
-  observer.observe(canvas);
-  frame = requestAnimationFrame(tick);
-  return () => {
-    cancelAnimationFrame(frame);
-    observer.disconnect();
-    ctx.clearRect(0, 0, width, height);
-  };
+  resize();const observer=new ResizeObserver(resize);observer.observe(canvas);frame=requestAnimationFrame(tick);
+  return ()=>{cancelAnimationFrame(frame);observer.disconnect();ctx.clearRect(0,0,width,height);};
 }

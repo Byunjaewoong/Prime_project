@@ -1,4 +1,5 @@
 import { generateBuildingColors, tintVillageColor, villagePalettes, type VillagePaletteId } from "./villagePalettes";
+import type { VillageScene } from "./villageScene";
 
 type Point = [number, number];
 type Options = { seed: number; mode: "single" | "village"; size: number; density: number; palette: VillagePaletteId };
@@ -8,6 +9,7 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
   const context = canvas.getContext("2d");
   if (!context) return;
   const ctx: CanvasRenderingContext2D = context;
+  const scene: VillageScene = { roofs: [] };
   const ratio = Math.min(devicePixelRatio || 1, 2);
   canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio);
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -259,6 +261,9 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
     }
     const roofL:Point=[lean,top], roofR:Point=[w+lean,top+tilt];
     const backL:Point=[lean+dx,top-rise], backR:Point=[w+lean+dx,top+tilt-rise];
+    scene.roofs.push({ x:x+(w*.5+lean+dx*.35)*s, y:base+(top-rise*.35-8)*s, base, scale:s,
+      silhouette: (side>0 ? [[0,0],[w,0],[w+dx,-rise],backR,backL,roofL] :
+        [[0,0],[w,0],roofR,backR,backL,[dx,-rise]]).map(p=>[x+p[0]*s,base+p[1]*s] as Point) });
     if(flat) {
       poly([roofL,roofR,backR,backL],roof,roofOutline);
       poly([[lean-3,top-7],[w+lean+2,top+tilt-7],[w+lean+2,top+tilt+3],[lean-3,top+3]],wall,frontOutline);
@@ -350,4 +355,5 @@ export function paintVillage(canvas: HTMLCanvasElement, width: number, height: n
   canvas.dataset.seed=String(options.seed);
   canvas.dataset.mode=options.mode;
   canvas.dataset.palette=options.palette;
+  return scene;
 }

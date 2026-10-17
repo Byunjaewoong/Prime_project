@@ -21,6 +21,11 @@ try {
   await page.waitForFunction(()=>Number(document.querySelector('canvas').dataset.buildings)>20);
   const birds=page.locator('canvas[aria-hidden="true"]');
   await page.waitForFunction(()=>Number(document.querySelector('canvas[aria-hidden="true"]')?.dataset.visibleBirds)>0);
+  await page.waitForFunction(()=>{
+    const c=document.querySelector('canvas[aria-hidden="true"]'),p=c.getContext('2d').getImageData(0,0,c.width,c.height).data;
+    let visible=0;for(let i=3;i<p.length;i+=4)if(p[i]>0)visible++;
+    return visible>30;
+  });
   const flock=await birds.evaluate(c=>({size:Number(c.dataset.flockSize),direction:c.dataset.flightDirection,frame:c.toDataURL()}));
   assert(flock.size>=2&&flock.size<=6,'Flock size should vary within the intended range');
   assert(['left','right'].includes(flock.direction),'Flock should cross from either side');
@@ -34,11 +39,12 @@ try {
     return {painted,nonWhite};
   });
   assert(silhouette.painted>0,'The flock should be visible');
-  assert.equal(silhouette.nonWhite,0,'Birds should be pure white silhouettes without outlines or eyes');
-  await page.waitForTimeout(200);
+  assert(silhouette.nonWhite>0,'Projected wings and body should have depth shading');
+  await page.waitForTimeout(3500);
   assert.notEqual(await birds.evaluate(c=>c.toDataURL()),flock.frame,'Birds should move independently of the painted village');
   await page.keyboard.press('Escape');
   await page.screenshot({path:'artifacts/village/village.png'});
+  await fs.writeFile('artifacts/village/birds.png',Buffer.from(await birds.evaluate(c=>c.toDataURL().split(',')[1]),'base64'));
   for (const [width,height] of [[390,844],[1500,500]]) {
     await page.setViewportSize({width,height});
     await page.waitForFunction(({width,height})=> { const c=document.querySelector('canvas'); return Math.abs(c.width/c.height-width/height)<.002; },{width,height});
