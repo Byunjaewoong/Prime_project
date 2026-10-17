@@ -3,11 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { paintVillage } from "./paintVillage";
+import { animateVillageBirds } from "./villageBirds";
 import { villagePalettes, type VillagePaletteId } from "./villagePalettes";
 import styles from "./village.module.css";
 
 export default function VillageExperience() {
   const canvas = useRef<HTMLCanvasElement>(null);
+  const birdCanvas = useRef<HTMLCanvasElement>(null);
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"single" | "village">("single");
   const [seed, setSeed] = useState(0);
@@ -32,18 +34,34 @@ export default function VillageExperience() {
     return () => { observer.disconnect(); cancelAnimationFrame(frame); };
   }, [mode, seed, size, density, palette]);
   useEffect(() => {
+    if (mode !== "village" || !birdCanvas.current) return;
+    return animateVillageBirds(birdCanvas.current, seed || initialSeed.current || 1);
+  }, [mode, seed]);
+  useEffect(() => {
     const key = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, []);
-  const save = () => canvas.current?.toBlob(blob => {
-    if (!blob) return;
-    const url = URL.createObjectURL(blob), link = document.createElement("a");
-    link.href = url; link.download = `village-${seed || initialSeed.current}.png`; link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  });
+  const save = () => {
+    if (!canvas.current) return;
+    const image = document.createElement("canvas");
+    image.width = canvas.current.width;
+    image.height = canvas.current.height;
+    const context = image.getContext("2d");
+    if (!context) return;
+    context.drawImage(canvas.current, 0, 0);
+    if (mode === "village" && birdCanvas.current)
+      context.drawImage(birdCanvas.current, 0, 0, image.width, image.height);
+    image.toBlob(blob => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob), link = document.createElement("a");
+      link.href = url; link.download = `village-${seed || initialSeed.current}.png`; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+  };
   return <main className={styles.page}>
     <canvas ref={canvas} className={styles.canvas} role="img" aria-label={mode === "single" ? "랜덤으로 생성된 그림 스타일 건물" : "원근과 겹침으로 구성된 그림 스타일 마을"} />
+    {mode === "village" && <canvas ref={birdCanvas} className={styles.birds} aria-hidden="true" />}
     {open && <aside id="village-menu" className={styles.panel} aria-label="마을 설정">
       <div className={styles.heading}><span>VILLAGE</span><Link href="/works/laboratory">← Laboratory</Link></div>
       <span className={styles.label}>COMPOSITION</span>

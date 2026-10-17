@@ -9,8 +9,9 @@ try {
   const page = await browser.newPage({ viewport: { width: 1000, height: 800 } });
   const errors=[]; page.on('pageerror', e=>errors.push(e.message));
   await page.goto('http://127.0.0.1:3000/works/laboratory/village');
-  const canvas=page.locator('canvas');
+  const canvas=page.locator('canvas[role="img"]');
   await page.waitForFunction(()=>document.querySelector('canvas')?.dataset.buildings==='1');
+  assert.equal(await page.locator('canvas[aria-hidden="true"]').count(),0,'Single mode should not render birds');
   await page.screenshot({path:'artifacts/village/single.png'});
   const first=await canvas.getAttribute('data-seed');
   await page.getByRole('button',{name:'메뉴 열기'}).click();
@@ -18,6 +19,13 @@ try {
   await page.waitForFunction(seed=>document.querySelector('canvas').dataset.seed!==seed,first);
   await page.getByRole('button',{name:'전체 마을',exact:true}).click();
   await page.waitForFunction(()=>Number(document.querySelector('canvas').dataset.buildings)>20);
+  const birds=page.locator('canvas[aria-hidden="true"]');
+  await page.waitForFunction(()=>Number(document.querySelector('canvas[aria-hidden="true"]')?.dataset.visibleBirds)>0);
+  const flock=await birds.evaluate(c=>({size:Number(c.dataset.flockSize),direction:c.dataset.flightDirection,frame:c.toDataURL()}));
+  assert(flock.size>=2&&flock.size<=6,'Flock size should vary within the intended range');
+  assert(['left','right'].includes(flock.direction),'Flock should cross from either side');
+  await page.waitForTimeout(200);
+  assert.notEqual(await birds.evaluate(c=>c.toDataURL()),flock.frame,'Birds should move independently of the painted village');
   await page.keyboard.press('Escape');
   await page.screenshot({path:'artifacts/village/village.png'});
   for (const [width,height] of [[390,844],[1500,500]]) {
@@ -48,5 +56,5 @@ try {
   await page.keyboard.press('Escape');
   await page.screenshot({path:'artifacts/village/sunset.png'});
   assert.deepEqual(errors,[]);
-  console.log('Single building, regeneration, village coverage, resize and palette switching passed.');
+  console.log('Single building, flying birds, regeneration, village coverage, resize and palette switching passed.');
 } finally { await browser.close(); }
