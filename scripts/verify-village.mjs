@@ -21,12 +21,16 @@ try {
   await page.waitForFunction(()=>Number(document.querySelector('canvas').dataset.buildings)>20);
   const birds=page.locator('canvas[aria-hidden="true"]');
   await page.waitForFunction(()=>Number(document.querySelector('canvas[aria-hidden="true"]')?.dataset.visibleBirds)>0);
+  await page.waitForFunction(()=>Number(document.querySelector('canvas[aria-hidden="true"]')?.dataset.visibleFlocks)>=6);
   await page.waitForFunction(()=>{
     const c=document.querySelector('canvas[aria-hidden="true"]'),p=c.getContext('2d').getImageData(0,0,c.width,c.height).data;
     let visible=0;for(let i=3;i<p.length;i+=4)if(p[i]>0)visible++;
     return visible>30;
   });
-  const flock=await birds.evaluate(c=>({size:Number(c.dataset.flockSize),direction:c.dataset.flightDirection,frame:c.toDataURL()}));
+  const flock=await birds.evaluate(c=>({size:Number(c.dataset.flockSize),direction:c.dataset.flightDirection,
+    teams:Number(c.dataset.flockCount),active:Number(c.dataset.activeFlocks),visible:Number(c.dataset.visibleFlocks),frame:c.toDataURL()}));
+  assert.equal(flock.teams,10,'Village should maintain ten independent bird flocks');
+  assert(flock.active>=6&&flock.visible>=6,'Several flocks should cross together');
   assert(flock.size>=2&&flock.size<=6,'Flock size should vary within the intended range');
   assert(['left','right'].includes(flock.direction),'Flock should cross from either side');
   const silhouette=await birds.evaluate(c=>{

@@ -3,6 +3,8 @@ import type { VillageRoof, VillageScene } from "./villageScene";
 type Vec3 = [number, number, number];
 type Knot = { x: number; y: number; base: number; scale: number };
 type Bird = { age: number; delay: number; duration: number; phase: number; offset: number; size: number; path: Knot[] };
+type Flock = { birds: Bird[]; idle: number; started: boolean };
+const FLOCK_COUNT = 10;
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 function seededRandom(seed: number) {
   let state = seed >>> 0;
@@ -53,19 +55,42 @@ function drawBird(ctx: CanvasRenderingContext2D, bird: Bird, at: Knot, yaw: numb
 export function animateVillageBirds(canvas: HTMLCanvasElement, seed: number, getScene: () => VillageScene) {
   const ctx=canvas.getContext("2d"); if(!ctx) return ()=>{};
   const random=seededRandom(seed^0x738fa15d);
-  let width=0,height=0,frame=0,previous=0,idle=0;
-  let birds:Bird[]=[];
+  let width=0,height=0,frame=0,previous=0;
+  let flocks:Flock[]=Array.from({length:FLOCK_COUNT},()=>({birds:[],idle:0,started:false}));
+  let cachedScene:VillageScene|null=null;
+  let flightRoofs:VillageRoof[]=[];
+  let foregroundBuckets=new Map<number,VillageRoof[]>();
+  const roofsForScene=()=>{
+    const scene=getScene();
+    if(scene!==cachedScene) {
+      cachedScene=scene;
+      flightRoofs=scene.roofs.filter(r=>r.x>0&&r.x<width&&r.y>height*.04&&r.y<height*.93);
+      foregroundBuckets=new Map();
+      for(const roof of scene.roofs) {
+        const reach=180*roof.scale;
+        for(let column=Math.floor((roof.x-reach)/120);column<=Math.floor((roof.x+reach)/120);column++) {
+          const bucket=foregroundBuckets.get(column)??[];
+          bucket.push(roof);foregroundBuckets.set(column,bucket);
+        }
+      }
+    }
+    return flightRoofs;
+  };
   const resize=()=>{
     const rect=canvas.getBoundingClientRect(), ratio=Math.min(devicePixelRatio||1,2);
+    const pixelWidth=Math.round(rect.width*ratio),pixelHeight=Math.round(rect.height*ratio);
+    if(width===rect.width&&height===rect.height&&canvas.width===pixelWidth&&canvas.height===pixelHeight)return;
     width=rect.width;height=rect.height;
-    canvas.width=Math.round(width*ratio);canvas.height=Math.round(height*ratio);
-    ctx.setTransform(ratio,0,0,ratio,0,0);birds=[];idle=0;
+    canvas.width=pixelWidth;canvas.height=pixelHeight;
+    ctx.setTransform(ratio,0,0,ratio,0,0);
+    cachedScene=null;
+    flocks=Array.from({length:FLOCK_COUNT},()=>({birds:[],idle:0,started:false}));
   };
-  const makeWave=()=>{
-    const roofs=getScene().roofs.filter(r=>r.x>0&&r.x<width&&r.y>height*.04&&r.y<height*.93);
+  const makeWave=(flock:Flock,slot:number,roofs:VillageRoof[])=>{
     if(!roofs.length) return;
     const direction=random()<.5?1:-1;
-    const startY=random(height*.2,height*.7), slope=random(-.32,.32)*height;
+    const lane=(slot+.5+random(-.4,.4))/FLOCK_COUNT;
+    const startY=height*(.16+lane*.62), slope=random(-.26,.26)*height;
     const path:Knot[]=[];
     for(let i=0;i<6;i++) {
       const fraction=i/5, targetX=fraction*width, targetY=startY+slope*(fraction-.5)+Math.sin(fraction*Math.PI*2)*height*.055;
@@ -77,7 +102,9 @@ export function animateVillageBirds(canvas: HTMLCanvasElement, seed: number, get
     path[0].x=-45;path[path.length-1].x=width+45;
     if(direction<0) path.reverse();
     const count=Math.floor(random(2,6)), duration=(width+90)/random(38,56);
-    birds=Array.from({length:count},(_,i)=>({age:0,delay:i*random(.5,1.1),duration:duration*random(.96,1.04),phase:random(),offset:random(-5,5),size:random(.29,.39),path}));
+    const initialAge=flock.started?0:duration*random(.23,.76);
+    flock.birds=Array.from({length:count},(_,i)=>({age:initialAge,delay:i*random(.5,1.1),duration:duration*random(.96,1.04),phase:random(),offset:random(-5,5),size:random(.29,.39),path}));
+    flock.started=true;
     canvas.dataset.flockSize=String(count);canvas.dataset.flightDirection=direction>0?"right":"left";
   };
   const maskForeground=(roof:VillageRoof)=>{
@@ -86,31 +113,40 @@ export function animateVillageBirds(canvas: HTMLCanvasElement, seed: number, get
   const tick=(now:number)=>{
     const dt=previous?Math.min((now-previous)/1000,.05):0;previous=now;
     ctx.clearRect(0,0,width,height);
-    if(!birds.length) {idle-=dt;if(idle<=0)makeWave();}
-    const hadBirds=birds.length>0;
-    const active: {bird:Bird;at:Knot;yaw:number;bank:number}[]=[];
-    birds=birds.filter(bird=>{
-      bird.age+=dt;const progress=(bird.age-bird.delay)/bird.duration;
-      if(progress>=1)return false;if(progress<0)return true;
-      const at=sample(bird.path,progress), before=sample(bird.path,progress-.008),after=sample(bird.path,progress+.008);
-      at.y+=bird.offset*at.scale+Math.sin(bird.age*1.1+bird.phase*6.28)*at.scale*.5;
-      const yaw=Math.atan2((after.y-before.y)/.55,after.x-before.x);
-      const ahead=sample(bird.path,progress+.025), behind=sample(bird.path,progress-.025);
-      const a=Math.atan2((at.y-behind.y)/.55,at.x-behind.x), b=Math.atan2((ahead.y-at.y)/.55,ahead.x-at.x);
-      const turn=Math.atan2(Math.sin(b-a),Math.cos(b-a));
-      active.push({bird,at,yaw,bank:clamp(turn*1.1,-.4,.4)});return true;
-    });
+    const roofs=roofsForScene();
+    const active: {bird:Bird;at:Knot;yaw:number;bank:number;slot:number}[]=[];
+    for(let slot=0;slot<flocks.length;slot++) {
+      const flock=flocks[slot];
+      if(!flock.birds.length) {flock.idle-=dt;if(flock.idle<=0)makeWave(flock,slot,roofs);}
+      const hadBirds=flock.birds.length>0;
+      flock.birds=flock.birds.filter(bird=>{
+        bird.age+=dt;const progress=(bird.age-bird.delay)/bird.duration;
+        if(progress>=1)return false;if(progress<0)return true;
+        const at=sample(bird.path,progress), before=sample(bird.path,progress-.008),after=sample(bird.path,progress+.008);
+        at.y+=bird.offset*at.scale+Math.sin(bird.age*1.1+bird.phase*6.28)*at.scale*.5;
+        const yaw=Math.atan2((after.y-before.y)/.55,after.x-before.x);
+        const ahead=sample(bird.path,progress+.025), behind=sample(bird.path,progress-.025);
+        const a=Math.atan2((at.y-behind.y)/.55,at.x-behind.x), b=Math.atan2((ahead.y-at.y)/.55,ahead.x-at.x);
+        const turn=Math.atan2(Math.sin(b-a),Math.cos(b-a));
+        active.push({bird,at,yaw,bank:clamp(turn*1.1,-.4,.4),slot});return true;
+      });
+      if(hadBirds&&!flock.birds.length)flock.idle=random(1.5,3.5);
+    }
     active.sort((a,b)=>a.at.base-b.at.base);
     for(const {bird,at,yaw,bank} of active) {
       drawBird(ctx,bird,at,yaw,bank);
       // Taller/nearer walls occlude the low flight, tying it to the village.
       ctx.save();ctx.beginPath();ctx.rect(at.x-30*at.scale,at.y-30*at.scale,60*at.scale,60*at.scale);ctx.clip();
       ctx.globalCompositeOperation="destination-out";ctx.fillStyle="#000";
-      for(const roof of getScene().roofs) if(roof.base>at.base+8*at.scale&&Math.abs(roof.x-at.x)<180*roof.scale)maskForeground(roof);
+      for(const roof of foregroundBuckets.get(Math.floor(at.x/120))??[])
+        if(roof.base>at.base+8*at.scale&&Math.abs(roof.x-at.x)<180*roof.scale)maskForeground(roof);
       ctx.restore();
     }
-    canvas.dataset.visibleBirds=String(active.filter(({at})=>at.x>=0&&at.x<=width).length);
-    if(hadBirds&&!birds.length)idle=random(1.5,3.5);
+    const visible=active.filter(({at})=>at.x>=0&&at.x<=width);
+    canvas.dataset.flockCount=String(FLOCK_COUNT);
+    canvas.dataset.activeFlocks=String(flocks.filter(flock=>flock.birds.length>0).length);
+    canvas.dataset.visibleFlocks=String(new Set(visible.map(({slot})=>slot)).size);
+    canvas.dataset.visibleBirds=String(visible.length);
     frame=requestAnimationFrame(tick);
   };
   resize();const observer=new ResizeObserver(resize);observer.observe(canvas);frame=requestAnimationFrame(tick);
