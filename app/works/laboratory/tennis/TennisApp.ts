@@ -31,7 +31,7 @@ export class TennisApp {
   private ball = newBall();
   private ballMesh = new THREE.Mesh(new THREE.SphereGeometry(COURT.radius, 16, 12), new THREE.MeshStandardMaterial({ color: 0xe8ff55, roughness: .85, emissive: 0x313600, emissiveIntensity: .35 }));
   private landing = new THREE.Mesh(new THREE.RingGeometry(.28, .32, 32), new THREE.MeshBasicMaterial({ color: 0xf5f2b8, transparent: true, opacity: .55, depthWrite: false }));
-  private reach = new THREE.Mesh(new THREE.RingGeometry(1.38, 1.40, 48), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .18, depthWrite: false }));
+  private reach = new THREE.Mesh(new THREE.RingGeometry(1.96, 1.98, 48), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .18, depthWrite: false }));
   private trailPositions = new Float32Array(24 * 3);
   private trailGeometry = new THREE.BufferGeometry();
   private trail: THREE.Line;
@@ -220,9 +220,9 @@ export class TennisApp {
     let x = Number(this.keys.has("KeyD") || this.keys.has("ArrowRight")) - Number(this.keys.has("KeyA") || this.keys.has("ArrowLeft")) + this.joystick.x;
     let z = Number(this.keys.has("KeyS") || this.keys.has("ArrowDown")) - Number(this.keys.has("KeyW") || this.keys.has("ArrowUp")) + this.joystick.y;
     const length = Math.hypot(x, z); if (length > 1) { x /= length; z /= length; }
-    this.speeds[0] = Math.min(length, 1) * 7.2;
-    this.positions[0].x = clamp(this.positions[0].x + x * dt * 7.2, -6.8, 6.8);
-    this.positions[0].z = clamp(this.positions[0].z + z * dt * 7.2, 1.15, 14.5);
+    this.speeds[0] = Math.min(length, 1) * 8.5;
+    this.positions[0].x = clamp(this.positions[0].x + x * dt * 8.5, -6.8, 6.8);
+    this.positions[0].z = clamp(this.positions[0].z + z * dt * 8.5, 1.15, 14.5);
   }
   private predict() {
     const forecast = cloneBall(this.ball);
@@ -259,8 +259,8 @@ export class TennisApp {
   private canHit(side: Side) {
     const p = this.positions[side], b = this.ball.p;
     return this.phase === "rally" && this.lastHitter !== side && this.clock - this.lastContact > .25 &&
-      (!this.serveShot || this.bounces > 0) && b.z * courtSide(side) > .4 && b.y > .2 && b.y < 2.25 &&
-      Math.hypot(b.x - p.x, b.z - p.z) < 1.65;
+      (!this.serveShot || this.bounces > 0) && b.z * courtSide(side) > .4 && b.y > .2 && b.y < (side === 0 ? 2.5 : 2.25) &&
+      Math.hypot(b.x - p.x, b.z - p.z) < (side === 0 ? 2 : 1.65);
   }
   private hit(side: Side, gesture: Gesture, targetX?: number) {
     this.backhands[side] = this.ball.p.x < this.positions[side].x;
