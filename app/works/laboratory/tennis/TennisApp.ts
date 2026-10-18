@@ -30,7 +30,7 @@ export class TennisApp {
   private keys = new Set<string>();
   private joystick = { x: 0, y: 0 };
   private previousPointer: { x: number; y: number; time: number } | null = null;
-  private samples: { dx: number; dy: number; time: number }[] = [];
+  private samples: { dx: number; dy: number; time: number; elapsed: number }[] = [];
   private gesture: Gesture | null = null;
   private lastGesture = -1;
   private lastContact = -1;
@@ -173,19 +173,22 @@ export class TennisApp {
   };
   private pointerLeave = () => { this.previousPointer = null; this.samples = []; };
   private pointerMove = (event: PointerEvent) => {
-    if (this.paused || (event.pointerType !== "mouse" && !event.buttons)) return;
+    if (this.paused || (this.phase !== "rally" && !(this.phase === "serve" && this.server === 0)) || (event.pointerType !== "mouse" && !event.buttons)) return;
     const now = performance.now(), previous = this.previousPointer;
     this.previousPointer = { x: event.clientX, y: event.clientY, time: now };
     if (!previous || now - previous.time > 160) { this.samples = []; return; }
-    const scale = 800 / Math.min(this.width, this.height);
-    this.samples.push({ dx: (event.clientX - previous.x) * scale, dy: (event.clientY - previous.y) * scale, time: now });
-    this.samples = this.samples.filter(s => now - s.time < 90);
+    this.samples.push({ dx: event.clientX - previous.x, dy: event.clientY - previous.y, time: now, elapsed: now - previous.time });
+    this.samples = this.samples.filter(s => now - s.time < 120);
     const dx = this.samples.reduce((sum, s) => sum + s.dx, 0), dy = this.samples.reduce((sum, s) => sum + s.dy, 0);
     const distance = Math.hypot(dx, dy);
-    const speed = distance / Math.max(.016, (now - this.samples[0].time + 16) / 1000);
-    if (distance < 12 || speed < 140 || this.clock - this.lastGesture < .23) return;
+    const pathLength = this.samples.reduce((sum, s) => sum + Math.hypot(s.dx, s.dy), 0);
+    const elapsed = this.samples.reduce((sum, s) => sum + s.elapsed, 0);
+    const speed = distance / Math.max(.016, elapsed / 1000);
+    const minDistance = event.pointerType === "mouse" ? 50 : 42;
+    const minSpeed = event.pointerType === "mouse" ? 720 : 600;
+    if (distance < minDistance || speed < minSpeed || distance / pathLength < .72 || this.clock - this.lastGesture < .23) return;
     this.lastGesture = this.clock; this.samples = [];
-    this.gesture = { top: -dy / distance, side: dx / distance, power: clamp((speed - 140) / 1600, .12, 1), expires: this.clock + .19 };
+    this.gesture = { top: -dy / distance, side: dx / distance, power: clamp((speed - minSpeed) / 1600, .12, 1), expires: this.clock + .19 };
     this.swings[0] = true; this.backhands[0] = this.ball.p.x < this.positions[0].x;
     if (this.phase === "serve" && this.server === 0) this.launchServe(this.gesture);
   };
@@ -312,7 +315,7 @@ export class TennisApp {
   };
   private emit() {
     this.onState({ phase: this.phase, points: pointLabels(this.score), games: [...this.score.games], server: this.server, message: this.message, shot: this.clock - this.shotTime < 2.2 ? this.shot : "", power: this.power, rally: this.rally, best: this.best, paused: this.paused });
-    this.canvas.dataset.game = JSON.stringify({ phase: this.phase, paused: this.paused, player: this.positions[0].toArray(), cpu: this.positions[1].toArray(), ball: this.ball.p, velocity: this.ball.v, lastHitter: this.lastHitter, bounces: this.bounces, rally: this.rally, top: this.ball.top, side: this.ball.side });
+    this.canvas.dataset.game = JSON.stringify({ phase: this.phase, paused: this.paused, player: this.positions[0].toArray(), cpu: this.positions[1].toArray(), ball: this.ball.p, velocity: this.ball.v, lastHitter: this.lastHitter, bounces: this.bounces, rally: this.rally, top: this.ball.top, side: this.ball.side, swing: this.athletes[0].swing });
   }
   private resize() {
     this.width = this.canvas.clientWidth; this.height = this.canvas.clientHeight;

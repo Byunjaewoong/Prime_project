@@ -51,8 +51,20 @@ try {
   const game = () => page.locator('canvas').evaluate(c => JSON.parse(c.dataset.game));
   assert.equal((await game()).phase, 'serve');
   await page.screenshot({ path: 'artifacts/tennis/desktop.png' });
-  await page.keyboard.press('Space');
+  await page.mouse.move(800, 500);
+  await page.mouse.move(825, 500, { steps: 20 });
+  await page.waitForTimeout(140);
+  assert.equal((await game()).phase, 'serve', 'Short, slow cursor motion must not swing or serve');
+  assert.equal((await game()).swing, 0, 'The racket should remain still after a small cursor motion');
+  for (let i = 1; i <= 8; i++) {
+    await page.mouse.move(825 + i * 10, 500);
+    await page.waitForTimeout(32);
+  }
+  assert.equal((await game()).phase, 'serve', 'A long but slow cursor motion must not swing');
+  assert.equal((await game()).swing, 0, 'Slow cursor travel should leave the racket still');
+  await page.mouse.move(1155, 500, { steps: 2 });
   await page.waitForFunction(() => JSON.parse(document.querySelector('canvas').dataset.game).phase === 'rally');
+  await page.waitForFunction(() => JSON.parse(document.querySelector('canvas').dataset.game).swing > 0);
   await page.keyboard.down('KeyA'); await page.waitForTimeout(650); await page.keyboard.up('KeyA');
   assert((await game()).player[0] < 1, 'WASD should move the lower player');
   await page.getByRole('button', { name: 'Open menu' }).click();

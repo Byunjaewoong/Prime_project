@@ -10,7 +10,7 @@
 - Space / swipe / serve button: serve. P: pause. Escape / M: settings.
 - Menu: opponent difficulty, landing/contact guides, new match, navigation.
 
-The input window is 190 ms with a 230 ms swing cooldown. A contact needs the ball on the receiver's side, within 1.65 world units and 0.2–2.25 units high. Serves must bounce before a return. The landing marker is a prediction, not an additional input target.
+A mouse swing needs at least 50 CSS pixels of straight travel at 720 pixels/second within a 120 ms window; touch needs 42 pixels at 600 pixels/second. Slow cursor motion and short jitter do not animate the racket. The input window is 190 ms with a 230 ms swing cooldown. A contact needs the ball on the receiver's side, within 1.65 world units and 0.2–2.25 units high. Serves must bounce before a return. The landing marker is a prediction, not an additional input target.
 
 ## Simulation
 
