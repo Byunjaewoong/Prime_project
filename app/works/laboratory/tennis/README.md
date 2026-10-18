@@ -6,7 +6,8 @@
 
 - WASD / arrow keys: movement. Mobile: left movement pad.
 - Move the mouse as the ball enters the player's contact ring; no click is needed. Mobile: swipe on the court with a second finger.
-- Upward swing: topspin. Downward swing: slice. Horizontal motion: aim and sidespin. Faster motion adds power and depth.
+- Upward swing: topspin. Downward swing: slice. Horizontal motion: aim and sidespin. Faster motion adds power, depth and spin. Spin rises from 18% at the gesture threshold to 100% at threshold + 1600 CSS pixels/second (mouse: 2320, touch: 2200).
+- Full horizontal spin bends the airborne heading by approximately 180 degrees before the first bounce. Diagonal strokes split strength between vertical and sideways spin. Serves also accept this acrobatic spin.
 - The racket travels along the captured stroke direction. A short cue beside it shows DRIVE (up), CUT (down), or SIDE (horizontal), with an arrow for diagonal strokes. The same feedback appears for a missed swing.
 - Space / swipe / serve button: serve. P: pause. Escape / M: settings.
 - Menu: opponent difficulty, landing/contact guides, new match, navigation.
@@ -14,6 +15,8 @@
 A mouse swing needs at least 50 CSS pixels of straight travel at 720 pixels/second within a 120 ms window; touch needs 42 pixels at 600 pixels/second. Slow cursor motion and short jitter do not animate the racket. The input window is 190 ms with a 230 ms swing cooldown. A contact needs the ball on the receiver's side, within 1.65 world units and 0.2–2.25 units high. Serves must bounce before a return. The landing marker is a prediction, not an additional input target.
 
 ## Simulation
+
+Acrobatic sidespin rotates horizontal velocity with drag, integrated analytically. Launch aiming solves the matching curved trajectory so extreme spin still reaches the chosen landing target. Net clearance is checked along the curved path; prediction uses the same angular rate. Ground contact reduces the turn rate to 35%. Topspin/slice uses a stronger vertical Magnus term (±7 m/s²).
 
 Fixed 120 Hz physics is independent of rendering. `tennisPhysics.ts` handles gravity, simplified Magnus acceleration, drag, spin-dependent bounce, launch trajectories and scoring. `TennisApp.ts` handles first/second serves, net/out/second bounce, alternating service games, AI interception with speed/reaction limits and the match state machine. A short match requires at least three games and a two-game lead; points use deuce/advantage. This is an arcade interpretation: assisted net clearance, enlarged ball/contact zone and no service lets or foot-fault rules.
 

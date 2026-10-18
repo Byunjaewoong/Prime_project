@@ -8,6 +8,24 @@ const source = await fs.readFile('app/works/laboratory/tennis/tennisPhysics.ts',
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
 const physics = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}`);
 const { newBall, launchShot, advanceBall, newScore, awardPoint, pointLabels } = physics;
+assert(physics.swipeSpin(2320,720)===1);
+assert(physics.swipeSpin(900,720)<physics.swipeSpin(1600,720));
+for(const sign of [-1,1]) {
+  const ball=newBall();ball.p={x:0,y:1,z:9};
+  launchShot(ball,0,-9,1,0,sign);
+  let turn=0, lateral=0, bounced=false;
+  for(let i=0;i<1500;i++) {
+    const heading=Math.atan2(ball.v.z,ball.v.x);
+    const event=advanceBall(ball,1/240);
+    if(event==='bounce'){bounced=true;break;}
+    const next=Math.atan2(ball.v.z,ball.v.x);
+    turn+=Math.atan2(Math.sin(next-heading),Math.cos(next-heading));
+    lateral=Math.max(lateral,Math.abs(ball.p.x));
+  }
+  assert(bounced&&Math.abs(turn-sign*Math.PI)<.04,'Maximum sidespin should turn about 180 degrees');
+  assert(lateral>7,'Maximum sidespin should trace a broad semicircle');
+  assert(Math.hypot(ball.p.x,ball.p.z+9)<.3,'Extreme curve should land at the intended target');
+}
 function flight(top, side = 0, serve = false) {
   const ball = newBall(); ball.p = { x: serve ? 1.6 : 0, y: serve ? 2.45 : .9, z: serve ? 12.25 : 9 };
   launchShot(ball, serve ? -2 : 2.4, serve ? -4.5 : -9, .7, top, side);
@@ -91,7 +109,7 @@ try {
       if (g.lastHitter === 0 && g.rally >= 2) returns = Math.max(returns, Math.floor(g.rally / 2));
       let tx = 0, tz = 10;
       if (g.lastHitter === 1) {
-        const b = { p: { ...g.ball }, v: { ...g.velocity }, top: g.top, side: g.side };
+        const b = { p: { ...g.ball }, v: { ...g.velocity }, top: g.top, side: g.side, curve: g.curve };
         for (let i = 0; i < 300; i++) {
           const event = advanceBall(b, 1 / 120);
           if (b.p.z > 1.5 && b.p.y < 1.2 && b.v.y < 0) break;

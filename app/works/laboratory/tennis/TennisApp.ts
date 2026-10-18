@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { disposeObject } from "@/app/lib/disposeObject";
 import { makeAthlete, makeCourt } from "./tennisModels";
-import { advanceBall, awardPoint, clamp, cloneBall, COURT, courtSide, launchShot, newBall, newScore, opposite, pointLabels, type Side } from "./tennisPhysics";
+import { advanceBall, awardPoint, clamp, cloneBall, COURT, courtSide, launchShot, newBall, newScore, opposite, pointLabels, swipeSpin, type Side } from "./tennisPhysics";
 
 export type Difficulty = "Easy" | "Normal" | "Hard";
 export type TennisState = {
@@ -137,7 +137,7 @@ export class TennisApp {
     if (!gesture) this.athletes[this.server].setStroke(.75, 0);
     this.ball.p = { x: p.x, y: 2.45, z: p.z - court * .35 };
     const power = gesture?.power ?? .55;
-    launchShot(this.ball, this.serveBox * (1.5 + power), -court * (4.0 + power), power, .4, (gesture?.side ?? 0) * .3);
+    launchShot(this.ball, this.serveBox * (1.5 + power), -court * (4.0 + power), power, gesture?.top ?? .4, gesture?.side ?? 0);
     this.lastHitter = this.server; this.lastContact = this.clock; this.bounces = 0; this.serveShot = true;
     this.phase = "rally"; this.phaseTime = 0; this.swings[this.server] = true;
     const serveFeedback = gesture ? strokeFeedback(gesture.top, gesture.side) : null;
@@ -204,7 +204,8 @@ export class TennisApp {
     const minSpeed = event.pointerType === "mouse" ? 720 : 600;
     if (distance < minDistance || speed < minSpeed || distance / pathLength < .72 || this.clock - this.lastGesture < .23) return;
     this.lastGesture = this.clock; this.samples = [];
-    this.gesture = { top: -dy / distance, side: dx / distance, power: clamp((speed - minSpeed) / 1600, .12, 1), expires: this.clock + .19 };
+    const spin = swipeSpin(speed, minSpeed);
+    this.gesture = { top: -dy / distance * spin, side: dx / distance * spin, power: clamp((speed - minSpeed) / 1600, .12, 1), expires: this.clock + .19 };
     const feedback = strokeFeedback(this.gesture.top, this.gesture.side);
     this.athletes[0].setStroke(this.gesture.top, this.gesture.side);
     this.swings[0] = true; this.backhands[0] = this.ball.p.x < this.positions[0].x;
@@ -265,7 +266,7 @@ export class TennisApp {
     this.backhands[side] = this.ball.p.x < this.positions[side].x;
     this.athletes[side].setStroke(gesture.top, gesture.side);
     const target = targetX ?? clamp(gesture.side * 3.5 + this.ball.p.x * .13, -3.85, 3.85);
-    launchShot(this.ball, target, -courtSide(side) * (6.5 + gesture.power * 4), gesture.power, gesture.top, gesture.side * .75);
+    launchShot(this.ball, target, -courtSide(side) * (6.5 + gesture.power * 4), gesture.power, gesture.top, gesture.side);
     this.lastHitter = side; this.lastContact = this.clock; this.bounces = 0; this.serveShot = false; this.swings[side] = true;
     this.rally++; this.best = Math.max(this.best, this.rally);
     const feedback = strokeFeedback(gesture.top, gesture.side);
@@ -344,7 +345,7 @@ export class TennisApp {
       ? { name: this.cueName, arrow: this.cueArrow, x: clamp(racketX + 22, 26, this.width - 94), y: clamp(racketY - 20, 40, this.height - 40) }
       : null;
     this.onState({ phase: this.phase, points: pointLabels(this.score), games: [...this.score.games], server: this.server, message: this.message, shot: this.clock - this.shotTime < 2.2 ? this.shot : "", power: this.power, rally: this.rally, best: this.best, paused: this.paused, swingCue });
-    this.canvas.dataset.game = JSON.stringify({ phase: this.phase, paused: this.paused, player: this.positions[0].toArray(), cpu: this.positions[1].toArray(), ball: this.ball.p, velocity: this.ball.v, lastHitter: this.lastHitter, bounces: this.bounces, rally: this.rally, top: this.ball.top, side: this.ball.side, swing: this.athletes[0].swing, racketScreen: [racketX, racketY], swingCue });
+    this.canvas.dataset.game = JSON.stringify({ phase: this.phase, paused: this.paused, player: this.positions[0].toArray(), cpu: this.positions[1].toArray(), ball: this.ball.p, velocity: this.ball.v, lastHitter: this.lastHitter, bounces: this.bounces, rally: this.rally, top: this.ball.top, side: this.ball.side, curve: this.ball.curve, swing: this.athletes[0].swing, racketScreen: [racketX, racketY], swingCue });
   }
   private resize() {
     this.width = this.canvas.clientWidth; this.height = this.canvas.clientHeight;
