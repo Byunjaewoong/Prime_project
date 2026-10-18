@@ -119,6 +119,47 @@ try {
   await page.getByRole('button', { name: 'Open menu' }).click();
   await page.getByRole('button', { name: 'New match' }).click();
   assert.equal((await game()).phase, 'serve');
+  const strokes = [
+    { from: [850, 500], to: [1150, 500], name: 'SIDE', arrow: '→', axis: 0, sign: 1 },
+    { from: [1150, 500], to: [850, 500], name: 'SIDE', arrow: '←', axis: 0, sign: -1 },
+    { from: [1000, 600], to: [1000, 300], name: 'DRIVE', arrow: '↑', axis: 1, sign: -1 },
+    { from: [1000, 300], to: [1000, 600], name: 'CUT', arrow: '↓', axis: 1, sign: 1 },
+  ];
+  const strokeDistances = [];
+  for (const [index, stroke] of strokes.entries()) {
+    if (index) {
+      await page.getByRole('button', { name: 'Open menu' }).click();
+      await page.getByRole('button', { name: 'New match' }).click();
+    }
+    await page.waitForTimeout(460);
+    await page.mouse.move(...stroke.from);
+    await page.evaluate(() => {
+      const canvas = document.querySelector('canvas');
+      window.tennisStrokeSamples = [];
+      const observer = new MutationObserver(() => {
+        if (!canvas.dataset.game) return;
+        const frame = JSON.parse(canvas.dataset.game);
+        if (frame.swing > 0) window.tennisStrokeSamples.push({ racket: frame.racketScreen, progress: 1 - frame.swing, cue: frame.swingCue });
+      });
+      observer.observe(canvas, { attributes: true, attributeFilter: ['data-game'] });
+      window.tennisStrokeObserver = observer;
+    });
+    await page.mouse.move(...stroke.to, { steps: 4 });
+    await page.waitForFunction(() => JSON.parse(document.querySelector('canvas').dataset.game).phase === 'rally');
+    if (stroke.name === 'DRIVE' || stroke.name === 'CUT') {
+      await page.waitForFunction(name => JSON.parse(document.querySelector('canvas').dataset.game).swingCue?.name === name, stroke.name);
+      await page.screenshot({ path: `artifacts/tennis/${stroke.name.toLowerCase()}.png` });
+    }
+    await page.waitForTimeout(400);
+    const samples = await page.evaluate(() => { window.tennisStrokeObserver.disconnect(); return window.tennisStrokeSamples; });
+    assert(samples.length >= 2, `${stroke.name} should have visible animation frames`);
+    assert(samples.some(sample => sample.cue?.name === stroke.name && sample.cue?.arrow === stroke.arrow), `${stroke.name} should display ${stroke.arrow}`);
+    const start = samples.find(sample => sample.progress >= .18) ?? samples[0];
+    const end = [...samples].reverse().find(sample => sample.progress <= .85) ?? samples.at(-1);
+    const displacement = end.racket[stroke.axis] - start.racket[stroke.axis];
+    assert(displacement * stroke.sign > 2, `${stroke.name} ${stroke.arrow} racket moved the wrong direction: ${displacement.toFixed(1)}px`);
+    strokeDistances.push(`${stroke.arrow} ${displacement.toFixed(1)}px`);
+  }
   await page.keyboard.press('Escape'); await page.getByRole('link', { name: 'Laboratory' }).click();
   await page.getByRole('link', { name: /17. Tennis/ }).click();
   await page.getByRole('button', { name: 'Enter court' }).click();
@@ -142,10 +183,10 @@ try {
   await mobile.getByRole('button', { name: 'Open menu' }).click();
   await mobile.screenshot({ path: 'artifacts/tennis/mobile-menu.png' });
   await mobile.getByRole('button', { name: 'New match' }).click();
-  await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 300, y: 580, id: 5 }] });
-  for (let y = 560; y >= 480; y -= 20) {
+  await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 300, y: 630, id: 5 }] });
+  for (let y = 600; y >= 420; y -= 30) {
     await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 300, y, id: 5 }] });
-    await mobile.waitForTimeout(16);
+    await mobile.waitForTimeout(8);
   }
   await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   assert.equal(JSON.parse(await mobile.locator('canvas').getAttribute('data-game')).phase, 'rally', 'A real mobile swipe should serve');
@@ -153,5 +194,5 @@ try {
   await mobile.waitForTimeout(200);
   await mobile.screenshot({ path: 'artifacts/tennis/mobile-landscape.png' });
   assert.deepEqual(errors, []);
-  console.log(`Browser: desktop court, keyboard, pause, AI return, ${returns} human returns, menu, restart, remount, mobile pad passed.`);
+  console.log(`Browser: desktop court, keyboard, pause, AI return, ${returns} human returns, four directional racket strokes (${strokeDistances.join(', ')}) and cues, restart, remount, mobile pad passed.`);
 } finally { await browser.close(); }

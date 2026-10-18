@@ -107,7 +107,11 @@ export function makeAthlete(scene: THREE.Scene, cpu: boolean) {
   }
   line(racket, strings, 0xf9f5dc, .55);
   return {
-    root, swing: 0, stride: 0,
+    root, racketTip: hoop, swing: 0, stride: 0, strokeTop: 0, strokeSide: 0,
+    setStroke(top: number, side: number) {
+      this.strokeTop = top;
+      this.strokeSide = side;
+    },
     update(dt: number, speed: number, swinging: boolean, backhand: boolean) {
       this.stride += speed * dt * 2.5;
       if (swinging) this.swing = 1;
@@ -118,12 +122,20 @@ export function makeAthlete(scene: THREE.Scene, cpu: boolean) {
       knees[0].rotation.x = Math.max(0, -gait) * .65; knees[1].rotation.x = Math.max(0, gait) * .65;
       arms[0].rotation.x = -.35 - gait * .3; arms[0].rotation.z = .14;
       elbows[0].rotation.x = -.6;
-      const sweep = Math.sin((1 - this.swing) * Math.PI) * (this.swing > 0 ? 1 : 0);
-      arms[1].rotation.x = -.5 - sweep * 1.4;
-      arms[1].rotation.z = -.35 + sweep * (backhand ? 1.8 : -.65);
-      arms[1].rotation.y = (1 - this.swing) * sweep * 2.5;
-      elbows[1].rotation.x = -.85 + sweep * .55;
-      body.rotation.y = sweep * (backhand ? -.5 : .6);
+      const progress = 1 - this.swing;
+      // Wind up in the opposite direction, travel along the input vector, then recover.
+      const travel = this.swing === 0 ? 0 : progress < .2
+        ? -.7 * Math.sin(progress / .2 * Math.PI / 2)
+        : progress < .8
+          ? -.7 + 1.7 * ((progress - .2) / .6) ** 2 * (3 - 2 * ((progress - .2) / .6))
+          : Math.cos((progress - .8) / .2 * Math.PI / 2);
+      const contact = this.swing === 0 ? 0 : Math.sin(progress * Math.PI);
+      arms[1].rotation.x = -.5 - this.strokeTop * 1.05 * travel;
+      arms[1].rotation.z = (backhand ? .12 : -.35) - this.strokeSide * 1.18 * travel;
+      arms[1].rotation.y = this.strokeSide * .18 * travel;
+      elbows[1].rotation.x = -.85 + contact * .3;
+      racket.rotation.x = -.2 + this.strokeTop * .24 * travel;
+      body.rotation.y = contact * (backhand ? -.12 : .12);
     },
   };
 }

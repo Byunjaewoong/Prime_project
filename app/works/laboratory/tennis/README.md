@@ -7,6 +7,7 @@
 - WASD / arrow keys: movement. Mobile: left movement pad.
 - Move the mouse as the ball enters the player's contact ring; no click is needed. Mobile: swipe on the court with a second finger.
 - Upward swing: topspin. Downward swing: slice. Horizontal motion: aim and sidespin. Faster motion adds power and depth.
+- The racket travels along the captured stroke direction. A short cue beside it shows DRIVE (up), CUT (down), or SIDE (horizontal), with an arrow for diagonal strokes. The same feedback appears for a missed swing.
 - Space / swipe / serve button: serve. P: pause. Escape / M: settings.
 - Menu: opponent difficulty, landing/contact guides, new match, navigation.
 

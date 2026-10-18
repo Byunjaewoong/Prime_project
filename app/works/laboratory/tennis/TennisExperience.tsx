@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { Difficulty, TennisApp, TennisState } from "./TennisApp";
 import styles from "./tennis.module.css";
 
-const initial: TennisState = { phase: "ready", points: ["0", "0"], games: [0, 0], server: 0, message: "", shot: "", power: 0, rally: 0, best: 0, paused: false };
+const initial: TennisState = { phase: "ready", points: ["0", "0"], games: [0, 0], server: 0, message: "", shot: "", power: 0, rally: 0, best: 0, paused: false, swingCue: null };
 export default function TennisExperience() {
   const canvas = useRef<HTMLCanvasElement>(null), app = useRef<TennisApp | null>(null);
   const [state, setState] = useState(initial);
@@ -70,6 +70,7 @@ export default function TennisExperience() {
       <div className={styles.shot} aria-live="polite">{state.shot}<div style={{ opacity: state.shot ? 1 : 0 }}><i style={{ width: `${state.power * 100}%` }} /></div></div>
       <span className={styles.desktopHelp}>WASD MOVE · MOUSE SWING · P PAUSE</span>
     </div>}
+    {!menu && state.swingCue && <div className={styles.swingCue} style={{ left: state.swingCue.x, top: state.swingCue.y }} aria-live="polite"><strong>{state.swingCue.arrow}</strong><span>{state.swingCue.name}</span></div>}
     {!menu && state.phase === "serve" && !state.paused && <button className={styles.serve} onClick={() => { app.current?.serve(); (document.activeElement as HTMLElement)?.blur(); }} disabled={state.server !== 0}>{state.message}</button>}
     {!menu && state.phase === "point" && <div className={styles.point} role="status">{state.message}</div>}
     {!menu && state.paused && state.phase !== "ready" && <div className={styles.scrim}><section className={styles.card}><p>TAKE YOUR TIME</p><h1>Paused.</h1><button onClick={() => { app.current?.setPaused(false); (document.activeElement as HTMLElement)?.blur(); }}>Resume ↗</button></section></div>}
@@ -80,7 +81,7 @@ export default function TennisExperience() {
         <div className={styles.description}>{state.phase === "match" ? `${state.message} · ${state.games.join(" — ")} · BEST RALLY ${state.best}` : "타이밍으로 받아치고, 스윙으로 궤적을 만드세요."}</div>
         <div className={styles.instructions}>
           <div><b>01 / MOVE</b><span>WASD · 방향키 / 모바일 이동 패드</span></div>
-          <div><b>02 / SWING</b><span>공이 가까워질 때 마우스 이동 / 스와이프<br />↑ 탑스핀 · ↓ 슬라이스 · ↔ 코스와 횡회전</span></div>
+          <div><b>02 / SWING</b><span>공이 가까워질 때 마우스 스트로크 / 스와이프<br />↑ DRIVE · ↓ CUT · ↔ SIDE</span></div>
           <div><b>03 / TIMING</b><span>빠른 스윙 = 강한 타격. 원 안에서 받아치세요.<br />서브: Space 또는 스와이프 · 일시정지: P</span></div>
         </div>
         {error ? <p role="alert" className={styles.error}>WebGL 실행 오류: {error}</p> : <button disabled={!loaded} onClick={start}>{!loaded ? "Preparing court…" : state.phase === "match" ? "Play again ↗" : "Enter court ↗"}</button>}
@@ -103,7 +104,7 @@ export default function TennisExperience() {
         <label>OPPONENT<select value={difficulty} onChange={e => { const d = e.target.value as Difficulty; setDifficulty(d); app.current?.setDifficulty(d); }}><option>Easy</option><option>Normal</option><option>Hard</option></select></label>
         <label className={styles.check}>Landing & contact guides<input type="checkbox" checked={guide} onChange={e => { setGuide(e.target.checked); app.current?.setGuide(e.target.checked); }} /></label>
         <button className={styles.newMatch} onClick={start}>↻ New match</button>
-        <section><h2>HOW TO PLAY</h2><p>아래 흰색 선수가 플레이어입니다. WASD 또는 방향키로 이동한 뒤, 공이 닿을 때 마우스를 움직이세요. 클릭할 필요는 없습니다.</p><p>위로: 탑스핀 · 아래로: 슬라이스<br />좌우: 코스와 횡회전 · 빠르게: 강한 샷<br />모바일: 왼쪽 패드 이동 + 화면 스와이프</p><p>Space / 스와이프: 서브 · P: 일시정지<br />서브는 대각 서비스 박스에 들어가야 하며, 리턴은 한 번 바운드 후 가능합니다. 아웃·네트·두 번 바운드는 실점입니다.</p><p>3게임 선승, 2게임 차로 종료합니다. 실제 유체/공기역학 대신 게임용 스핀 물리를 사용합니다.</p></section>
+        <section><h2>HOW TO PLAY</h2><p>아래 흰색 선수가 플레이어입니다. WASD 또는 방향키로 이동한 뒤, 공이 닿을 때 마우스를 휘두르세요. 클릭할 필요는 없습니다.</p><p>위로: DRIVE(탑스핀) · 아래로: CUT(슬라이스)<br />좌우: SIDE(코스와 횡회전) · 빠르게: 강한 샷<br />라켓과 방향 화살표가 실제 스트로크를 따라갑니다.<br />모바일: 왼쪽 패드 이동 + 화면 스와이프</p><p>Space / 스와이프: 서브 · P: 일시정지<br />서브는 대각 서비스 박스에 들어가야 하며, 리턴은 한 번 바운드 후 가능합니다. 아웃·네트·두 번 바운드는 실점입니다.</p><p>3게임 선승, 2게임 차로 종료합니다. 실제 유체/공기역학 대신 게임용 스핀 물리를 사용합니다.</p></section>
         <nav><Link href="/works/laboratory">← Laboratory</Link><Link href="/">Home ↗</Link></nav>
       </aside>
     </div>}
