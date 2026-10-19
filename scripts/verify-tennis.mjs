@@ -83,7 +83,11 @@ try {
   await page.mouse.move(1155, 500, { steps: 2 });
   await page.waitForFunction(() => JSON.parse(document.querySelector('canvas').dataset.game).phase === 'rally');
   await page.waitForFunction(() => JSON.parse(document.querySelector('canvas').dataset.game).swing > 0);
-  await page.keyboard.down('KeyA'); await page.waitForTimeout(650); await page.keyboard.up('KeyA');
+  await page.keyboard.down('KeyA');
+  await page.keyboard.press('ShiftLeft');
+  await page.waitForTimeout(120);
+  assert((await game()).dashCooldown > 1.5, 'Shift should trigger the player dash');
+  await page.waitForTimeout(530); await page.keyboard.up('KeyA');
   assert((await game()).player[0] < 1, 'WASD should move the lower player');
   await page.getByRole('button', { name: 'Open menu' }).click();
   const paused = await game(); assert(paused.paused);
@@ -198,6 +202,8 @@ try {
   await mobile.waitForTimeout(450);
   await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   assert(JSON.parse(await mobile.locator('canvas').getAttribute('data-game')).player[0] > beforeMove, 'Mobile pad should move player');
+  await mobile.getByRole('button', { name: 'Dash' }).click();
+  assert(JSON.parse(await mobile.locator('canvas').getAttribute('data-game')).dashCooldown > 1, 'Mobile DASH button should trigger the burst');
   await mobile.getByRole('button', { name: 'Open menu' }).click();
   await mobile.screenshot({ path: 'artifacts/tennis/mobile-menu.png' });
   await mobile.getByRole('button', { name: 'New match' }).click();

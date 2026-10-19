@@ -10,11 +10,14 @@
 - Full horizontal spin bends the airborne heading by approximately 180 degrees before the first bounce. Diagonal strokes split strength between vertical and sideways spin. Serves also accept this acrobatic spin.
 - The racket travels along the captured stroke direction. A short cue beside it shows DRIVE (up), CUT (down), or SIDE (horizontal), with an arrow for diagonal strokes. The same feedback appears for a missed swing.
 - Space / swipe / serve button: serve. P: pause. Escape / M: settings.
+- Shift or the mobile DASH button: a 0.22-second burst at 19 world units/second toward the held direction (or ball if idle), with a 2.2-second cooldown.
 - Menu: opponent difficulty, landing/contact guides, new match, navigation.
 
 A mouse swing needs at least 50 CSS pixels of straight travel at 720 pixels/second within a 120 ms window; touch needs 42 pixels at 600 pixels/second. Slow cursor motion and short jitter do not animate the racket. The input window is 190 ms with a 230 ms swing cooldown. A player contact needs the ball on the receiver's side, within 2 world units and 0.2–2.5 units high. Player movement is 8.5 world units per second. Serves must bounce before a return. The landing marker is a prediction, not an additional input target.
 
 ## Simulation
+
+Fast contact within 1.05 world units and 0.4–2.1 units high triggers PERFECT: a small power bonus, bright contact ring, stronger short trail and a distinct synthesized hit sound. The sound context starts from the Enter Court button or a later pointer gesture. The computer initially underestimates sideways curve and revises its landing prediction as it sees more of the flight; difficulty controls that reaction delay.
 
 Acrobatic sidespin rotates horizontal velocity with drag, integrated analytically. Launch aiming solves the matching curved trajectory so extreme spin still reaches the chosen landing target. Net clearance is checked along the curved path; prediction uses the same angular rate. Ground contact reduces the turn rate to 35%. Topspin/slice uses a stronger vertical Magnus term (±7 m/s²).
 

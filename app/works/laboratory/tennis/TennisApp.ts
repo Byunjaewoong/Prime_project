@@ -7,7 +7,7 @@ export type Difficulty = "Easy" | "Normal" | "Hard";
 export type TennisState = {
   phase: "ready" | "serve" | "rally" | "point" | "match";
   points: [string, string]; games: [number, number]; server: Side;
-  message: string; shot: string; power: number; rally: number; best: number; paused: boolean;
+  message: string; shot: string; power: number; rally: number; best: number; paused: boolean; dashCooldown: number;
   swingCue: { name: string; arrow: string; x: number; y: number } | null;
 };
 type Gesture = { top: number; side: number; power: number; expires: number };
@@ -34,7 +34,7 @@ export class TennisApp {
   private reach = new THREE.Mesh(new THREE.RingGeometry(1.96, 1.98, 48), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .18, depthWrite: false }));
   private trailPositions = new Float32Array(24 * 3);
   private trailGeometry = new THREE.BufferGeometry();
-  private trail: THREE.Line;
+  private trail: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
   private trailCount = 0;
   private keys = new Set<string>();
   private joystick = { x: 0, y: 0 };
@@ -68,6 +68,13 @@ export class TennisApp {
   private showGuide = true;
   private aiTarget = new THREE.Vector3();
   private aiTimer = 0;
+  private dashTime = 0;
+  private dashCooldown = 0;
+  private dashDirection = { x: 0, z: -1 };
+  private perfectTime = 0;
+  private perfectPoint = new THREE.Vector3();
+  private hitFlash = new THREE.Mesh(new THREE.RingGeometry(.18, .27, 32), new THREE.MeshBasicMaterial({ color: 0xf7ffae, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }));
+  private audio: AudioContext | null = null;
   private width = 1;
   private height = 1;
   private frame = 0;
@@ -96,6 +103,7 @@ export class TennisApp {
     this.ballMesh.castShadow = true; this.scene.add(this.ballMesh);
     this.landing.rotation.x = this.reach.rotation.x = -Math.PI / 2;
     this.scene.add(this.landing, this.reach);
+    this.hitFlash.visible = false; this.scene.add(this.hitFlash);
     this.trailGeometry.setAttribute("position", new THREE.BufferAttribute(this.trailPositions, 3));
     this.trail = new THREE.Line(this.trailGeometry, new THREE.LineBasicMaterial({ color: 0xf6ffc1, transparent: true, opacity: .35, depthWrite: false }));
     this.trail.frustumCulled = false; this.scene.add(this.trail);
@@ -112,11 +120,38 @@ export class TennisApp {
     this.resize(); this.emit(); this.frame = requestAnimationFrame(this.tick);
   }
 
-  start = () => { this.score = newScore(); this.server = 0; this.rally = 0; this.best = 0; this.serviceFaults = 0; this.paused = false; this.prepareServe(); };
+  start = () => { this.unlockAudio(); this.score = newScore(); this.server = 0; this.rally = 0; this.best = 0; this.serviceFaults = 0; this.paused = false; this.dashTime = this.dashCooldown = this.perfectTime = 0; this.prepareServe(); };
   setPaused(value: boolean) { this.paused = value; this.keys.clear(); this.joystick = { x: 0, y: 0 }; this.gesture = null; this.previousPointer = null; this.samples = []; this.emit(); }
   setDifficulty(value: Difficulty) { this.difficulty = value; }
   setGuide(value: boolean) { this.showGuide = value; }
   setJoystick(x: number, y: number) { this.joystick = { x, y }; }
+  dash = () => {
+    if (this.phase !== "rally" || this.paused || this.dashCooldown > 0) return;
+    let x = Number(this.keys.has("KeyD") || this.keys.has("ArrowRight")) - Number(this.keys.has("KeyA") || this.keys.has("ArrowLeft")) + this.joystick.x;
+    let z = Number(this.keys.has("KeyS") || this.keys.has("ArrowDown")) - Number(this.keys.has("KeyW") || this.keys.has("ArrowUp")) + this.joystick.y;
+    const length = Math.hypot(x, z);
+    if (length < .1) { x = this.ball.p.x - this.positions[0].x; z = this.ball.p.z - this.positions[0].z; }
+    const size = Math.hypot(x, z) || 1;
+    this.dashDirection = { x: x / size, z: z / size };
+    this.dashTime = .22; this.dashCooldown = 2.2; this.emit();
+  };
+  private unlockAudio() {
+    if (typeof window === "undefined") return;
+    this.audio ??= new AudioContext();
+    if (this.audio.state === "suspended") void this.audio.resume();
+  }
+  private hitSound(perfect: boolean) {
+    if (!this.audio || this.audio.state !== "running") return;
+    const at = this.audio.currentTime, oscillator = this.audio.createOscillator(), gain = this.audio.createGain();
+    oscillator.type = perfect ? "triangle" : "sine";
+    oscillator.frequency.setValueAtTime(perfect ? 620 : 350, at);
+    oscillator.frequency.exponentialRampToValueAtTime(perfect ? 155 : 120, at + .13);
+    gain.gain.setValueAtTime(.0001, at);
+    gain.gain.exponentialRampToValueAtTime(perfect ? .12 : .055, at + .008);
+    gain.gain.exponentialRampToValueAtTime(.0001, at + .16);
+    oscillator.connect(gain).connect(this.audio.destination);
+    oscillator.start(at); oscillator.stop(at + .17);
+  }
   serve = () => { if (this.phase === "serve" && this.server === 0 && !this.paused) this.launchServe(); };
 
   private prepareServe() {
@@ -169,9 +204,10 @@ export class TennisApp {
   private keyDown = (event: KeyboardEvent) => {
     if (event.target instanceof HTMLElement && (event.target.isContentEditable || event.target.closest('input,select,textarea,a,[role="dialog"]'))) return;
     const key = event.code;
-    if (["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(key)) event.preventDefault();
+    if (["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "ShiftLeft", "ShiftRight"].includes(key)) event.preventDefault();
     if (key === "KeyP" && !event.repeat && this.phase !== "ready") this.setPaused(!this.paused);
     if (key === "Space" && !event.repeat) this.serve();
+    if ((key === "ShiftLeft" || key === "ShiftRight") && !event.repeat) this.dash();
     if (!this.paused) this.keys.add(key);
   };
   private keyUp = (event: KeyboardEvent) => { this.keys.delete(event.code); };
@@ -179,6 +215,7 @@ export class TennisApp {
   private visibility = () => { if (document.hidden) this.blur(); };
   private pointerDown = (event: PointerEvent) => {
     if (this.paused) return;
+    this.unlockAudio();
     this.canvas.setPointerCapture(event.pointerId);
     this.previousPointer = { x: event.clientX, y: event.clientY, time: performance.now() };
     this.samples = [];
@@ -220,12 +257,18 @@ export class TennisApp {
     let x = Number(this.keys.has("KeyD") || this.keys.has("ArrowRight")) - Number(this.keys.has("KeyA") || this.keys.has("ArrowLeft")) + this.joystick.x;
     let z = Number(this.keys.has("KeyS") || this.keys.has("ArrowDown")) - Number(this.keys.has("KeyW") || this.keys.has("ArrowUp")) + this.joystick.y;
     const length = Math.hypot(x, z); if (length > 1) { x /= length; z /= length; }
-    this.speeds[0] = Math.min(length, 1) * 8.5;
-    this.positions[0].x = clamp(this.positions[0].x + x * dt * 8.5, -6.8, 6.8);
-    this.positions[0].z = clamp(this.positions[0].z + z * dt * 8.5, 1.15, 14.5);
+    const dashing = this.dashTime > 0;
+    if (dashing) { x = this.dashDirection.x; z = this.dashDirection.z; }
+    const speed = dashing ? 19 : 8.5;
+    this.speeds[0] = (dashing ? 1 : Math.min(length, 1)) * speed;
+    this.positions[0].x = clamp(this.positions[0].x + x * dt * speed, -6.8, 6.8);
+    this.positions[0].z = clamp(this.positions[0].z + z * dt * speed, 1.15, 14.5);
   }
   private predict() {
     const forecast = cloneBall(this.ball);
+    const reaction = this.difficulty === "Easy" ? .38 : this.difficulty === "Hard" ? .12 : .25;
+    // The opponent gradually reads the curve from the visible flight.
+    forecast.curve = (forecast.curve ?? 0) * clamp((this.clock - this.lastContact - reaction) / .95, .08, 1);
     let bounce = this.bounces;
     for (let i = 0; i < 420; i++) {
       const event = advanceBall(forecast, 1 / 120);
@@ -263,19 +306,29 @@ export class TennisApp {
       Math.hypot(b.x - p.x, b.z - p.z) < (side === 0 ? 2 : 1.65);
   }
   private hit(side: Side, gesture: Gesture, targetX?: number) {
+    const perfect = side === 0 && Math.hypot(this.ball.p.x - this.positions[0].x, this.ball.p.z - this.positions[0].z) < 1.05 &&
+      this.ball.p.y > .4 && this.ball.p.y < 2.1 && gesture.power > .25;
     this.backhands[side] = this.ball.p.x < this.positions[side].x;
     this.athletes[side].setStroke(gesture.top, gesture.side);
     const target = targetX ?? clamp(gesture.side * 3.5 + this.ball.p.x * .13, -3.85, 3.85);
-    launchShot(this.ball, target, -courtSide(side) * (6.5 + gesture.power * 4), gesture.power, gesture.top, gesture.side);
+    const power = perfect ? Math.min(1, gesture.power + .13) : gesture.power;
+    launchShot(this.ball, target, -courtSide(side) * (6.5 + power * 4), power, gesture.top, gesture.side);
+    if (side === 0) {
+      this.hitSound(perfect);
+      if (perfect) { this.perfectTime = .42; this.perfectPoint.copy(this.ball.p); }
+    }
     this.lastHitter = side; this.lastContact = this.clock; this.bounces = 0; this.serveShot = false; this.swings[side] = true;
     this.rally++; this.best = Math.max(this.best, this.rally);
     const feedback = strokeFeedback(gesture.top, gesture.side);
-    this.shot = `${side === 0 ? "YOU" : "CPU"} · ${feedback.name} ${feedback.arrow}`;
+    this.shot = `${perfect ? "PERFECT · " : ""}${side === 0 ? "YOU" : "CPU"} · ${feedback.name} ${feedback.arrow}`;
     this.power = gesture.power; this.shotTime = this.clock;
     this.emit();
   }
   private simulate(dt: number) {
     this.clock += dt; this.phaseTime += dt;
+    this.dashTime = Math.max(0, this.dashTime - dt);
+    this.dashCooldown = Math.max(0, this.dashCooldown - dt);
+    this.perfectTime = Math.max(0, this.perfectTime - dt);
     if (this.phase === "point" && this.phaseTime > 1.8) this.prepareServe();
     if (this.phase === "serve" && this.server === 1 && this.phaseTime > 1.3) this.launchServe();
     this.movePlayer(dt);
@@ -305,6 +358,14 @@ export class TennisApp {
       athlete.update(dt, this.paused ? 0 : this.speeds[index], this.swings[index], this.backhands[index]); this.swings[index] = false;
     });
     this.ballMesh.position.set(this.ball.p.x, this.ball.p.y, this.ball.p.z);
+    this.hitFlash.visible = this.perfectTime > 0;
+    if (this.hitFlash.visible) {
+      const progress = 1 - this.perfectTime / .42;
+      this.hitFlash.position.copy(this.perfectPoint);
+      this.hitFlash.lookAt(this.camera.position);
+      this.hitFlash.scale.setScalar(1 + progress * 5);
+      this.hitFlash.material.opacity = (1 - progress) * .9;
+    }
     this.ballMesh.rotation.x += this.paused ? 0 : dt * this.ball.top * 12;
     this.reach.position.set(this.positions[0].x, .024, this.positions[0].z);
     this.reach.visible = this.showGuide && this.phase === "rally";
@@ -322,6 +383,7 @@ export class TennisApp {
       this.trailGeometry.attributes.position.needsUpdate = true;
     }
     this.trailGeometry.setDrawRange(0, this.trailCount); this.trail.visible = this.phase === "rally";
+    this.trail.material.opacity = this.perfectTime > 0 ? .9 : .35;
     this.renderer.render(this.scene, this.camera);
   }
   private tick = (time: number) => {
@@ -344,8 +406,8 @@ export class TennisApp {
     const swingCue = this.phase === "rally" && this.clock - this.cueTime < .75
       ? { name: this.cueName, arrow: this.cueArrow, x: clamp(racketX + 22, 26, this.width - 94), y: clamp(racketY - 20, 40, this.height - 40) }
       : null;
-    this.onState({ phase: this.phase, points: pointLabels(this.score), games: [...this.score.games], server: this.server, message: this.message, shot: this.clock - this.shotTime < 2.2 ? this.shot : "", power: this.power, rally: this.rally, best: this.best, paused: this.paused, swingCue });
-    this.canvas.dataset.game = JSON.stringify({ phase: this.phase, paused: this.paused, player: this.positions[0].toArray(), cpu: this.positions[1].toArray(), ball: this.ball.p, velocity: this.ball.v, lastHitter: this.lastHitter, bounces: this.bounces, rally: this.rally, top: this.ball.top, side: this.ball.side, curve: this.ball.curve, swing: this.athletes[0].swing, racketScreen: [racketX, racketY], swingCue });
+    this.onState({ phase: this.phase, points: pointLabels(this.score), games: [...this.score.games], server: this.server, message: this.message, shot: this.clock - this.shotTime < 2.2 ? this.shot : "", power: this.power, rally: this.rally, best: this.best, paused: this.paused, dashCooldown: this.dashCooldown, swingCue });
+    this.canvas.dataset.game = JSON.stringify({ phase: this.phase, paused: this.paused, player: this.positions[0].toArray(), cpu: this.positions[1].toArray(), ball: this.ball.p, velocity: this.ball.v, lastHitter: this.lastHitter, bounces: this.bounces, rally: this.rally, top: this.ball.top, side: this.ball.side, curve: this.ball.curve, swing: this.athletes[0].swing, dashCooldown: this.dashCooldown, perfect: this.perfectTime > 0, racketScreen: [racketX, racketY], swingCue });
   }
   private resize() {
     this.width = this.canvas.clientWidth; this.height = this.canvas.clientHeight;
@@ -360,6 +422,7 @@ export class TennisApp {
     document.removeEventListener("visibilitychange", this.visibility);
     this.canvas.removeEventListener("pointermove", this.pointerMove); this.canvas.removeEventListener("pointerdown", this.pointerDown);
     this.canvas.removeEventListener("pointerup", this.pointerUp); this.canvas.removeEventListener("pointercancel", this.pointerUp); this.canvas.removeEventListener("pointerleave", this.pointerLeave);
+    if (this.audio) void this.audio.close();
     disposeObject(this.scene); this.renderer.dispose(); delete this.canvas.dataset.game;
   }
 }
