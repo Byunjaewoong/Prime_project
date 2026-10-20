@@ -115,10 +115,20 @@ export async function DELETE(request: NextRequest) {
       cache: "no-store",
     });
     if (response.status === 404) return NextResponse.json({ error: "Supabase에 삭제 기능 SQL을 먼저 적용하세요." }, { status: 503 });
-    if (!response.ok) throw new Error(`Supabase clear ${response.status}`);
+    if (!response.ok) {
+      const failure = await response.json().catch(() => null) as { code?: string; message?: string } | null;
+      console.error("Dashboard clear RPC failed", { status: response.status, code: failure?.code, message: failure?.message });
+      return NextResponse.json({
+        error: `전체 삭제에 실패했습니다. 서버 오류 ${response.status}${failure?.code ? ` / ${failure.code}` : ""}`,
+      }, { status: 502 });
+    }
     const result = await response.json() as { ok?: boolean; generation?: number; error?: string };
     if (!result.ok) return NextResponse.json({ error: result.error === "locked" ? "잠시 후 다시 시도하세요." : "비밀번호가 다릅니다." },
       { status: result.error === "locked" ? 429 : 401 });
+    if (!Number.isSafeInteger(result.generation)) {
+      console.error("Dashboard clear RPC returned no generation", result);
+      return NextResponse.json({ error: "삭제 응답에 보드 버전이 없습니다." }, { status: 502 });
+    }
     return NextResponse.json({ generation: result.generation }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("Dashboard clear failed", error);
