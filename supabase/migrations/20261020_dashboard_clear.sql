@@ -45,7 +45,7 @@ begin
     return jsonb_build_object('ok', false, 'error', 'wrong_password');
   end if;
 
-  delete from public.dashboard_strokes;
+  delete from public.dashboard_strokes where id > 0;
   update public.dashboard_board
   set generation = generation + 1, failed_attempts = 0, blocked_until = null
   where id = 1 returning generation into next_generation;
