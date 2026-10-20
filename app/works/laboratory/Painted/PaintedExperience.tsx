@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FlaskConical, Home, Pause, Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_COLOR, DEFAULT_HIGHLIGHT_COLOR, DEFAULT_LIGHT_DIRECTION, DEFAULT_NOISE, DEFAULT_PEAK_HOLD, DEFAULT_SHADOW_COLOR, DEFAULT_SHADOW_DEPTH, PaintedRenderer, type ColorZones, type LightDirection, type NoiseParams } from "./core/PaintedRenderer";
+import { DEFAULT_COLOR, DEFAULT_CUSTOM_COLORS, DEFAULT_HIGHLIGHT_COLOR, DEFAULT_LIGHT_DIRECTION, DEFAULT_NOISE, DEFAULT_PEAK_HOLD, DEFAULT_SHADOW_COLOR, DEFAULT_SHADOW_DEPTH, MAX_CUSTOM_COLORS, PaintedRenderer, type ColorZones, type LightDirection, type NoiseParams } from "./core/PaintedRenderer";
 import DragOnlyRange from "./DragOnlyRange";
 import LightDirectionSphere from "./LightDirectionSphere";
 import { PAINTED_NOISE_CONTROLS } from "./noiseControls";
@@ -66,6 +66,8 @@ export default function PaintedExperience() {
   const [shadowColor, setShadowColor] = useState(DEFAULT_SHADOW_COLOR);
   const [highlightColor, setHighlightColor] = useState(DEFAULT_HIGHLIGHT_COLOR);
   const [colorZones, setColorZones] = useState<ColorZones>(2);
+  const [customColors, setCustomColors] = useState(() => DEFAULT_CUSTOM_COLORS.slice());
+  const [customCount, setCustomCount] = useState(3);
   const [hsl, setHsl] = useState<HslColor>({ hue: 202, saturation: 32, lightness: 100 });
   const [shadowDepth, setShadowDepth] = useState(DEFAULT_SHADOW_DEPTH);
   const [lightDirection, setLightDirection] = useState<LightDirection>(DEFAULT_LIGHT_DIRECTION);
@@ -125,6 +127,12 @@ export default function PaintedExperience() {
     rendererRef.current?.setColorZones(value);
   };
 
+  const updateCustomColors = (colors: string[], count: number) => {
+    setCustomColors(colors);
+    setCustomCount(count);
+    rendererRef.current?.setCustomColors(colors.slice(0, count));
+  };
+
   const updateLightDirection = (direction: LightDirection) => {
     setLightDirection(direction);
     rendererRef.current?.setLightDirection(direction);
@@ -151,7 +159,7 @@ export default function PaintedExperience() {
       ref={canvasRef}
       className={styles.canvas}
       role="img"
-      aria-label="Single-color painted surface shaded by a Perlin-noise height field."
+      aria-label="Painted surface shaded by a Perlin-noise height field."
     />
     <div className={styles.menuRoot}>
       {menuOpen && <div className={styles.menu}>
@@ -163,21 +171,34 @@ export default function PaintedExperience() {
           </nav>
         </div>
         <div className={styles.controls}>
-          <span className={styles.sectionTitle}>Evolution</span>
-          <button className={styles.playButton} type="button" aria-label={playing ? "Pause noise evolution" : "Play noise evolution"}
-            aria-pressed={playing} onClick={togglePlaying}>
-            {playing ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}
-            <span>{playing ? "Pause" : "Play"}</span>
-          </button>
-          <div className={styles.control}>
-            <span className={styles.controlLabel}><span>Change speed</span><output>{morphSpeed.toFixed(2)}×</output></span>
-            <DragOnlyRange label="Change speed" min={0.1} max={6} step={0.05} value={morphSpeed} onChange={updateMorphSpeed} />
+          <span className={styles.sectionTitle}>Color mapping</span>
+          <div className={styles.colorModes} role="group" aria-label="Color zones">
+            {([2, 3, "multi"] as const).map(zones => <button key={zones} type="button"
+              className={styles.colorMode} aria-pressed={colorZones === zones}
+              onClick={() => updateColorZones(zones)}>{zones === "multi" ? "Multi Zone" : `${zones} zones`}</button>)}
           </div>
-          <div className={styles.control}>
-            <span className={styles.controlLabel}><span>Peak hold</span><output>{peakHold.toFixed(2)}</output></span>
-            <DragOnlyRange label="Peak hold" min={0} max={1} step={0.01} value={peakHold} onChange={updatePeakHold} />
-          </div>
-          <span className={styles.sectionTitle}>Appearance</span>
+          {colorZones === "multi" ? <>
+            <div className={styles.control}>
+              <span className={styles.controlLabel}><span>Custom colors</span><output>{customCount}</output></span>
+              <DragOnlyRange label="Number of custom colors" min={1} max={MAX_CUSTOM_COLORS} step={1} value={customCount}
+                onChange={value => updateCustomColors(customColors, value)} />
+            </div>
+            <div className={styles.zonePreview} aria-label="Color zones from shadow to highlight">
+              {[shadowColor, ...customColors.slice(0, customCount), highlightColor].map((zoneColor, index) =>
+                <span key={index} style={{ backgroundColor: zoneColor }} />)}
+            </div>
+            <label className={styles.colorPicker}><span>Shadow color</span>
+              <input type="color" value={shadowColor} aria-label="Shadow color" onChange={event => updateShadowColor(event.target.value)} />
+            </label>
+            {customColors.slice(0, customCount).map((zoneColor, index) =>
+              <label className={styles.colorPicker} key={index}><span>Custom color {index + 1}</span>
+                <input type="color" value={zoneColor} aria-label={`Custom color ${index + 1}`}
+                  onChange={event => updateCustomColors(customColors.map((current, colorIndex) => colorIndex === index ? event.target.value : current), customCount)} />
+              </label>)}
+            <label className={styles.colorPicker}><span>Highlight color</span>
+              <input type="color" value={highlightColor} aria-label="Highlight color" onChange={event => updateHighlightColor(event.target.value)} />
+            </label>
+          </> : <>
           <div className={styles.control}>
             <span className={styles.controlLabel}><span>Base color</span><output>{color.toUpperCase()}</output></span>
             <div className={styles.palette} role="group" aria-label="Base color">
@@ -189,22 +210,19 @@ export default function PaintedExperience() {
               </button>)}
             </div>
             <label className={styles.colorPicker}>
-              <span>Custom color</span>
-              <input type="color" value={color} aria-label="Custom color" onChange={event => updateColor(event.target.value)} />
+              <span>Custom base color</span>
+              <input type="color" value={color} aria-label="Custom base color" onChange={event => updateColor(event.target.value)} />
             </label>
             <label className={styles.colorPicker}>
               <span>Shadow color</span>
               <input type="color" value={shadowColor} aria-label="Shadow color" onChange={event => updateShadowColor(event.target.value)} />
             </label>
-            <div className={styles.colorModes} role="group" aria-label="Color zones">
-              {([2, 3] as const).map(zones => <button key={zones} type="button"
-                className={styles.colorMode} aria-pressed={colorZones === zones}
-                onClick={() => updateColorZones(zones)}>{zones} zones</button>)}
-            </div>
             {colorZones === 3 && <label className={styles.colorPicker}>
               <span>Highlight color</span>
               <input type="color" value={highlightColor} aria-label="Highlight color" onChange={event => updateHighlightColor(event.target.value)} />
             </label>}
+            <details className={styles.advancedColors}>
+              <summary>Adjust base color (HSL)</summary>
             {([
               { key: "hue", label: "Hue", max: 360, unit: "°" },
               { key: "saturation", label: "Saturation", max: 100, unit: "%" },
@@ -214,7 +232,10 @@ export default function PaintedExperience() {
               <DragOnlyRange label={control.label} min={0} max={control.max} step={1} value={hsl[control.key]}
                 onChange={value => updateHsl(control.key, value)} />
             </div>)}
+            </details>
           </div>
+          </>}
+          <span className={styles.sectionTitle}>Lighting</span>
           <div className={styles.control}>
             <span className={styles.controlLabel}><span>Shadow depth</span><output>{shadowDepth.toFixed(2)}</output></span>
             <DragOnlyRange label="Shadow depth" min={0} max={2} step={0.05} value={shadowDepth} onChange={updateShadowDepth} />
@@ -234,6 +255,20 @@ export default function PaintedExperience() {
             <DragOnlyRange label={control.label} min={control.min} max={control.max} step={control.step} value={noise[control.key]}
               onChange={value => updateNoise(control.key, value)} />
           </div>)}
+          <span className={styles.sectionTitle}>Evolution</span>
+          <button className={styles.playButton} type="button" aria-label={playing ? "Pause noise evolution" : "Play noise evolution"}
+            aria-pressed={playing} onClick={togglePlaying}>
+            {playing ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" />}
+            <span>{playing ? "Pause" : "Play"}</span>
+          </button>
+          <div className={styles.control}>
+            <span className={styles.controlLabel}><span>Change speed</span><output>{morphSpeed.toFixed(2)}×</output></span>
+            <DragOnlyRange label="Change speed" min={0.1} max={6} step={0.05} value={morphSpeed} onChange={updateMorphSpeed} />
+          </div>
+          <div className={styles.control}>
+            <span className={styles.controlLabel}><span>Peak hold</span><output>{peakHold.toFixed(2)}</output></span>
+            <DragOnlyRange label="Peak hold" min={0} max={1} step={0.01} value={peakHold} onChange={updatePeakHold} />
+          </div>
         </div>
       </div>}
       <button className={styles.menuButton} type="button" aria-label={menuOpen ? "Close menu" : "Open menu"}

@@ -3,7 +3,7 @@ import PaintedExperience from "./PaintedExperience";
 
 export const metadata: Metadata = {
   title: "Painted — GrimGriGi",
-  description: "A single-color painted surface shaded from a procedural Perlin-noise height field.",
+  description: "A painted surface with adjustable light-based color zones and procedural Perlin-noise relief.",
 };
 
 export default function PaintedPage() {

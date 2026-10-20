@@ -15,7 +15,9 @@ export const DEFAULT_SHADOW_COLOR = "#000000";
 export const DEFAULT_HIGHLIGHT_COLOR = "#ffffff";
 export const DEFAULT_SHADOW_DEPTH = 0.2;
 export const DEFAULT_PEAK_HOLD = 0.25;
-export type ColorZones = 2 | 3;
+export const MAX_CUSTOM_COLORS = 8;
+export const DEFAULT_CUSTOM_COLORS = ["#4d7b95", "#7d917d", "#987e72", "#817b96", "#718998", "#9a8b78", "#708a83", "#987881"];
+export type ColorZones = 2 | 3 | "multi";
 export type LightDirection = [number, number, number];
 export const DEFAULT_LIGHT_DIRECTION: LightDirection = [-0.05, Math.sqrt(1 - 0.05 ** 2 - 0.2 ** 2), 0.2];
 const FIELD_ZOOM = 2; // Twice the span on each axis: four times the visible field area.
@@ -95,6 +97,8 @@ uniform float uPeakHold;
 uniform vec3 uColor;
 uniform vec3 uShadowColor;
 uniform vec3 uHighlightColor;
+uniform vec3 uCustomColors[8];
+uniform int uCustomCount;
 uniform int uColorZones;
 uniform vec3 uLight;
 uniform float uShadowDepth;
@@ -130,6 +134,15 @@ void main() {
   vec3 shadedColor = mix(uColor * max(shade, 1.0), uShadowColor, darkness);
   if (uColorZones == 3) {
     shadedColor = mix(shadedColor, uHighlightColor, smoothstep(0.28, 0.62, illumination));
+  } else if (uColorZones == 4) {
+    float level = clamp(0.5 + (illumination - 0.5) * (0.5 + uShadowDepth * 2.5), 0.0, 1.0);
+    float position = level * float(uCustomCount + 2);
+    shadedColor = uShadowColor;
+    for (int boundary = 1; boundary <= 9; boundary++) {
+      if (boundary > uCustomCount + 1) break;
+      vec3 nextColor = boundary == uCustomCount + 1 ? uHighlightColor : uCustomColors[boundary - 1];
+      shadedColor = mix(shadedColor, nextColor, smoothstep(float(boundary) - 0.08, float(boundary) + 0.08, position));
+    }
   }
   outColor = vec4(clamp(shadedColor, 0.0, 1.0), 1.0);
 }
@@ -232,6 +245,7 @@ export class PaintedRenderer {
   private shadowColor = DEFAULT_SHADOW_COLOR;
   private highlightColor = DEFAULT_HIGHLIGHT_COLOR;
   private colorZones: ColorZones = 2;
+  private customColors = DEFAULT_CUSTOM_COLORS.slice(0, 3);
   private shadowDepth = DEFAULT_SHADOW_DEPTH;
   private lightDirection: LightDirection = [...DEFAULT_LIGHT_DIRECTION];
   private frame: number | null = null;
@@ -347,6 +361,12 @@ export class PaintedRenderer {
 
   setColorZones(value: ColorZones) {
     this.colorZones = value;
+    this.scheduleRender();
+  }
+
+  setCustomColors(colors: string[]) {
+    if (colors.length < 1 || colors.length > MAX_CUSTOM_COLORS || colors.some(color => !/^#[0-9a-f]{6}$/i.test(color))) return;
+    this.customColors = [...colors];
     this.scheduleRender();
   }
 
@@ -519,7 +539,10 @@ export class PaintedRenderer {
     gl.uniform3f(gl.getUniformLocation(this.displayProgram, "uColor"), ...colorChannels(this.color));
     gl.uniform3f(gl.getUniformLocation(this.displayProgram, "uShadowColor"), ...colorChannels(this.shadowColor));
     gl.uniform3f(gl.getUniformLocation(this.displayProgram, "uHighlightColor"), ...colorChannels(this.highlightColor));
-    gl.uniform1i(gl.getUniformLocation(this.displayProgram, "uColorZones"), this.colorZones);
+    gl.uniform3fv(gl.getUniformLocation(this.displayProgram, "uCustomColors[0]"),
+      new Float32Array(DEFAULT_CUSTOM_COLORS.flatMap((fallback, index) => colorChannels(this.customColors[index] ?? fallback))));
+    gl.uniform1i(gl.getUniformLocation(this.displayProgram, "uCustomCount"), this.customColors.length);
+    gl.uniform1i(gl.getUniformLocation(this.displayProgram, "uColorZones"), this.colorZones === "multi" ? 4 : this.colorZones);
     gl.uniform3f(gl.getUniformLocation(this.displayProgram, "uLight"), ...this.lightDirection);
     gl.uniform1f(gl.getUniformLocation(this.displayProgram, "uShadowDepth"), this.shadowDepth);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -531,6 +554,7 @@ export class PaintedRenderer {
     const color = colorChannels(this.color);
     const shadowColor = colorChannels(this.shadowColor);
     const highlightColor = colorChannels(this.highlightColor);
+    const multiStops = [shadowColor, ...this.customColors.map(colorChannels), highlightColor];
     const { width, height } = this.canvas;
     const downsample = Math.min(1, Math.sqrt(750_000 / (width * height)));
     const sampleWidth = Math.max(1, Math.round(width * downsample));
@@ -622,10 +646,26 @@ export class PaintedRenderer {
         const highlightBlend = this.colorZones === 3
           ? highlightProgress * highlightProgress * (3 - 2 * highlightProgress)
           : 0;
+        let multiRed = shadowColor[0];
+        let multiGreen = shadowColor[1];
+        let multiBlue = shadowColor[2];
+        if (this.colorZones === "multi") {
+          const level = Math.max(0, Math.min(1, 0.5 + (dot - 0.5) * (0.5 + this.shadowDepth * 2.5)));
+          const position = level * multiStops.length;
+          for (let boundary = 1; boundary < multiStops.length; boundary++) {
+            const progress = Math.max(0, Math.min(1, (position - boundary + 0.08) / 0.16));
+            const blend = progress * progress * (3 - 2 * progress);
+            multiRed += (multiStops[boundary][0] - multiRed) * blend;
+            multiGreen += (multiStops[boundary][1] - multiGreen) * blend;
+            multiBlue += (multiStops[boundary][2] - multiBlue) * blend;
+          }
+        }
         for (let channel = 0; channel < 3; channel++) {
           const lit = color[channel] * Math.max(shade, 1);
           const shaded = lit * (1 - darkness) + shadowColor[channel] * darkness;
-          image.data[index * 4 + channel] = Math.round((shaded * (1 - highlightBlend) + highlightColor[channel] * highlightBlend) * 255);
+          image.data[index * 4 + channel] = Math.round((this.colorZones === "multi"
+            ? channel === 0 ? multiRed : channel === 1 ? multiGreen : multiBlue
+            : shaded * (1 - highlightBlend) + highlightColor[channel] * highlightBlend) * 255);
         }
         image.data[index * 4 + 3] = 255;
       }
