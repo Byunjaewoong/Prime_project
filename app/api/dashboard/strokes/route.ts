@@ -87,7 +87,12 @@ export async function POST(request: NextRequest) {
         response = await save(legacyStroke);
       }
     }
-    if (response.status === 403) return NextResponse.json({ error: "보드가 초기화되어 이전 선을 저장할 수 없습니다." }, { status: 409 });
+    if (response.status === 401 || response.status === 403) {
+      const failure = await response.clone().json().catch(() => null) as { code?: string } | null;
+      if (failure?.code === "42501") {
+        return NextResponse.json({ error: "보드가 초기화되어 이전 선을 저장할 수 없습니다." }, { status: 409 });
+      }
+    }
     if (!response.ok) throw new Error(`Supabase POST ${response.status}`);
     return NextResponse.json({ saved: true });
   } catch (error) {
