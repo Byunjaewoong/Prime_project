@@ -4,12 +4,13 @@ The drawing is an append-only shared canvas. A stroke is saved when the pointer 
 
 1. Create a Supabase project.
 2. Run `supabase/migrations/20261020_create_dashboard_strokes.sql` in its SQL editor (or apply it as a migration).
-3. Set the following environment variables locally and in Vercel:
+3. Set the publishable key locally and in Vercel:
 
    ```text
-   SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
    SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
    ```
+
+   The project URL `https://jmmypojyjwkhnzquzfvi.supabase.co` is already configured as the default. `SUPABASE_URL` can override it if the project changes.
 
 4. Restart the development server or redeploy.
 
