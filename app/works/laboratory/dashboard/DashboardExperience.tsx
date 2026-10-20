@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent } from "rea
 import styles from "./dashboard.module.css";
 
 type Point = [number, number];
-type Stroke = { stroke_key: string; color: string; width: number; points: Point[]; id?: number };
+type Stroke = { stroke_key: string; color: string; width: number; points: Point[]; generation?: number; id?: number };
 type Connection = "loading" | "connected" | "offline" | "setup";
 
 const COLORS = ["#253d36", "#b45448", "#df9c50", "#5b8195", "#758d65", "#816980"];
@@ -55,12 +55,17 @@ export default function DashboardExperience() {
   const loadingRef = useRef(false);
   const initializedRef = useRef(false);
   const lastIdRef = useRef(0);
+  const generationRef = useRef<number | null>(null);
   const [color, setColor] = useState(COLORS[0]);
   const [brushWidth, setBrushWidth] = useState(4);
-  const [isDrawing, setIsDrawing] = useState(false);
   const [connection, setConnection] = useState<Connection>("loading");
   const [pendingCount, setPendingCount] = useState(0);
   const [strokeCount, setStrokeCount] = useState(0);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   const repaint = useCallback(() => {
     const canvas = canvasRef.current;
@@ -81,7 +86,7 @@ export default function DashboardExperience() {
   }, []);
 
   const flushPending = useCallback(async () => {
-    if (savingRef.current || pendingRef.current.length === 0) return;
+    if (savingRef.current || pendingRef.current.length === 0 || generationRef.current === null) return;
     savingRef.current = true;
     try {
       while (pendingRef.current.length) {
@@ -91,6 +96,7 @@ export default function DashboardExperience() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(stroke),
         });
+        if (response.status === 409) break;
         if (!response.ok) {
           setConnection(response.status === 503 ? "setup" : "offline");
           break;
@@ -112,13 +118,39 @@ export default function DashboardExperience() {
     loadingRef.current = true;
     try {
       let hasMore = true;
+      let resets = 0;
       while (hasMore) {
         const response = await fetch(`/api/dashboard/strokes?after=${lastIdRef.current}`, { cache: "no-store" });
         if (!response.ok) {
           setConnection(response.status === 503 ? "setup" : "offline");
           return;
         }
-        const result = await response.json() as { strokes: Stroke[]; hasMore: boolean };
+        const result = await response.json() as { generation: number; strokes: Stroke[]; hasMore: boolean };
+        if (!Number.isSafeInteger(result.generation)) throw new Error("Invalid dashboard generation");
+        if (generationRef.current !== null && result.generation < generationRef.current) return;
+        if (generationRef.current === null) {
+          generationRef.current = result.generation;
+          pendingRef.current = pendingRef.current.filter(stroke => stroke.generation === undefined || stroke.generation === result.generation);
+          pendingRef.current.forEach(stroke => { stroke.generation ??= result.generation; });
+          persistPending(pendingRef.current);
+          strokesRef.current = [...pendingRef.current];
+          keysRef.current = new Set(pendingRef.current.map(stroke => stroke.stroke_key));
+          setPendingCount(pendingRef.current.length);
+        } else if (generationRef.current !== result.generation) {
+          generationRef.current = result.generation;
+          lastIdRef.current = 0;
+          pendingRef.current = pendingRef.current.filter(stroke => stroke.generation === result.generation);
+          persistPending(pendingRef.current);
+          strokesRef.current = [...pendingRef.current];
+          keysRef.current = new Set(pendingRef.current.map(stroke => stroke.stroke_key));
+          activeRef.current = null;
+          activePointerRef.current = null;
+          setPendingCount(pendingRef.current.length);
+          setStrokeCount(strokesRef.current.length);
+          repaint();
+          if (++resets > 3) throw new Error("Dashboard reset changed repeatedly");
+          continue;
+        }
         for (const stroke of result.strokes) {
           if (typeof stroke.id !== "number" || !Number.isFinite(stroke.id)) continue;
           lastIdRef.current = Math.max(lastIdRef.current, stroke.id);
@@ -171,9 +203,9 @@ export default function DashboardExperience() {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     activeRef.current = null;
     activePointerRef.current = null;
-    setIsDrawing(false);
     strokesRef.current.push(stroke);
     keysRef.current.add(stroke.stroke_key);
+    stroke.generation = generationRef.current ?? undefined;
     pendingRef.current.push(stroke);
     persistPending(pendingRef.current);
     setPendingCount(pendingRef.current.length);
@@ -188,7 +220,6 @@ export default function DashboardExperience() {
     event.currentTarget.setPointerCapture(event.pointerId);
     activePointerRef.current = event.pointerId;
     activeRef.current = { stroke_key: crypto.randomUUID(), color, width: brushWidth, points: [pointFromEvent(event)] };
-    setIsDrawing(true);
     repaint();
   };
 
@@ -206,7 +237,6 @@ export default function DashboardExperience() {
       canvas.setPointerCapture(event.pointerId);
       activePointerRef.current = event.pointerId;
       activeRef.current = { stroke_key: crypto.randomUUID(), color: stroke.color, width: stroke.width, points: [previous, point] };
-      setIsDrawing(true);
     } else {
       stroke.points.push(point);
     }
@@ -218,31 +248,87 @@ export default function DashboardExperience() {
       : connection === "offline" ? "Connection lost · lines saved on this device"
         : "Loading shared drawing…";
 
+  const clearDrawing = async () => {
+    if (deleting || !/^\d{4}$/.test(deletePassword)) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const response = await fetch("/api/dashboard/strokes", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: deletePassword }),
+      });
+      const result = await response.json() as { generation?: number; error?: string };
+      if (!response.ok || !Number.isSafeInteger(result.generation)) {
+        setDeleteError(result.error ?? "전체 삭제에 실패했습니다.");
+        return;
+      }
+      generationRef.current = result.generation!;
+      lastIdRef.current = 0;
+      strokesRef.current = [];
+      keysRef.current.clear();
+      pendingRef.current = [];
+      activeRef.current = null;
+      activePointerRef.current = null;
+      persistPending([]);
+      setStrokeCount(0);
+      setPendingCount(0);
+      setDeletePassword("");
+      setDeleteOpen(false);
+      repaint();
+    } catch {
+      setDeleteError("연결을 확인한 뒤 다시 시도하세요.");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return <main className={styles.page}>
-    <header className={styles.header}>
-      <Link href="/works/laboratory" className={styles.back}>← Laboratory</Link>
-      <div className={styles.title}><span className={styles.eyebrow}>A COMMON SURFACE</span><h1>Dashboard</h1></div>
-      <span className={styles.count}>{strokeCount.toLocaleString()} lines</span>
-    </header>
-    <div className={styles.canvasWrap}>
-      <canvas ref={canvasRef} className={styles.canvas} aria-label="Shared drawing canvas"
-        onPointerDown={onPointerDown} onPointerMove={onPointerMove}
-        onPointerUp={finishStroke} onPointerCancel={finishStroke} />
-      {strokeCount === 0 && !isDrawing && <div className={styles.empty}>Draw a line. Leave a trace.</div>}
+    <canvas ref={canvasRef} className={styles.canvas} aria-label="Shared drawing canvas"
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove}
+      onPointerUp={finishStroke} onPointerCancel={finishStroke} />
+    <div className={styles.menuRoot}>
+      {menuOpen && <div className={styles.menu}>
+        <div className={styles.menuHeader}>
+          <span>Dashboard</span>
+          <Link href="/works/laboratory" aria-label="Laboratory">←</Link>
+        </div>
+        <div className={styles.menuContents}>
+          <div className={styles.menuLabel}>Drawing</div>
+          <div className={styles.colors} role="group" aria-label="Line color">
+            {COLORS.map(choice => <button key={choice} type="button" className={styles.swatch}
+              style={{ background: choice }} aria-label={`Select ${choice}`} aria-pressed={color === choice}
+              onClick={() => setColor(choice)} />)}
+            <label className={styles.customColor} title="Custom color"><input type="color" value={color}
+              aria-label="Custom line color" onChange={event => setColor(event.target.value)} /><span>+</span></label>
+          </div>
+          <label className={styles.widthControl}><span>Brush size</span><output>{brushWidth}px</output>
+            <input type="range" min="1" max="16" value={brushWidth}
+              onChange={event => setBrushWidth(Number(event.target.value))} aria-label="Brush size" />
+          </label>
+          <div className={styles.menuLabel}>Shared canvas</div>
+          <div className={styles.status} role="status"><span className={connection === "connected" ? styles.onlineDot : styles.offlineDot} />
+            {statusText}{pendingCount > 0 && <span> · {pendingCount} pending</span>}
+          </div>
+          <div className={styles.lineCount}>{strokeCount.toLocaleString()} lines</div>
+          {!deleteOpen ? <button type="button" className={styles.deleteButton}
+            onClick={() => { setDeleteOpen(true); setDeleteError(""); }}>전체 삭제</button>
+            : <div className={styles.deletePanel}>
+              <p>모든 사용자의 그림이 삭제됩니다.</p>
+              <input type="password" inputMode="numeric" autoComplete="off" maxLength={4}
+                placeholder="비밀번호 4자리" aria-label="전체 삭제 비밀번호" value={deletePassword}
+                onChange={event => setDeletePassword(event.target.value.replace(/\D/g, ""))} />
+              {deleteError && <p className={styles.deleteError} role="alert">{deleteError}</p>}
+              <div className={styles.deleteActions}>
+                <button type="button" onClick={() => { setDeleteOpen(false); setDeletePassword(""); setDeleteError(""); }}>취소</button>
+                <button type="button" className={styles.confirmDelete} disabled={deleting || deletePassword.length !== 4}
+                  onClick={() => void clearDrawing()}>{deleting ? "삭제 중…" : "전체 삭제 확인"}</button>
+              </div>
+            </div>}
+        </div>
+      </div>}
+      <button type="button" className={styles.menuButton} aria-label={menuOpen ? "Close menu" : "Open menu"}
+        aria-expanded={menuOpen} onClick={() => setMenuOpen(open => !open)}>M</button>
     </div>
-    <footer className={styles.toolbar}>
-      <div className={styles.colors} role="group" aria-label="Line color">
-        {COLORS.map(choice => <button key={choice} type="button" className={styles.swatch}
-          style={{ background: choice }} aria-label={`Select ${choice}`} aria-pressed={color === choice}
-          onClick={() => setColor(choice)} />)}
-        <label className={styles.customColor} title="Custom color"><input type="color" value={color}
-          aria-label="Custom line color" onChange={event => setColor(event.target.value)} /><span>+</span></label>
-      </div>
-      <label className={styles.widthControl}>Size <input type="range" min="1" max="16" value={brushWidth}
-        onChange={event => setBrushWidth(Number(event.target.value))} aria-label="Brush size" /><output>{brushWidth}</output></label>
-      <div className={styles.status} role="status"><span className={connection === "connected" ? styles.onlineDot : styles.offlineDot} />
-        {statusText}{pendingCount > 0 && <span> · {pendingCount} pending</span>}
-      </div>
-    </footer>
   </main>;
 }

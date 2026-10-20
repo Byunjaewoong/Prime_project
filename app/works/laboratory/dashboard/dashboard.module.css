@@ -1,33 +1,34 @@
-.page { height: 100svh; display: flex; flex-direction: column; overflow: hidden; background: #f1f0e9; color: #253d36; font-family: var(--font-courier), monospace; }
-.header { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; min-height: 78px; padding: 12px clamp(16px, 3vw, 48px); border-bottom: 1px solid #d6d9cf; background: #f8f8f3; }
-.back { justify-self: start; color: inherit; font-size: 12px; text-decoration: none; }
-.title { text-align: center; }
-.eyebrow { color: #8b9a8e; font-size: 9px; letter-spacing: .2em; }
-.title h1 { margin: 3px 0 0; font-size: 22px; font-weight: 500; letter-spacing: -.04em; }
-.count { justify-self: end; color: #74887d; font-size: 11px; }
-.canvasWrap { position: relative; flex: 1; min-height: 0; background: #fffefa; background-image: radial-gradient(#e8ebe4 0.6px, transparent 0.6px); background-size: 22px 22px; }
-.canvas { display: block; position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
-.empty { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: #a2afa5; font-size: clamp(12px, 2vw, 16px); letter-spacing: .06em; pointer-events: none; white-space: nowrap; }
-.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 24px; min-height: 74px; padding: 12px clamp(16px, 3vw, 48px) max(12px, env(safe-area-inset-bottom)); border-top: 1px solid #d6d9cf; background: #f8f8f3; }
-.colors { display: flex; align-items: center; gap: 9px; }
-.swatch { width: 26px; height: 26px; padding: 0; border: 2px solid #f8f8f3; border-radius: 50%; cursor: pointer; }
-.swatch[aria-pressed="true"] { outline: 1px solid #253d36; outline-offset: 1px; }
-.customColor { position: relative; display: grid; place-items: center; width: 26px; height: 26px; border: 1px dashed #8b9a8e; border-radius: 50%; cursor: pointer; }
+.page { position: relative; width: 100%; height: 100svh; overflow: hidden; background: #fff; font-family: var(--font-courier), monospace; }
+.canvas { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
+.menuRoot { position: fixed; z-index: 2; right: 20px; bottom: max(20px, env(safe-area-inset-bottom)); display: flex; align-items: flex-end; gap: 10px; }
+.menuButton { display: grid; width: 48px; height: 48px; place-items: center; border: 1px solid rgba(255,255,255,.38); border-radius: 50%; background: rgba(18,28,34,.35); color: #fff; cursor: pointer; font: 500 14px var(--font-courier), monospace; backdrop-filter: blur(8px); }
+.menu { width: min(320px, calc(100vw - 92px)); max-height: calc(100svh - 80px); overflow-y: auto; padding: 15px; border: 1px solid rgba(255,255,255,.3); border-radius: 12px; background: rgba(18,28,34,.78); color: #fff; font-size: 12px; backdrop-filter: blur(12px); }
+.menuHeader { display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,.22); letter-spacing: .08em; text-transform: uppercase; }
+.menuHeader a { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid rgba(255,255,255,.3); border-radius: 50%; color: #fff; text-decoration: none; }
+.menuContents { display: grid; gap: 13px; padding-top: 15px; }
+.menuLabel { padding-top: 8px; border-top: 1px solid rgba(255,255,255,.2); color: rgba(255,255,255,.68); font-size: 10px; letter-spacing: .16em; text-transform: uppercase; }
+.menuLabel:first-child { padding-top: 0; border-top: 0; }
+.colors { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+.swatch { width: 27px; height: 27px; padding: 0; border: 2px solid transparent; border-radius: 50%; cursor: pointer; }
+.swatch[aria-pressed="true"] { outline: 2px solid #fff; outline-offset: 2px; }
+.customColor { position: relative; display: grid; place-items: center; width: 27px; height: 27px; border: 1px dashed rgba(255,255,255,.7); border-radius: 50%; cursor: pointer; }
 .customColor input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
 .customColor span { pointer-events: none; font-size: 18px; line-height: 1; }
-.widthControl { display: flex; align-items: center; gap: 9px; font-size: 11px; }
-.widthControl input { width: 92px; accent-color: #253d36; }
-.widthControl output { min-width: 2ch; font-variant-numeric: tabular-nums; }
-.status { display: flex; align-items: center; gap: 6px; margin-left: auto; color: #6d8377; font-size: 10px; }
-.onlineDot, .offlineDot { width: 6px; height: 6px; border-radius: 50%; background: #71a886; }
-.offlineDot { background: #d0a46f; }
-.back:focus-visible, .swatch:focus-visible, .customColor:focus-within, .widthControl input:focus-visible { outline: 2px solid #253d36; outline-offset: 4px; }
-@media (max-width: 650px) {
-  .header { min-height: 66px; grid-template-columns: 1fr auto; }
-  .title { grid-column: 1 / -1; grid-row: 1; }
-  .back { grid-column: 1; grid-row: 1; z-index: 1; font-size: 10px; }
-  .count { grid-column: 2; grid-row: 1; z-index: 1; font-size: 10px; }
-  .title h1 { font-size: 18px; }
-  .toolbar { gap: 12px 16px; }
-  .status { width: 100%; margin-left: 0; }
-}
+.widthControl { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; color: rgba(255,255,255,.85); }
+.widthControl input { grid-column: 1 / -1; width: 100%; margin: 4px 0; accent-color: #d2e2ea; }
+.widthControl output { color: #fff; font-variant-numeric: tabular-nums; }
+.status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: rgba(255,255,255,.75); font-size: 10px; }
+.onlineDot, .offlineDot { width: 6px; height: 6px; border-radius: 50%; background: #90ceaa; }
+.offlineDot { background: #e4b87e; }
+.lineCount { color: rgba(255,255,255,.6); font-size: 10px; }
+.deleteButton { min-height: 36px; padding: 6px 10px; border: 1px solid rgba(255,180,180,.45); border-radius: 6px; background: rgba(140,45,45,.15); color: #ffd5d5; cursor: pointer; font: 12px var(--font-courier), monospace; }
+.deletePanel { display: grid; gap: 10px; padding: 12px; border: 1px solid rgba(255,180,180,.4); border-radius: 6px; background: rgba(90,25,25,.25); }
+.deletePanel p { margin: 0; color: #fff; line-height: 1.5; }
+.deletePanel input { width: 100%; min-height: 36px; padding: 7px 9px; border: 1px solid rgba(255,255,255,.4); border-radius: 5px; outline: none; background: rgba(255,255,255,.12); color: #fff; font: 14px var(--font-courier), monospace; }
+.deletePanel input::placeholder { color: rgba(255,255,255,.55); }
+.deletePanel .deleteError { color: #ffb7b7; }
+.deleteActions { display: flex; gap: 8px; }
+.deleteActions button { flex: 1; min-height: 34px; border: 1px solid rgba(255,255,255,.35); border-radius: 5px; background: rgba(255,255,255,.1); color: #fff; cursor: pointer; font: 11px var(--font-courier), monospace; }
+.deleteActions .confirmDelete { border-color: rgba(255,180,180,.6); background: rgba(180,55,55,.35); }
+.deleteActions button:disabled { opacity: .45; cursor: default; }
+.menuButton:focus-visible, .menuHeader a:focus-visible, .swatch:focus-visible, .customColor:focus-within, .widthControl input:focus-visible, .deleteButton:focus-visible, .deleteActions button:focus-visible, .deletePanel input:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
