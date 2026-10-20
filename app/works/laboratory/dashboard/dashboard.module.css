@@ -1,5 +1,6 @@
 .page { position: relative; width: 100%; height: 100svh; overflow: hidden; background: #fff; font-family: var(--font-courier), monospace; }
 .canvas { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
+.eraserCanvas { cursor: cell; }
 .loadingOverlay { position: absolute; z-index: 3; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: #fff; color: #253d36; text-align: center; }
 .loadingSpinner { width: 25px; height: 25px; border: 2px solid #dce6e0; border-top-color: #253d36; border-radius: 50%; animation: loadingSpin .9s linear infinite; }
 .loadingTitle { font-size: 13px; letter-spacing: .02em; }
@@ -16,6 +17,9 @@
 .menuContents { display: grid; gap: 13px; padding-top: 15px; }
 .menuLabel { padding-top: 8px; border-top: 1px solid rgba(255,255,255,.2); color: rgba(255,255,255,.68); font-size: 10px; letter-spacing: .16em; text-transform: uppercase; }
 .menuLabel:first-child { padding-top: 0; border-top: 0; }
+.tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.toolButton { min-height: 34px; border: 1px solid rgba(255,255,255,.35); border-radius: 5px; background: rgba(255,255,255,.08); color: rgba(255,255,255,.8); cursor: pointer; font: 12px var(--font-courier), monospace; }
+.toolButton[aria-pressed="true"] { border-color: #fff; background: rgba(255,255,255,.22); color: #fff; }
 .colors { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
 .swatch { width: 27px; height: 27px; padding: 0; border: 2px solid transparent; border-radius: 50%; cursor: pointer; }
 .swatch[aria-pressed="true"] { outline: 2px solid #fff; outline-offset: 2px; }
@@ -39,4 +43,4 @@
 .deleteActions button { flex: 1; min-height: 34px; border: 1px solid rgba(255,255,255,.35); border-radius: 5px; background: rgba(255,255,255,.1); color: #fff; cursor: pointer; font: 11px var(--font-courier), monospace; }
 .deleteActions .confirmDelete { border-color: rgba(255,180,180,.6); background: rgba(180,55,55,.35); }
 .deleteActions button:disabled { opacity: .45; cursor: default; }
-.menuButton:focus-visible, .menuHeader a:focus-visible, .swatch:focus-visible, .customColor:focus-within, .widthControl input:focus-visible, .deleteButton:focus-visible, .deleteActions button:focus-visible, .deletePanel input:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.menuButton:focus-visible, .menuHeader a:focus-visible, .toolButton:focus-visible, .swatch:focus-visible, .customColor:focus-within, .widthControl input:focus-visible, .deleteButton:focus-visible, .deleteActions button:focus-visible, .deletePanel input:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }

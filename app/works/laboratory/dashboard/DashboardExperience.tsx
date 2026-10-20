@@ -7,6 +7,7 @@ import styles from "./dashboard.module.css";
 type Point = [number, number];
 type Stroke = { stroke_key: string; color: string; width: number; points: Point[]; generation?: number; id?: number };
 type Connection = "loading" | "connected" | "offline" | "setup";
+type DrawingTool = "pen" | "eraser";
 
 const COLORS = ["#253d36", "#b45448", "#df9c50", "#5b8195", "#758d65", "#816980"];
 const PENDING_KEY = "grimgrigi.dashboard.pending.v1";
@@ -58,6 +59,8 @@ export default function DashboardExperience() {
   const generationRef = useRef<number | null>(null);
   const [color, setColor] = useState(COLORS[0]);
   const [brushWidth, setBrushWidth] = useState(4);
+  const [eraserWidth, setEraserWidth] = useState(16);
+  const [tool, setTool] = useState<DrawingTool>("pen");
   const [connection, setConnection] = useState<Connection>("loading");
   const [hydrating, setHydrating] = useState(true);
   const [loadedCount, setLoadedCount] = useState(0);
@@ -225,7 +228,12 @@ export default function DashboardExperience() {
     if (activePointerRef.current !== null) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     activePointerRef.current = event.pointerId;
-    activeRef.current = { stroke_key: crypto.randomUUID(), color, width: brushWidth, points: [pointFromEvent(event)] };
+    activeRef.current = {
+      stroke_key: crypto.randomUUID(),
+      color: tool === "eraser" ? "#ffffff" : color,
+      width: tool === "eraser" ? eraserWidth : brushWidth,
+      points: [pointFromEvent(event)],
+    };
     repaint();
   };
 
@@ -290,7 +298,7 @@ export default function DashboardExperience() {
   };
 
   return <main className={styles.page} aria-busy={hydrating}>
-    <canvas ref={canvasRef} className={styles.canvas} aria-label="Shared drawing canvas"
+    <canvas ref={canvasRef} className={`${styles.canvas} ${tool === "eraser" ? styles.eraserCanvas : ""}`} aria-label="Shared drawing canvas"
       onPointerDown={onPointerDown} onPointerMove={onPointerMove}
       onPointerUp={finishStroke} onPointerCancel={finishStroke} />
     {hydrating && <div className={styles.loadingOverlay} role="status" aria-live="polite">
@@ -311,16 +319,24 @@ export default function DashboardExperience() {
         </div>
         <div className={styles.menuContents}>
           <div className={styles.menuLabel}>Drawing</div>
+          <div className={styles.tools} role="group" aria-label="Drawing tool">
+            <button type="button" className={styles.toolButton} aria-pressed={tool === "pen"}
+              onClick={() => setTool("pen")}>펜</button>
+            <button type="button" className={styles.toolButton} aria-pressed={tool === "eraser"}
+              onClick={() => setTool("eraser")}>지우개</button>
+          </div>
           <div className={styles.colors} role="group" aria-label="Line color">
             {COLORS.map(choice => <button key={choice} type="button" className={styles.swatch}
               style={{ background: choice }} aria-label={`Select ${choice}`} aria-pressed={color === choice}
-              onClick={() => setColor(choice)} />)}
+              onClick={() => { setColor(choice); setTool("pen"); }} />)}
             <label className={styles.customColor} title="Custom color"><input type="color" value={color}
-              aria-label="Custom line color" onChange={event => setColor(event.target.value)} /><span>+</span></label>
+              aria-label="Custom line color" onChange={event => { setColor(event.target.value); setTool("pen"); }} /><span>+</span></label>
           </div>
-          <label className={styles.widthControl}><span>Brush size</span><output>{brushWidth}px</output>
-            <input type="range" min="1" max="16" value={brushWidth}
-              onChange={event => setBrushWidth(Number(event.target.value))} aria-label="Brush size" />
+          <label className={styles.widthControl}><span>{tool === "eraser" ? "지우개 크기" : "Brush size"}</span>
+            <output>{tool === "eraser" ? eraserWidth : brushWidth}px</output>
+            <input type="range" min="1" max="16" value={tool === "eraser" ? eraserWidth : brushWidth}
+              onChange={event => tool === "eraser" ? setEraserWidth(Number(event.target.value)) : setBrushWidth(Number(event.target.value))}
+              aria-label={tool === "eraser" ? "지우개 크기" : "Brush size"} />
           </label>
           <div className={styles.menuLabel}>Shared canvas</div>
           <div className={styles.status} role="status"><span className={connection === "connected" ? styles.onlineDot : styles.offlineDot} />
