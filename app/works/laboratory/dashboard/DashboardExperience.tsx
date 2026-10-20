@@ -59,6 +59,8 @@ export default function DashboardExperience() {
   const [color, setColor] = useState(COLORS[0]);
   const [brushWidth, setBrushWidth] = useState(4);
   const [connection, setConnection] = useState<Connection>("loading");
+  const [hydrating, setHydrating] = useState(true);
+  const [loadedCount, setLoadedCount] = useState(0);
   const [pendingCount, setPendingCount] = useState(0);
   const [strokeCount, setStrokeCount] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -137,6 +139,8 @@ export default function DashboardExperience() {
           keysRef.current = new Set(pendingRef.current.map(stroke => stroke.stroke_key));
           setPendingCount(pendingRef.current.length);
         } else if (generationRef.current !== result.generation) {
+          setHydrating(true);
+          setLoadedCount(0);
           generationRef.current = result.generation;
           lastIdRef.current = 0;
           pendingRef.current = pendingRef.current.filter(stroke => stroke.generation === result.generation);
@@ -159,9 +163,11 @@ export default function DashboardExperience() {
           strokesRef.current.push(stroke);
         }
         setStrokeCount(strokesRef.current.length);
+        setLoadedCount(strokesRef.current.length);
         repaint();
         hasMore = result.hasMore && result.strokes.length > 0;
       }
+      setHydrating(false);
       setConnection("connected");
       void flushPending();
     } catch {
@@ -283,10 +289,20 @@ export default function DashboardExperience() {
     }
   };
 
-  return <main className={styles.page}>
+  return <main className={styles.page} aria-busy={hydrating}>
     <canvas ref={canvasRef} className={styles.canvas} aria-label="Shared drawing canvas"
       onPointerDown={onPointerDown} onPointerMove={onPointerMove}
       onPointerUp={finishStroke} onPointerCancel={finishStroke} />
+    {hydrating && <div className={styles.loadingOverlay} role="status" aria-live="polite">
+      {connection === "offline" || connection === "setup" ? <>
+        <span className={styles.loadingTitle}>그림을 불러오지 못했습니다</span>
+        <button type="button" className={styles.retryButton} onClick={() => { setConnection("loading"); void syncStrokes(); }}>다시 시도</button>
+      </> : <>
+        <span className={styles.loadingSpinner} aria-hidden="true" />
+        <span className={styles.loadingTitle}>그림을 불러오는 중</span>
+        {loadedCount > 0 && <span className={styles.loadingCount}>{loadedCount.toLocaleString()}개 불러옴</span>}
+      </>}
+    </div>}
     <div className={styles.menuRoot}>
       {menuOpen && <div className={styles.menu}>
         <div className={styles.menuHeader}>
