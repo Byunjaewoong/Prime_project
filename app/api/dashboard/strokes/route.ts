@@ -6,6 +6,7 @@ const PAGE_SIZE = 500;
 const DEFAULT_SUPABASE_URL = "https://jmmypojyjwkhnzquzfvi.supabase.co";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const COLOR = /^#[0-9a-f]{6}$/i;
+const MAX_BOARD_COORDINATE = 10;
 
 function configuration() {
   const url = (process.env.SUPABASE_URL || DEFAULT_SUPABASE_URL).replace(/\/$/, "");
@@ -26,7 +27,8 @@ function isStroke(value: unknown): value is { stroke_key: string; color: string;
     && typeof stroke.width === "number" && Number.isFinite(stroke.width) && stroke.width >= 1 && stroke.width <= 16
     && Array.isArray(stroke.points) && stroke.points.length >= 1 && stroke.points.length <= 600
     && stroke.points.every(point => Array.isArray(point) && point.length === 2
-      && point.every(coordinate => typeof coordinate === "number" && Number.isFinite(coordinate) && coordinate >= 0 && coordinate <= 1));
+      && point.every(coordinate => typeof coordinate === "number" && Number.isFinite(coordinate)
+        && coordinate >= -MAX_BOARD_COORDINATE && coordinate <= MAX_BOARD_COORDINATE));
 }
 
 export async function GET(request: NextRequest) {

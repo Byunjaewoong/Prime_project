@@ -11,6 +11,12 @@ type DrawingTool = "pen" | "eraser";
 
 const COLORS = ["#253d36", "#b45448", "#df9c50", "#5b8195", "#758d65", "#816980"];
 const PENDING_KEY = "grimgrigi.dashboard.pending.v1";
+const MAX_BOARD_COORDINATE = 10;
+
+function boardTransform(width: number, height: number) {
+  const scale = Math.max(1, Math.min(width, height));
+  return { scale, offsetX: (width - scale) / 2, offsetY: (height - scale) / 2 };
+}
 
 function persistPending(strokes: Stroke[]) {
   try { localStorage.setItem(PENDING_KEY, JSON.stringify(strokes)); }
@@ -20,6 +26,9 @@ function persistPending(strokes: Stroke[]) {
 function drawStroke(context: CanvasRenderingContext2D, stroke: Stroke, width: number, height: number) {
   const points = stroke.points;
   if (!points.length) return;
+  const { scale, offsetX, offsetY } = boardTransform(width, height);
+  const screenX = (x: number) => offsetX + x * scale;
+  const screenY = (y: number) => offsetY + y * scale;
   context.strokeStyle = stroke.color;
   context.fillStyle = stroke.color;
   context.lineWidth = stroke.width;
@@ -27,21 +36,23 @@ function drawStroke(context: CanvasRenderingContext2D, stroke: Stroke, width: nu
   context.lineJoin = "round";
   if (points.length === 1) {
     context.beginPath();
-    context.arc(points[0][0] * width, points[0][1] * height, stroke.width / 2, 0, Math.PI * 2);
+    context.arc(screenX(points[0][0]), screenY(points[0][1]), stroke.width / 2, 0, Math.PI * 2);
     context.fill();
     return;
   }
   context.beginPath();
-  context.moveTo(points[0][0] * width, points[0][1] * height);
-  for (let index = 1; index < points.length; index++) context.lineTo(points[index][0] * width, points[index][1] * height);
+  context.moveTo(screenX(points[0][0]), screenY(points[0][1]));
+  for (let index = 1; index < points.length; index++) context.lineTo(screenX(points[index][0]), screenY(points[index][1]));
   context.stroke();
 }
 
 function pointFromEvent(event: PointerEvent<HTMLCanvasElement>): Point {
   const rect = event.currentTarget.getBoundingClientRect();
+  const { scale, offsetX, offsetY } = boardTransform(rect.width, rect.height);
+  const limit = (value: number) => Math.max(-MAX_BOARD_COORDINATE, Math.min(MAX_BOARD_COORDINATE, value));
   return [
-    Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
-    Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)),
+    limit((event.clientX - rect.left - offsetX) / scale),
+    limit((event.clientY - rect.top - offsetY) / scale),
   ];
 }
 
@@ -244,7 +255,8 @@ export default function DashboardExperience() {
     if (!stroke || !canvas) return;
     const point = pointFromEvent(event);
     const previous = stroke.points[stroke.points.length - 1];
-    const distance = Math.hypot((point[0] - previous[0]) * canvas.clientWidth, (point[1] - previous[1]) * canvas.clientHeight);
+    const { scale } = boardTransform(canvas.clientWidth, canvas.clientHeight);
+    const distance = Math.hypot((point[0] - previous[0]) * scale, (point[1] - previous[1]) * scale);
     if (distance < 1.5) return;
     if (stroke.points.length >= 600) {
       finishStroke(event);
