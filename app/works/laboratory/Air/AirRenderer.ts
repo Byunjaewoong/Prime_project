@@ -68,6 +68,21 @@ function compile(gl: WebGL2RenderingContext, type: number, source: string) {
   return shader;
 }
 
+function adaptFragmentSource(source: string) {
+  // The desktop demo uses a binary Earth intersection. At orbital distances its
+  // one-pixel transition becomes a conspicuous dark arc. Keep the original
+  // atmosphere calculation and soften only the ground silhouette in screen space.
+  const groundAlphaDeclaration = "  float ground_alpha = 0.0;";
+  const hardGroundEdge = "      ground_alpha = 1.0;";
+  if (!source.includes(groundAlphaDeclaration) || !source.includes(hardGroundEdge)) {
+    throw new Error("Ground edge shader hook was not found");
+  }
+  return source.replace(groundAlphaDeclaration,
+    "  float ground_edge_width = max(fwidth(discriminant), 0.0001);\n" + groundAlphaDeclaration)
+    .replace(hardGroundEdge,
+      "      ground_alpha = smoothstep(0.0, ground_edge_width * 1.5, discriminant);");
+}
+
 function makeTexture(gl: WebGL2RenderingContext, unit: number, target: number) {
   const texture = gl.createTexture();
   if (!texture) throw new Error("Unable to create atmosphere texture");
@@ -113,7 +128,7 @@ export class AirRenderer {
     const vertexShader = compile(gl, gl.VERTEX_SHADER, vertexSource.trim().replace("#version 330", "#version 300 es"));
     const fragmentShader = compile(gl, gl.FRAGMENT_SHADER,
       atmosphereSource.trim().replace("#version 330", "#version 300 es\nprecision highp float;\nprecision highp sampler3D;") + "\n" +
-      fragmentSource.trim().replace("#version 330", "").replace("const float PI = 3.14159265;", ""));
+      adaptFragmentSource(fragmentSource.trim().replace("#version 330", "").replace("const float PI = 3.14159265;", "")));
     const program = gl.createProgram();
     if (!program) throw new Error("Unable to create atmosphere program");
     gl.attachShader(program, vertexShader);
