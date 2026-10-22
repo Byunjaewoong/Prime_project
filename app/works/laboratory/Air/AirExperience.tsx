@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ArrowLeft, SlidersHorizontal } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent, type WheelEvent } from "react";
 import { AIR_PRESETS, AirRenderer, type AirView } from "./AirRenderer";
 import styles from "./air.module.css";
@@ -112,22 +113,16 @@ export default function AirExperience() {
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp} onWheel={onWheel} />
     <div className={styles.topline}>
-      <Link href="/works/laboratory" className={styles.back} aria-label="Laboratory로 돌아가기">←</Link>
-      <span>AIR <span className={styles.byline}>/ Bruneton atmosphere</span></span>
+      <Link href="/works/laboratory" className={styles.back} aria-label="Laboratory로 돌아가기"><ArrowLeft size={20} aria-hidden="true" /></Link>
     </div>
-    {status !== "ready" && <div className={styles.loading} role="status" aria-live="polite">
+    {status !== "ready" && <div className={styles.loading} role="status" aria-live="polite"
+      aria-label={status === "loading" ? `대기 산란 데이터 불러오는 중 ${progress}%` : "장면을 표시하지 못했습니다"}>
       {status === "loading" ? <>
         <span className={styles.spinner} aria-hidden="true" />
-        <span>대기 산란 데이터 불러오는 중</span>
-        <span className={styles.progress}>{progress}%</span>
       </> : <>
         <span>장면을 표시하지 못했습니다.</span>
         <small>{error}</small>
       </>}
-    </div>}
-    {status === "ready" && <div className={styles.hint}>
-      <span className={styles.desktopHint}>DRAG · VIEW &nbsp; / &nbsp; SHIFT + DRAG · SUN &nbsp; / &nbsp; WHEEL · DISTANCE</span>
-      <span className={styles.mobileHint}>DRAG · VIEW &nbsp; / &nbsp; MENU · SUN</span>
     </div>}
     <div className={styles.menuRoot}>
       {menuOpen && <section className={styles.menu} aria-label="Air controls">
@@ -153,7 +148,7 @@ export default function AirExperience() {
         <p className={styles.credit}>Original model and LUTs © Eric Bruneton · BSD 3-Clause</p>
       </section>}
       <button type="button" className={styles.menuButton} aria-label={menuOpen ? "메뉴 닫기" : "메뉴 열기"}
-        aria-expanded={menuOpen} onClick={() => setMenuOpen(open => !open)}>M</button>
+        aria-expanded={menuOpen} onClick={() => setMenuOpen(open => !open)}><SlidersHorizontal size={19} aria-hidden="true" /></button>
     </div>
   </main>;
 }
