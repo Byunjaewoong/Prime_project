@@ -1,1 +1,3 @@
-export { default } from "../EmergenceExperience";
+import EmergenceExperience from "../EmergenceExperience";
+
+export default function GrayScottPage() { return <EmergenceExperience />; }
