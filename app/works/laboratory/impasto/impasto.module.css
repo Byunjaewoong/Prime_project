@@ -1,6 +1,10 @@
 .page { position: relative; width: 100%; height: 100svh; overflow: hidden; background: #eeeae2; color: #514d44; font-family: var(--font-courier), monospace; }
 .page, .page * { box-sizing: border-box; }
 .canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+.toolDock { position: absolute; bottom: max(20px, env(safe-area-inset-bottom)); left: 18px; display: flex; gap: 3px; padding: 5px; border: 1px solid #827b6a33; border-radius: 10px; background: #f6f2e983; backdrop-filter: blur(10px); }
+.toolDock button { width: 33px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: #726958; cursor: pointer; }
+.toolDock button[aria-pressed="true"] { color: #fffdf7; background: #827661; }
+.capacity { position: absolute; bottom: 80px; left: 20px; right: 20px; font-size: 11px; color: #74684f; text-align: center; pointer-events: none; }
 .menuRoot { position: absolute; z-index: 3; right: 20px; bottom: max(20px, env(safe-area-inset-bottom)); display: flex; align-items: flex-end; gap: 10px; }
 .menuButton { display: grid; width: 48px; height: 48px; flex-shrink: 0; place-items: center; border: 1px solid #827b6a44; border-radius: 50%; background: #f6f2e963; color: #514d44; cursor: pointer; backdrop-filter: blur(8px); }
 .menu { width: min(315px, calc(100vw - 88px)); max-height: calc(100svh - 60px); overflow-y: auto; padding: 18px; border: 1px solid #827b6a33; border-radius: 12px; background: #f6f2e9ba; box-shadow: 0 10px 40px #29251c16; backdrop-filter: blur(16px); font-size: 11px; scrollbar-width: thin; }

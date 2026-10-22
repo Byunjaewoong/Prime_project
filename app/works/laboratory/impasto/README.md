@@ -1,66 +1,70 @@
-# Impasto
+# Impasto — volumetric paint
 
-`/works/laboratory/impasto` is an interactive oil-paint relief study. The initial white
-surface is made from 52 overlapping, curved palette-knife / bristle strokes. Drag with
-a mouse, touch or pressure-sensitive pen. Release to pull a tapered paint ridge. The
-menu controls tool, pigment, width, load, viscosity, yield resistance, adhesion,
-texture, relief, light direction/elevation and oil gloss. It also provides a blank
-canvas, random study, one-step undo/redo and a back link. Idle canvases do not redraw.
+`/works/laboratory/impasto` now uses a 3D particle solver. The old 2.5D heightfield
+implementation has been removed. Start with the small extruded sample, or clear the
+board and squeeze new paint. Only the tube creates particles. Brushes and knives
+move the existing material; dragging across an empty area does not create paint.
 
-## Algorithm review and choice
+## Source port and scope
 
-- [SPlisHSPlasH](https://splishsplash.readthedocs.io/en/latest/about.html) provides SPH
-  pressure solvers, explicit/implicit viscosity, surface tension and solid coupling.
-  It is useful for free 3D fluid motion; viscosity alone does not provide a static
-  plastic yield threshold. Our existing browser SPH study has far fewer particles
-  than would be needed to resolve fine paint striations across a full-screen canvas.
-- [Clavet, Beaudoin & Poulin, 2005](https://doi.org/10.2312/SCA/SCA05/219-228)
-  combines particle density relaxation with springs and changing rest lengths for
-  viscoelasticity/plasticity, including stretched filaments.
-- [Goktekin, Bargteil & O'Brien, 2004](https://cal.cs.umbc.edu/Papers/Goktekin-2004-AMF/)
-  describes a grid method with elastic stress and a yield condition.
+The single-fluid PBF pressure iteration and cubic SPH kernel are TypeScript ports
+of these MIT-licensed SPlisHSPlasH components:
 
-This implementation is original application code inspired by the distinction between
-viscosity, yield and adhesion. **It does not embed SPlisHSPlasH or reproduce either
-paper's complete solver.** It chooses a 2.5D heightfield because the reference is a
-flat substrate covered in detailed paint. There is one surface height per location,
-not an SPH volume or a full constitutive material simulation.
+- [TimeStepPBF.cpp](https://github.com/InteractiveComputerGraphics/SPlisHSPlasH/blob/master/SPlisHSPlasH/PBF/TimeStepPBF.cpp): normalized density, clamped density constraint,
+  lambda denominator, pressure position corrections, first-order velocity update.
+- [SPHKernels.h](https://github.com/InteractiveComputerGraphics/SPlisHSPlasH/blob/master/SPlisHSPlasH/SPHKernels.h): cubic kernel and gradient.
+- Original copyright and license are preserved in `LICENSE-SPlisHSPlasH`.
 
-## Paint layer
+This is a port of those numerical components, **not a WebAssembly build of the full
+C++ engine**. Boundary maps, adaptive iteration count, multiphase density ratios and
+native parallel search were replaced with an analytic board/bounds, four bounded
+pressure iterations and a browser spatial hash.
 
-- Square 1,000-unit material coordinates; 1024² desktop / 640² mobile cells. The
-  viewport crops this square with equal X/Y scale, so resize never stretches strokes.
-- RGBA float buffer: linear RGB pigment and actual layer height. A swept brush
-  footprint depresses/transports old paint and deposits new paint with directional
-  bristle channels, irregular rims and pressure-dependent width. Mobility falls as
-  viscosity increases. A normalized brush-force threshold gates plastic changes.
-- Relaxation exchanges `sign(hi-hj) max(|hi-hj|-yieldThreshold,0) * rate` between
-  adjacent cells, using a separate delta buffer. Pairwise flux conserves height sum
-  and stops under the threshold. The explicit rate is capped at 0.12 for stability.
-  Settling stops at a residual threshold or after a bounded relaxation period.
-- Release makes a thinning, forward-moving ridge over twelve frames, suggesting
-  brush adhesion, necking and detachment. The final raised tip remains in the height
-  layer. This is an artistic adhesion model, not a free-standing liquid bridge.
-- Brush deposition/pickup is artistic and not volume conserving; new pigment is
-  blended in linear RGB, not spectrally. Relaxation alone conserves layer volume.
-  No overhangs, fully detached blobs, material drying or true elastic stress tensor.
+Application extensions:
 
-## Rendering and lifecycle
+- Backward-Euler graph viscosity with three Jacobi sweeps (not the full Weiler
+  implicit viscosity solver).
+- Evolving plastic spring rest lengths, informed by
+  [Clavet et al. 2005](https://doi.org/10.2312/SCA/SCA05/219-228). Rest lengths change
+  under sufficiently large strain, faster in tool contact; bonds break when stretched.
+- Contact footprints for flat, round and fan brushes, rectangular and pointed knives.
+  Contact compresses the particles; pressure constraints redistribute them sideways.
+  Individual bristle depths modulate the actual contact geometry.
+- Adhesion captures a small subset of recently contacted particles. Raising the tool
+  pulls these particles and stretches their bonds until detachment. It does not add
+  a decorative peak or new paint. Tube emission is the sole mass source.
 
-Normals come from adjacent stored heights, supplemented by band-limited microscopic
-grain. Twenty-four height samples toward the light make self-shadows; multiscale
-height comparisons provide cavity shading. Rough oil highlights complete the relief.
-This is shaded heightfield rendering, not a flat painted shadow texture.
+These are interactive, normalized artistic material controls, not calibrated oil-paint
+measurements. Particle number/volume is conserved during spreading; reconstructed
+mesh volume is approximate. Pigment colors follow particles and are interpolated at
+the surface in linear RGB, not a spectral pigment chemistry model.
 
-Generation yields once per stroke and reports progress. Input uses pointer capture,
-handles cancellation and bounds its queue. One buffer snapshot supports undo without
-an unbounded history. GPU uploads happen only on changes. All textures, geometry,
-material, renderer, observers, listeners and animation frames are released on unmount.
-A context-loss message offers an explicit canvas restart (unsaved strokes are lost).
+## Surface and interaction
 
-## Checks
+A compact-support density field is reconstructed from all XYZ particle positions.
+Marching cubes creates a closed 3D mesh, supporting undersides, raised bridges and
+separated drops. It uses dynamic world bounds, 90³ desktop / 72³ mobile reconstruction
+grids, shadow maps and a rough oil material. Mesh resolution limits the finest real
+grooves. A separate, fixed-world bump map preserves sub-particle bristle marks; this
+only supplements the physical mesh. It is not the deformation solver.
 
-`node --test app/works/laboratory/impasto/core/PaintField.test.mjs`
+The bottom dock selects tube / flat brush / round brush / fan brush / broad knife /
+pointed knife / orbit. Mouse and touch drag, pen pressure, pointer cancellation,
+orbit/zoom, one-step undo/redo, clear, color and material controls are supported.
 
-Checks cover viscosity/yield response, static shape retention, conservative stable
-relaxation, adhesion, undo, seeded generation and repeated-stroke numerical bounds.
+The solver runs in a dedicated Web Worker with one outstanding simulation step.
+Snapshots use transferred buffers; rendering and menus stay on the main thread.
+Limits are 3,000 particles desktop / 1,800 mobile and are shown in the menu. At the
+limit, extrusion stops and the user can continue spreading or clear the board.
+The solver has a bounded settling period and sleeps when at rest. Re-entering and
+context-loss recovery dispose/terminate the previous worker and GPU resources.
+Work is local and is lost when the page is reloaded.
+
+## Verification
+
+`node --test app/works/laboratory/impasto/core/PaintSolver.test.mjs`
+
+Checks cover extrusion, mass preservation through spreading/lifting, changed height
+and footprint, distinct tools, undo/pigment restoration, particle limits and finite
+positions under repeated strong contact. Browser checks cover the worker bundle,
+mouse/touch controls, rendering, orbit, clear/undo and context recovery.
