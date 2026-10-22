@@ -1,8 +1,10 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { FLUID_BOUNDS, PbfFluid, type FluidScene, type FluidSettings } from "./PbfFluid";
+import { ParticleSurface } from "./ParticleSurface";
 
 const STEP = 1 / 60;
+export type FluidRenderMode = "surface" | "particles";
 
 export class FluidRenderer {
   private readonly renderer: THREE.WebGLRenderer;
@@ -10,6 +12,7 @@ export class FluidRenderer {
   private readonly camera = new THREE.PerspectiveCamera(43, 1, 0.1, 80);
   private readonly controls: OrbitControls;
   private particles: THREE.InstancedMesh;
+  private surface: ParticleSurface;
   private readonly dummy = new THREE.Object3D();
   private readonly blue = new THREE.Color("#187ab2");
   private readonly white = new THREE.Color("#a9edff");
@@ -25,9 +28,13 @@ export class FluidRenderer {
   private frame = 0;
   private lastFrame = 0;
   private accumulator = 0;
+  private lastSurfaceUpdate = 0;
   private pointerStart: { x: number; y: number } | null = null;
   private disposed = false;
   paused = false;
+  renderMode: FluidRenderMode = "surface";
+  surfaceResolution: number;
+  surfaceThickness = 1.2;
   fluid: PbfFluid;
 
   constructor(private readonly canvas: HTMLCanvasElement, settings: FluidSettings) {
@@ -102,8 +109,12 @@ export class FluidRenderer {
     this.particles = new THREE.InstancedMesh(dropletGeometry, dropletMaterial, settings.particles);
     this.particles.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.particles.frustumCulled = false;
+    this.particles.visible = false;
     this.scene.add(this.particles);
-    this.syncParticles();
+    this.surfaceResolution = window.matchMedia("(max-width: 640px)").matches ? 36 : 44;
+    this.surface = new ParticleSurface(this.surfaceResolution);
+    this.scene.add(this.surface.mesh);
+    this.surface.update(this.fluid.positions, this.fluid.count, this.surfaceThickness);
 
     this.observer = new ResizeObserver(() => this.resize());
     this.observer.observe(canvas);
@@ -166,7 +177,12 @@ export class FluidRenderer {
         this.accumulator -= STEP;
         count++;
       }
-      if (count) this.syncParticles();
+      if (count && this.renderMode === "particles") this.syncParticles();
+      if (count && this.renderMode === "surface" && timestamp - this.lastSurfaceUpdate >= 70) {
+        const started = performance.now();
+        this.surface.update(this.fluid.positions, this.fluid.count, this.surfaceThickness);
+        this.lastSurfaceUpdate = timestamp + Math.max(0, (performance.now() - started - 20) * 2);
+      }
     }
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
@@ -185,13 +201,36 @@ export class FluidRenderer {
       const replacement = new THREE.InstancedMesh(this.particles.geometry, this.particles.material, settings.particles);
       replacement.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       replacement.frustumCulled = false;
+      replacement.visible = this.renderMode === "particles";
       this.scene.remove(this.particles);
       this.particles.dispose();
       this.particles = replacement;
       this.scene.add(replacement);
     }
     this.accumulator = 0;
-    this.syncParticles();
+    if (this.renderMode === "surface") this.surface.update(this.fluid.positions, this.fluid.count, this.surfaceThickness);
+    else this.syncParticles();
+  }
+
+  setRenderMode(mode: FluidRenderMode) {
+    this.renderMode = mode;
+    this.particles.visible = mode === "particles";
+    this.surface.mesh.visible = mode === "surface";
+    if (mode === "surface") this.surface.update(this.fluid.positions, this.fluid.count, this.surfaceThickness);
+    else this.syncParticles();
+  }
+
+  setSurfaceSettings(resolution: number, thickness: number) {
+    this.surfaceThickness = thickness;
+    if (resolution !== this.surfaceResolution) {
+      this.scene.remove(this.surface.mesh);
+      this.surface.dispose();
+      this.surfaceResolution = resolution;
+      this.surface = new ParticleSurface(resolution);
+      this.surface.mesh.visible = this.renderMode === "surface";
+      this.scene.add(this.surface.mesh);
+    }
+    if (this.renderMode === "surface") this.surface.update(this.fluid.positions, this.fluid.count, this.surfaceThickness);
   }
 
   dispose() {
@@ -203,6 +242,8 @@ export class FluidRenderer {
     this.canvas.removeEventListener("webglcontextlost", this.onContextLost);
     this.controls.dispose();
     this.particles.dispose();
+    this.scene.remove(this.surface.mesh);
+    this.surface.dispose();
     this.scene.traverse(object => {
       if (object instanceof THREE.Mesh || object instanceof THREE.LineSegments || object instanceof THREE.GridHelper) {
         object.geometry.dispose();

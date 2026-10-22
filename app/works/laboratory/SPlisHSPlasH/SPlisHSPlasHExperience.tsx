@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ArrowLeft, ExternalLink, Pause, Play, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { FluidRenderer } from "./core/FluidRenderer";
+import { FluidRenderer, type FluidRenderMode } from "./core/FluidRenderer";
 import type { FluidScene, FluidSettings } from "./core/PbfFluid";
 import styles from "./splishsplash.module.css";
 
@@ -26,6 +26,9 @@ export default function SPlisHSPlasHExperience() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scene, setScene] = useState<FluidScene>("dam");
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [renderMode, setRenderMode] = useState<FluidRenderMode>("surface");
+  const [surfaceResolution, setSurfaceResolution] = useState(44);
+  const [surfaceThickness, setSurfaceThickness] = useState(1.2);
   const [paused, setPaused] = useState(false);
   const [error, setError] = useState("");
 
@@ -41,6 +44,7 @@ export default function SPlisHSPlasHExperience() {
         const renderer = new FluidRenderer(canvas, initial);
         rendererRef.current = renderer;
         if (initial.particles !== DEFAULT_SETTINGS.particles) setSettings(initial);
+        if (renderer.surfaceResolution !== 44) setSurfaceResolution(renderer.surfaceResolution);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : "3D 장면을 시작하지 못했습니다.");
       }
@@ -75,6 +79,17 @@ export default function SPlisHSPlasHExperience() {
     if (rendererRef.current) rendererRef.current.paused = next;
   };
 
+  const chooseRenderMode = (next: FluidRenderMode) => {
+    setRenderMode(next);
+    rendererRef.current?.setRenderMode(next);
+  };
+
+  const updateSurface = (resolution: number, thickness: number) => {
+    setSurfaceResolution(resolution);
+    setSurfaceThickness(thickness);
+    rendererRef.current?.setSurfaceSettings(resolution, thickness);
+  };
+
   return <main className={styles.page}>
     <canvas ref={canvasRef} className={styles.canvas}
       aria-label="Three-dimensional interactive SPH fluid simulation. Drag to orbit, tap to splash." />
@@ -87,6 +102,21 @@ export default function SPlisHSPlasHExperience() {
           <button type="button" aria-label="메뉴 닫기" onClick={() => setMenuOpen(false)}>×</button>
         </header>
         <p className={styles.intro}>3D SPH · Position Based Fluids</p>
+        <div className={styles.sectionLabel}>DISPLAY</div>
+        <div className={styles.displayButtons}>
+          <button type="button" className={renderMode === "surface" ? styles.selected : ""}
+            onClick={() => chooseRenderMode("surface")}>Surface</button>
+          <button type="button" className={renderMode === "particles" ? styles.selected : ""}
+            onClick={() => chooseRenderMode("particles")}>Particles</button>
+        </div>
+        {renderMode === "surface" && <>
+          <label className={styles.control}><span>표면 해상도</span><output>{surfaceResolution}</output>
+            <input type="range" min="32" max="52" step="4" value={surfaceResolution}
+              onChange={event => updateSurface(Number(event.target.value), surfaceThickness)} /></label>
+          <label className={styles.control}><span>표면 두께</span><output>{surfaceThickness.toFixed(2)}</output>
+            <input type="range" min="0.8" max="1.5" step="0.05" value={surfaceThickness}
+              onChange={event => updateSurface(surfaceResolution, Number(event.target.value))} /></label>
+        </>}
         <div className={styles.sectionLabel}>SCENE</div>
         <div className={styles.sceneButtons}>
           {SCENES.map(option => <button key={option.id} type="button"
@@ -116,9 +146,13 @@ export default function SPlisHSPlasHExperience() {
           <input type="range" min="1" max="5" step="1" value={settings.pressureIterations}
             onChange={event => updateSettings({ ...settings, pressureIterations: Number(event.target.value) })} /></label>
         <p className={styles.guide}>드래그: 회전 · 스크롤: 확대 · 탭: 물에 충격</p>
-        <a className={styles.source} href="https://github.com/InteractiveComputerGraphics/SPlisHSPlasH"
-          target="_blank" rel="noopener noreferrer">원본 프로젝트 <ExternalLink size={13} aria-hidden="true" /></a>
-        <p className={styles.credit}>SPlisHSPlasH의 PBF 방식을 참고해 새로 작성한 브라우저 데모입니다. 원본 C++ 엔진 전체를 포팅한 것은 아닙니다.</p>
+        <div className={styles.sourceLinks}>
+          <a className={styles.source} href="https://github.com/InteractiveComputerGraphics/SPlisHSPlasH"
+            target="_blank" rel="noopener noreferrer">SPlisHSPlasH <ExternalLink size={13} aria-hidden="true" /></a>
+          <a className={styles.source} href="https://github.com/InteractiveComputerGraphics/splashsurf"
+            target="_blank" rel="noopener noreferrer">SplashSurf <ExternalLink size={13} aria-hidden="true" /></a>
+        </div>
+        <p className={styles.credit}>SPlisHSPlasH의 PBF와 SplashSurf의 입자 표면 재구성 흐름을 참고한 브라우저 구현입니다. 원본 C++/Rust 엔진을 그대로 실행하는 것은 아닙니다.</p>
       </section>}
       <button type="button" className={styles.menuButton} aria-label={menuOpen ? "메뉴 닫기" : "메뉴 열기"}
         aria-expanded={menuOpen} onClick={() => setMenuOpen(open => !open)}>

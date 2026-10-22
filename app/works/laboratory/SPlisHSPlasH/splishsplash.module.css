@@ -12,8 +12,9 @@
 .intro { margin: 13px 0 18px; color: #51717d; }
 .sectionLabel { margin: 17px 0 9px; color: #638390; font-size: 10px; letter-spacing: .16em; }
 .sceneButtons { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.sceneButtons button, .actions button { min-height: 35px; border: 1px solid rgba(20,59,76,.24); border-radius: 5px; background: rgba(255,255,255,.35); color: #143b4c; cursor: pointer; font: inherit; }
-.sceneButtons button.selected { background: #226b8b; border-color: #226b8b; color: #fff; }
+.displayButtons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.sceneButtons button, .displayButtons button, .actions button { min-height: 35px; border: 1px solid rgba(20,59,76,.24); border-radius: 5px; background: rgba(255,255,255,.35); color: #143b4c; cursor: pointer; font: inherit; }
+.sceneButtons button.selected, .displayButtons button.selected { background: #226b8b; border-color: #226b8b; color: #fff; }
 .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 11px; }
 .actions button { display: flex; align-items: center; justify-content: center; gap: 7px; }
 .control { display: grid; grid-template-columns: 1fr auto; gap: 7px; margin: 14px 0; color: #315769; }
@@ -21,6 +22,7 @@
 .control input { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: #227da4; }
 .guide { margin: 18px 0 12px; color: #51717d; font-size: 10px; line-height: 1.5; }
 .source { display: inline-flex; align-items: center; gap: 5px; color: #1e6888; text-decoration: underline; text-underline-offset: 2px; }
+.sourceLinks { display: flex; flex-wrap: wrap; gap: 13px; }
 .credit { margin: 11px 0 0; color: #638390; font-size: 9px; line-height: 1.5; }
-.menuButton:focus-visible, .header a:focus-visible, .header button:focus-visible, .sceneButtons button:focus-visible, .actions button:focus-visible, .control input:focus-visible, .source:focus-visible { outline: 2px solid #18617f; outline-offset: 3px; }
+.menuButton:focus-visible, .header a:focus-visible, .header button:focus-visible, .sceneButtons button:focus-visible, .displayButtons button:focus-visible, .actions button:focus-visible, .control input:focus-visible, .source:focus-visible { outline: 2px solid #18617f; outline-offset: 3px; }
 @media (max-width: 640px) { .menuRoot { right: 15px; } }
