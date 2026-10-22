@@ -1,0 +1,26 @@
+.page { position: relative; width: 100%; height: 100svh; overflow: hidden; background: #e8eff1; color: #143b4c; font-family: var(--font-courier), monospace; }
+.canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+.canvas:active { cursor: grabbing; }
+.error { position: absolute; inset: 0; display: grid; place-items: center; padding: 28px; background: #e8eff1; color: #405f6b; text-align: center; }
+.menuRoot { position: absolute; z-index: 3; right: 20px; bottom: max(20px, env(safe-area-inset-bottom)); display: flex; align-items: flex-end; gap: 10px; }
+.menuButton { display: grid; width: 49px; height: 49px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(20,59,76,.32); border-radius: 50%; background: rgba(239,247,248,.63); color: #143b4c; cursor: pointer; backdrop-filter: blur(9px); }
+.menu { width: min(330px, calc(100vw - 90px)); max-height: calc(100svh - 60px); overflow-y: auto; padding: 16px; border: 1px solid rgba(20,59,76,.2); border-radius: 11px; background: rgba(239,247,248,.8); box-shadow: 0 12px 32px rgba(18,58,76,.12); color: #143b4c; font-size: 11px; backdrop-filter: blur(12px); }
+.header { display: flex; align-items: center; gap: 10px; padding-bottom: 11px; border-bottom: 1px solid rgba(20,59,76,.2); }
+.header strong { flex: 1; font-size: 12px; letter-spacing: .06em; }
+.header a { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(20,59,76,.28); border-radius: 50%; color: inherit; }
+.header button { border: 0; background: none; color: inherit; cursor: pointer; font-size: 23px; line-height: 1; }
+.intro { margin: 13px 0 18px; color: #51717d; }
+.sectionLabel { margin: 17px 0 9px; color: #638390; font-size: 10px; letter-spacing: .16em; }
+.sceneButtons { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.sceneButtons button, .actions button { min-height: 35px; border: 1px solid rgba(20,59,76,.24); border-radius: 5px; background: rgba(255,255,255,.35); color: #143b4c; cursor: pointer; font: inherit; }
+.sceneButtons button.selected { background: #226b8b; border-color: #226b8b; color: #fff; }
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 11px; }
+.actions button { display: flex; align-items: center; justify-content: center; gap: 7px; }
+.control { display: grid; grid-template-columns: 1fr auto; gap: 7px; margin: 14px 0; color: #315769; }
+.control output { color: #143b4c; font-variant-numeric: tabular-nums; }
+.control input { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: #227da4; }
+.guide { margin: 18px 0 12px; color: #51717d; font-size: 10px; line-height: 1.5; }
+.source { display: inline-flex; align-items: center; gap: 5px; color: #1e6888; text-decoration: underline; text-underline-offset: 2px; }
+.credit { margin: 11px 0 0; color: #638390; font-size: 9px; line-height: 1.5; }
+.menuButton:focus-visible, .header a:focus-visible, .header button:focus-visible, .sceneButtons button:focus-visible, .actions button:focus-visible, .control input:focus-visible, .source:focus-visible { outline: 2px solid #18617f; outline-offset: 3px; }
+@media (max-width: 640px) { .menuRoot { right: 15px; } }
