@@ -112,9 +112,6 @@ export default function AirExperience() {
     <canvas ref={canvasRef} className={styles.canvas} aria-label="Interactive atmospheric scattering scene"
       onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp} onWheel={onWheel} />
-    <div className={styles.topline}>
-      <Link href="/works/laboratory" className={styles.back} aria-label="Laboratory로 돌아가기"><ArrowLeft size={20} aria-hidden="true" /></Link>
-    </div>
     {status !== "ready" && <div className={styles.loading} role="status" aria-live="polite"
       aria-label={status === "loading" ? `대기 산란 데이터 불러오는 중 ${progress}%` : "장면을 표시하지 못했습니다"}>
       {status === "loading" ? <>
@@ -126,7 +123,11 @@ export default function AirExperience() {
     </div>}
     <div className={styles.menuRoot}>
       {menuOpen && <section className={styles.menu} aria-label="Air controls">
-        <div className={styles.menuHeader}><span>AIR / ATMOSPHERE</span><button type="button" onClick={() => setMenuOpen(false)} aria-label="메뉴 닫기">×</button></div>
+        <div className={styles.menuHeader}>
+          <Link href="/works/laboratory" className={styles.menuBack} aria-label="Laboratory로 돌아가기"><ArrowLeft size={18} aria-hidden="true" /></Link>
+          <span>AIR / ATMOSPHERE</span>
+          <button type="button" onClick={() => setMenuOpen(false)} aria-label="메뉴 닫기">×</button>
+        </div>
         <p className={styles.menuIntro}>Eric Bruneton의 사전 계산 대기 산란 모델</p>
         <div className={styles.label}>VIEW PRESET</div>
         <div className={styles.presets}>
