@@ -7,7 +7,7 @@ import { ImpastoRenderer } from "./core/ImpastoRenderer";
 import { DEFAULTS, type Settings, type PaintTool } from "./core/PaintSolver";
 import styles from "./impasto.module.css";
 
-const COLORS = ["#efe9dc", "#d9af68", "#ae533d", "#b7c5c9", "#48647c", "#657767", "#343738"];
+const COLORS = ["#f3f3ef", "#d9af68", "#ae533d", "#b7c5c9", "#48647c", "#657767", "#343738"];
 const TOOLS: { id: PaintTool; name: string; path: string }[] = [
   { id: "tube", name: "물감 짜기", path: "M7 3h10l-1 13-3 3v3h-2v-3l-3-3Z M8 6h8" },
   { id: "flat", name: "평붓", path: "M10 2h4v9h-4Z M5 11h14v10H5Z M8 15v6m4-6v6m4-6v6" },
@@ -57,7 +57,7 @@ export default function ImpastoExperience() {
       {menu && <section id="impasto-menu" className={styles.menu} aria-label="Impasto 설정">
         <header className={styles.header}><Link href="/works/laboratory" aria-label="Laboratory로 돌아가기"><ArrowLeft size={17} /></Link>
           <strong>IMPASTO</strong><button aria-label="메뉴 닫기" onClick={() => setMenu(false)}><X size={18} /></button></header>
-        <p className={styles.guide}>① 튜브를 선택하고 누르면 물감이 쌓입니다.<br />② 붓·나이프로 덩어리를 눌러 밀어주세요.<br />③ 손을 떼면 달라붙은 물감이 끌려 올라옵니다.</p>
+        <p className={styles.guide}>흰 물감 바탕 위를 나이프로 밀어보세요.<br />튜브로 물감을 더 짜거나, 비운 뒤 시작할 수 있습니다.<br />손을 떼면 달라붙은 물감이 끌려 올라옵니다.</p>
         <div className={styles.label}>TOOL</div>
         <div className={styles.tools}>{TOOLS.filter(t => t.id !== "view").map(tool => <button key={tool.id} aria-pressed={settings.tool === tool.id} onClick={() => update({ tool: tool.id })}>{tool.name}</button>)}</div>
         <div className={styles.colors}>{COLORS.map(color => <button key={color} style={{ background: color }} aria-label={`물감 ${color}`} aria-pressed={settings.color === color} onClick={() => update({ color })} />)}
@@ -68,10 +68,10 @@ export default function ImpastoExperience() {
         <div className={styles.actions}>
           <button onClick={() => renderer.current?.undo()}><Undo2 size={14} />되돌리기</button>
           <button onClick={() => renderer.current?.clear()}><RotateCcw size={14} />물감 비우기</button>
+          <button onClick={() => renderer.current?.prepare()}>흰 물감 바탕 만들기</button>
           <button onClick={() => renderer.current?.resetView()}>시점 초기화</button><button onClick={() => update(DEFAULTS)}>설정 초기화</button>
         </div>
         <p className={styles.note}>회전 도구에서 드래그로 옆면을 보고, 휠·핀치로 확대할 수 있습니다. 펜 필압을 지원합니다. 색은 새로 짜는 물감에 적용됩니다.</p>
-        <p className={styles.note}>물감 사용량 {Math.round(particles.count / particles.capacity * 100)}% · {particles.count.toLocaleString()} 입자</p>
       </section>}
       <button className={styles.menuButton} aria-label="Impasto 메뉴" aria-controls="impasto-menu" aria-expanded={menu} onClick={() => setMenu(v => !v)}><SlidersHorizontal size={18} /></button>
     </div>

@@ -6,13 +6,14 @@
 export type PaintTool = "tube" | "flat" | "round" | "fan" | "knife" | "pointed" | "view";
 export type Settings = { tool: PaintTool; size: number; amount: number; pressure: number;
   viscosity: number; retention: number; adhesion: number; color: string; gloss: number; light: number };
-export const DEFAULTS: Settings = { tool: "tube", size: 55, amount: 55, pressure: 85,
-  viscosity: 85, retention: 85, adhesion: 60, color: "#efe9dc", gloss: 40, light: 135 };
+export const DEFAULTS: Settings = { tool: "knife", size: 65, amount: 55, pressure: 75,
+  viscosity: 85, retention: 85, adhesion: 60, color: "#f3f3ef", gloss: 18, light: 225 };
 export const SPACING = .045;
 export const SUPPORT = SPACING * 2.4;
 export const RADIUS = SPACING * .44;
 export const BOUND = 2.8;
-const VOLUME = SPACING ** 3, H2 = SUPPORT ** 2;
+export const PARTICLE_VOLUME = SPACING ** 3;
+const VOLUME = PARTICLE_VOLUME, H2 = SUPPORT ** 2;
 const K = 8 / (Math.PI * SUPPORT ** 3), L = 48 / (Math.PI * SUPPORT ** 3);
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 export function kernel(r: number) { const q = r / SUPPORT; return q > 1 ? 0 : K * (q <= .5 ? 6 * q ** 3 - 6 * q * q + 1 : 2 * (1 - q) ** 3); }
@@ -33,6 +34,7 @@ export class PaintSolver {
   readonly colors: Float32Array;
   count = 0;
   settings: Settings = { ...DEFAULTS };
+  substrate: (x: number, z: number) => number = () => 0;
   private old: Float32Array;
   private delta: Float32Array;
   private lambda: Float32Array;
@@ -85,6 +87,31 @@ export class PaintSolver {
   clear() { this.remember(); this.count = 0; this.springs.clear(); this.attached.clear(); this.velocities.fill(0); }
   endContact() { this.attached.clear(); }
 
+  /** Convert yielded particles to resting paint without discarding their volume. */
+  depositContact(deposit: (x: number, z: number, volume: number, color: number[]) => void) {
+    const previous = this.count;
+    let next = 0; const attachments = new Map<number, [number, number, number]>();
+    for (let i = 0; i < this.count; i++) {
+      const k = i * 3, x = this.positions[k], y = this.positions[k + 1], z = this.positions[k + 2];
+      if (this.touches[i] && !this.attached.has(i) && y - this.substrate(x, z) < SPACING * 2.8) {
+        deposit(x, z, VOLUME, Array.from(this.colors.subarray(k, k + 3))); continue;
+      }
+      const attachment = this.attached.get(i); if (attachment) attachments.set(next, attachment);
+      for (let a = 0; a < 3; a++) { this.positions[next * 3 + a] = this.positions[k + a]; this.colors[next * 3 + a] = this.colors[k + a]; this.velocities[next * 3 + a] = this.velocities[k + a]; }
+      next++;
+    }
+    if (next !== this.count) { this.springs.clear(); this.attached = attachments; this.count = next; }
+    return previous - next;
+  }
+  pickUp(c: Contact, color: number[], count: number) {
+    for (let n = 0; n < count && this.count < this.capacity; n++) {
+      const i = this.count++, k = i * 3, x = c.x + (n % 3 - 1) * SPACING, z = c.z + Math.floor(n / 3) * SPACING;
+      const y = this.substrate(x, z) + RADIUS;
+      this.positions.set([x, y, z], k); this.colors.set(color, k); this.velocities.fill(0, k, k + 3);
+      this.attached.set(i, [x - c.x, y, z - c.z]);
+    }
+  }
+
   /** Nozzle adds equal-volume particles; spreading never creates or deletes mass. */
   emit(x: number, z: number, count: number) {
     const color = linear(this.settings.color);
@@ -99,7 +126,7 @@ export class PaintSolver {
       const offset = nozzle[this.count % nozzle.length];
       const px = clamp(x + offset[0], -BOUND + .1, BOUND - .1);
       const pz = clamp(z + offset[1], -BOUND + .1, BOUND - .1);
-      let py = RADIUS;
+      let py = this.substrate(px, pz) + RADIUS;
       for (let j = 0; j < this.count; j++) {
         const q = j * 3, dx = this.positions[q] - px, dz = this.positions[q + 2] - pz;
         const d2 = dx * dx + dz * dz;
@@ -115,7 +142,8 @@ export class PaintSolver {
 
   private confine(k: number) {
     const p = this.positions;
-    p[k] = clamp(p[k], -BOUND, BOUND); p[k + 1] = clamp(p[k + 1], RADIUS, 1.8); p[k + 2] = clamp(p[k + 2], -BOUND, BOUND);
+    p[k] = clamp(p[k], -BOUND, BOUND); p[k + 2] = clamp(p[k + 2], -BOUND, BOUND);
+    p[k + 1] = clamp(p[k + 1], this.substrate(p[k], p[k + 2]) + RADIUS, 1.8);
   }
 
   private contact(c: Contact, transport: boolean) {
@@ -137,14 +165,15 @@ export class PaintSolver {
       if (s.tool === "round" && (cross / halfWidth) ** 2 + (along / halfLength) ** 2 > 1) continue;
       // Each bristle reaches a slightly different depth. This deforms particle geometry.
       const bristle = brush ? .033 * (.5 + .5 * Math.cos(cross * 48)) + .008 * Math.sin(cross * 89) : 0;
-      const surface = bottom + bristle + Math.max(0, along) * (brush ? .1 : .15);
+      const floor = this.substrate(p[k], p[k + 2]);
+      const surface = floor + bottom + bristle + Math.max(0, along) * (brush ? .1 : .15);
       if (c.lifting > 0) continue;
       if (p[k + 1] < surface - .07 || p[k + 1] > surface + .8) continue;
       this.touches[i] = 1;
       if (transport) {
         // No-slip substrate: the bottom film stays on the board while the tool
         // shears the upper material. Uniform drag picked up the whole dollop.
-        const shear = clamp((p[k + 1] - RADIUS) / (SPACING * 1.8), 0, 1);
+        const shear = clamp((p[k + 1] - floor - RADIUS) / (SPACING * 1.8), 0, 1);
         const drag = (brush ? .8 : .5) * (.35 + s.viscosity * .006) * shear;
         p[k] += c.dx * drag; p[k + 2] += c.dz * drag;
       }
@@ -251,9 +280,10 @@ export class PaintSolver {
     let speed = 0;
     for (let i = 0; i < this.count; i++) {
       const k = i * 3, damping = Math.exp(-(2 + s.viscosity * .1) * dt);
-      const friction = p[k + 1] < RADIUS * 1.8 ? .25 : 1;
+      const floor = this.substrate(p[k], p[k + 2]);
+      const friction = p[k + 1] < floor + RADIUS * 1.8 ? .25 : 1;
       v[k] *= damping * friction; v[k + 1] *= damping; v[k + 2] *= damping * friction;
-      if (p[k + 1] <= RADIUS + .001 && v[k + 1] < 0) v[k + 1] = 0;
+      if (p[k + 1] <= floor + RADIUS + .001 && v[k + 1] < 0) v[k + 1] = 0;
       speed = Math.max(speed, Math.hypot(v[k], v[k + 1], v[k + 2]));
     }
     return speed;

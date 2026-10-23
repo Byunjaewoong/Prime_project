@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { DEFAULTS, type Settings, type Contact } from "./PaintSolver";
 import { PaintSurface } from "./PaintSurface";
+import { FilmSurface } from "./FilmSurface";
 import type { Command, PaintState } from "./protocol";
 
 export class ImpastoRenderer {
@@ -15,8 +16,9 @@ export class ImpastoRenderer {
   private camera = new THREE.PerspectiveCamera(37, 1, .05, 60);
   private controls: OrbitControls;
   private surface: PaintSurface;
+  private film: FilmSurface;
   private ground: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
-  private light = new THREE.DirectionalLight(0xfff5e3, 3.3);
+  private light = new THREE.DirectionalLight(0xffffff, 3.4);
   private tool = new THREE.Group();
   private observer: ResizeObserver;
   private ray = new THREE.Raycaster();
@@ -32,6 +34,7 @@ export class ImpastoRenderer {
   private remaining = 0;
   private disposed = false;
   private stopped = false;
+  private renderDirty = true;
   private onCount: (count: number, capacity: number) => void;
   private onError: (message: string) => void;
 
@@ -40,29 +43,32 @@ export class ImpastoRenderer {
     const mobile = window.matchMedia("(max-width: 640px)").matches;
     this.state.capacity = mobile ? 1800 : 3000;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); this.renderer.setClearColor("#f3f0e9");
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75)); this.renderer.setClearColor("#eeefed");
     this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.05;
-    this.camera.position.set(1.4, 2.8, 3.5);
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping; this.renderer.toneMappingExposure = 1.3;
+    this.camera.position.set(0, 6.5, 1.1);
     this.controls = new OrbitControls(this.camera, canvas); this.controls.target.set(0, .08, 0);
     this.controls.enableDamping = false; this.controls.minDistance = 1.5; this.controls.maxDistance = 12;
     this.controls.maxPolarAngle = Math.PI * .47; this.controls.enablePan = false; this.controls.update(); this.controls.enabled = false;
     this.controls.addEventListener("change", this.wake);
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0xb8b1a2, 1.2));
+    this.scene.add(new THREE.HemisphereLight(0xffffff, 0xbfc4c8, .65));
     this.light.castShadow = true; this.light.shadow.mapSize.set(2048, 2048);
     this.light.shadow.camera.left = this.light.shadow.camera.bottom = -3.5;
     this.light.shadow.camera.right = this.light.shadow.camera.top = 3.5;
-    this.light.shadow.normalBias = .006; this.light.shadow.bias = -.0001; this.scene.add(this.light);
-    this.ground = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshStandardMaterial({ color: "#e9e5dc", roughness: .93 }));
+    this.light.shadow.camera.near = .5; this.light.shadow.camera.far = 16;
+    this.light.shadow.normalBias = .003; this.light.shadow.bias = -.0002; this.scene.add(this.light);
+    this.ground = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshStandardMaterial({ color: "#f3f3ef", roughness: .93 }));
     this.ground.rotation.x = -Math.PI / 2; this.ground.position.y = -.015; this.ground.receiveShadow = true; this.scene.add(this.ground);
     this.surface = new PaintSurface(mobile ? 72 : 90); this.scene.add(this.surface.mesh, this.tool);
+    this.film = new FilmSurface(); this.scene.add(this.film.mesh);
     this.worker = new Worker(new URL("./paint.worker.ts", import.meta.url));
     this.worker.onmessage = (event: MessageEvent<PaintState>) => {
       if (this.disposed) return;
       this.state = event.data;
       if (this.state.advanced) this.busy = false;
       if (this.state.advanced && !this.contact && this.state.speed < .008) this.remaining = 0;
-      this.surface.update(this.state); this.onCount(this.state.count, this.state.capacity); this.wake();
+      this.surface.update(this.state); if (this.state.film) this.film.update(this.state.film);
+      this.onCount(this.state.count, this.state.capacity); this.wake();
     };
     this.worker.onerror = () => {
       this.stopped = true; cancelAnimationFrame(this.raf); this.worker.terminate();
@@ -82,8 +88,9 @@ export class ImpastoRenderer {
     const rebuild = settings.tool !== this.settings.tool || settings.size !== this.settings.size || this.tool.children.length === 0;
     this.settings = { ...settings }; this.send({ type: "settings", settings: { ...settings } });
     this.controls.enabled = settings.tool === "view"; this.canvas.style.cursor = settings.tool === "view" ? "grab" : "crosshair";
-    this.surface.material.roughness = .62 - settings.gloss * .004; this.surface.material.clearcoat = settings.gloss * .008;
-    const angle = settings.light * Math.PI / 180; this.light.position.set(Math.cos(angle) * 3.8, 3, Math.sin(angle) * 3.8);
+    this.surface.material.roughness = .8 - settings.gloss * .004; this.surface.material.clearcoat = settings.gloss * .003;
+    this.film.material.roughness = .84 - settings.gloss * .004; this.film.material.clearcoat = settings.gloss * .003;
+    const angle = settings.light * Math.PI / 180; this.light.position.set(Math.cos(angle) * 4.5, 2.4, Math.sin(angle) * 4.5);
     if (rebuild) this.makeTool(); this.wake();
   }
   private disposeTool() {
@@ -116,11 +123,16 @@ export class ImpastoRenderer {
   }
   private send(command: Command) { this.worker.postMessage(command); }
   clear() { this.stop(); this.surface.clear(); this.send({ type: "clear" }); }
+  prepare() { this.stop(); this.surface.clear(); this.send({ type: "prepare" }); }
   undo() { this.stop(); this.surface.undo(); this.send({ type: "undo" }); }
-  resetView() { this.camera.position.set(1.4, 2.8, 3.5); this.controls.target.set(0, .08, 0); this.controls.update(); this.wake(); }
+  resetView() {
+    const span = Math.min(4.6, 5.4 / this.camera.aspect), distance = span / (2 * Math.tan(THREE.MathUtils.degToRad(37 / 2)));
+    this.camera.position.set(0, distance * .984, distance * .18); this.controls.target.set(0, .05, 0); this.controls.update(); this.wake();
+  }
   private resize = () => {
     const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
-    this.camera.aspect = w / Math.max(1, h); this.camera.updateProjectionMatrix(); this.renderer.setSize(w, h, false); this.wake();
+    this.camera.aspect = w / Math.max(1, h); this.camera.updateProjectionMatrix(); this.renderer.setSize(w, h, false);
+    if (this.settings.tool !== "view") this.resetView(); this.wake();
   };
   private project(e: PointerEvent) {
     const r = this.canvas.getBoundingClientRect();
@@ -129,7 +141,15 @@ export class ImpastoRenderer {
     // every input onto the board made raised dollops impossible to grab precisely.
     const paintHit = this.pointer === null && !this.releasing && this.surface.mesh.visible
       ? this.ray.intersectObject(this.surface.mesh, false)[0]?.point : undefined;
-    const hit = paintHit ?? this.ray.ray.intersectPlane(this.plane, new THREE.Vector3()); if (!hit) return null;
+    let filmHit: THREE.Vector3 | null = null;
+    if (this.pointer === null && !this.releasing) {
+      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+      for (let i = 0; i < 4; i++) {
+        filmHit = this.ray.ray.intersectPlane(plane, new THREE.Vector3());
+        if (filmHit) plane.constant = -this.film.sample(filmHit.x, filmHit.z);
+      }
+    }
+    const hit = paintHit ?? filmHit ?? this.ray.ray.intersectPlane(this.plane, new THREE.Vector3()); if (!hit) return null;
     hit.x = THREE.MathUtils.clamp(hit.x, -2.6, 2.6); hit.z = THREE.MathUtils.clamp(hit.z, -2.6, 2.6); return hit;
   }
   private down = (e: PointerEvent) => {
@@ -145,11 +165,12 @@ export class ImpastoRenderer {
     if (this.settings.tool === "view") return; const p = this.project(e); if (!p) return;
     this.tool.visible = true;
     if (e.pointerId === this.pointer && this.contact) { this.target.copy(p); this.contact.pressure = e.pointerType === "pen" ? Math.max(.1, e.pressure) : 1; }
-    else this.tool.position.set(p.x, .45, p.z);
+    else { this.tool.visible = false; }
     this.wake();
   };
   private up = (e: PointerEvent) => {
     if (e.pointerId !== this.pointer) return; this.pointer = null;
+    this.tool.visible = false;
     if (this.canvas.hasPointerCapture(e.pointerId)) this.canvas.releasePointerCapture(e.pointerId);
     if (this.contact && this.settings.tool !== "tube") this.releasing = true;
     else { this.contact = null; this.plane.constant = 0; }
@@ -164,7 +185,7 @@ export class ImpastoRenderer {
     this.contact = null; this.releasing = false; this.plane.constant = 0;
     this.send({ type: "end" }); this.remaining = 0; this.tool.visible = false;
   }
-  private wake = () => { if (!this.raf && !this.disposed && !this.stopped) this.raf = requestAnimationFrame(this.frame); };
+  private wake = () => { this.renderDirty = true; if (!this.raf && !this.disposed && !this.stopped) this.raf = requestAnimationFrame(this.frame); };
   private frame = (time: number) => {
     this.raf = 0; if (this.disposed) return;
     const elapsed = Math.min(.05, (time - this.last) / 1000 || 1 / 60); this.last = time;
@@ -172,24 +193,27 @@ export class ImpastoRenderer {
     if (!this.busy && (this.contact || this.remaining > 0) && this.accumulator >= 1 / 30) {
       this.accumulator = 0; const c = this.contact; let emit = 0;
       if (c) {
-        const dx = this.target.x - c.x, dz = this.target.z - c.z, d = Math.hypot(dx, dz), scale = d > .07 ? .07 / d : 1;
+        const dx = this.target.x - c.x, dz = this.target.z - c.z, d = Math.hypot(dx, dz);
+        const step = Math.min(.11, (.16 + this.settings.size * .012) * .16), scale = d > step ? step / d : 1;
         c.dx = dx * scale; c.dz = dz * scale; c.x += c.dx; c.z += c.dz;
         if (d > .002) c.angle = Math.atan2(c.dx, c.dz);
         // Finish the swept stroke before lifting, including fast touch releases.
-        if (this.releasing && d < .075 && c.lifting === 0) c.lifting = .001;
+        if (this.releasing && d < step + .005 && c.lifting === 0) c.lifting = .001;
         if (c.lifting > 0) c.lifting += 1 / 15;
         if (this.settings.tool === "tube" && this.pointer !== null) {
           this.emitTime += 1 / 30;
           if (this.emitTime > .07) { this.emitTime = 0; emit = 5 + Math.round(this.settings.amount * .18); }
         }
         this.surface.mark(c, this.settings);
-        this.tool.position.set(c.x, .03 + .18 * (1 - this.settings.pressure / 100 * c.pressure) + c.lifting * .6, c.z);
-        this.tool.rotation.y = c.angle; this.tool.visible = true;
+        this.tool.position.set(c.x, this.film.sample(c.x, c.z) + .03 + .18 * (1 - this.settings.pressure / 100 * c.pressure) + c.lifting * .6, c.z);
+        this.tool.rotation.y = c.angle; this.tool.visible = this.pointer !== null;
+        this.renderDirty = true;
       }
       this.busy = true; this.send({ type: "step", contact: c, emit }); this.remaining -= 1 / 30;
       if (c && c.lifting > 1) { this.contact = null; this.releasing = false; this.plane.constant = 0; this.send({ type: "end" }); this.tool.visible = false; }
     }
-    this.renderer.render(this.scene, this.camera); if (this.contact || this.remaining > 0) this.wake();
+    if (this.renderDirty) { this.renderer.render(this.scene, this.camera); this.renderDirty = false; }
+    if ((this.contact || this.remaining > 0) && !this.stopped) this.raf = requestAnimationFrame(this.frame);
   };
   dispose() {
     this.disposed = true; cancelAnimationFrame(this.raf); this.observer.disconnect(); this.worker.terminate();
@@ -198,6 +222,6 @@ export class ImpastoRenderer {
     this.canvas.removeEventListener("pointerup", this.up); this.canvas.removeEventListener("pointercancel", this.cancel);
     this.canvas.removeEventListener("lostpointercapture", this.cancel); this.canvas.removeEventListener("pointerleave", this.leave);
     this.canvas.removeEventListener("webglcontextlost", this.contextLost);
-    this.surface.dispose(); this.ground.geometry.dispose(); this.ground.material.dispose(); this.light.shadow.map?.dispose(); this.renderer.dispose();
+    this.surface.dispose(); this.film.dispose(); this.ground.geometry.dispose(); this.ground.material.dispose(); this.light.shadow.map?.dispose(); this.renderer.dispose();
   }
 }

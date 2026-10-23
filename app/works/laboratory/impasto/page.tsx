@@ -3,7 +3,7 @@ import ImpastoExperience from "./ImpastoExperience";
 
 export const metadata: Metadata = {
   title: "Impasto — Laboratory",
-  description: "Extrude 3D viscoplastic paint and spread it with brushes and palette knives using a particle fluid solver.",
+  description: "Sculpt layered white impasto with sharp palette-knife ridges, fine dragged grain, and volumetric paint.",
 };
 
 export default function ImpastoPage() { return <ImpastoExperience />; }

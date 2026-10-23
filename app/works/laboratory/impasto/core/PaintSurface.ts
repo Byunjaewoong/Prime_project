@@ -54,8 +54,9 @@ export class PaintSurface {
   }
   update(solver: PaintState) {
     const m = this.mesh, n = m.size, p = solver.positions;
-    m.reset(); m.visible = solver.count > 0;
+    m.visible = solver.count > 0;
     if (!solver.count) return;
+    m.reset();
     let minX = Infinity, minY = -.1, minZ = Infinity, maxX = -Infinity, maxY = .25, maxZ = -Infinity;
     for (let i = 0; i < solver.count; i++) {
       const k = i * 3;

@@ -1,70 +1,81 @@
-# Impasto — volumetric paint
+# Impasto ? layered paint and volumetric material
 
-`/works/laboratory/impasto` now uses a 3D particle solver. The old 2.5D heightfield
-implementation has been removed. Start with the small extruded sample, or clear the
-board and squeeze new paint. Only the tube creates particles. Brushes and knives
-move the existing material; dragging across an empty area does not create paint.
+`/works/laboratory/impasto` starts with a prepared white palette-knife study, generated
+from overlapping curved sweeps, flattened faces, asymmetric raised lips, scored grain
+and tapered lifted ends. No reference photograph is used as a texture. This is a
+**procedural prepared sample**, not a particle simulation at equilibrium. The menu
+can regenerate it or clear the board.
+
+## Material representations
+
+The earlier all-particle surface rounded everything into blobs. A spherical density
+kernel and a coarse 3D reconstruction cannot retain thin sharp edges economically.
+
+- Thick/free paint uses 3D PBF particles with plastic bonds and viscosity. The tube
+  emits particles, which collide with the existing painted substrate.
+- Paint yielded onto the substrate uses a 385 �� 385 volume-per-area grid over a
+  six-unit board. Pressed particles transfer their volume and pigment into this
+  film. The film is meshed directly to preserve narrow knife lips.
+- A blade plane flattens contacted film. Removed material moves to side/front banks,
+  weighted by where material was actually displaced. There is no repeated trailing
+  bank each step. Conservative local flux makes steep banks yield under contact.
+  Pressure, viscosity and retention affect deformation rate and allowed bank slope.
+- Adhesive pickup extracts quantized material from the film and converts it back
+  into particles attached to the lifting tool. Volume and linear-RGB pigment are
+  conserved through both transfers. Tools never create paint in empty space.
+
+The film cannot represent an overhang itself; raised/free material uses particles.
+This hybrid is an artistic approximation, not a fully resolved 3D non-Newtonian
+continuum solver. Mesh volume is approximate. The conserved quantity is film volume
+plus the nominal volume of each particle.
+
+## Rendering
+
+Direct relief geometry casts and receives shadows. Local concavity shading reveals
+folded edges. Directional procedural micro-normal detail adds scores, dragged pits
+and bristle grain below mesh resolution, following stored tool direction with fine
+frequency filtering. The material has restrained oil sheen and neutral white color.
+Shadow depth range/bias are fitted to the work area. The default camera looks almost
+directly down; the study fills portrait and landscape views. Orbit allows inspection
+from the side.
 
 ## Source port and scope
 
-The single-fluid PBF pressure iteration and cubic SPH kernel are TypeScript ports
-of these MIT-licensed SPlisHSPlasH components:
+The particle pressure iteration and cubic kernel are TypeScript ports of these
+MIT-licensed SPlisHSPlasH components:
 
-- [TimeStepPBF.cpp](https://github.com/InteractiveComputerGraphics/SPlisHSPlasH/blob/master/SPlisHSPlasH/PBF/TimeStepPBF.cpp): normalized density, clamped density constraint,
-  lambda denominator, pressure position corrections, first-order velocity update.
+- [TimeStepPBF.cpp](https://github.com/InteractiveComputerGraphics/SPlisHSPlasH/blob/master/SPlisHSPlasH/PBF/TimeStepPBF.cpp): density constraint, lambda denominator,
+  pressure position corrections and first-order velocity update.
 - [SPHKernels.h](https://github.com/InteractiveComputerGraphics/SPlisHSPlasH/blob/master/SPlisHSPlasH/SPHKernels.h): cubic kernel and gradient.
-- Original copyright and license are preserved in `LICENSE-SPlisHSPlasH`.
+- Original copyright and license: `LICENSE-SPlisHSPlasH`.
 
-This is a port of those numerical components, **not a WebAssembly build of the full
-C++ engine**. Boundary maps, adaptive iteration count, multiphase density ratios and
-native parallel search were replaced with an analytic board/bounds, four bounded
-pressure iterations and a browser spatial hash.
+This is not a WebAssembly build of the full C++ engine. Browser spatial search,
+four pressure iterations, analytic substrate contact, backward-Euler graph viscosity
+and plastic springs are application implementations. Evolving spring rest lengths
+are informed by [Clavet et al. 2005](https://doi.org/10.2312/SCA/SCA05/219-228).
+The deposited film and transfer rules are application extensions, not code claimed
+to come from SPlisHSPlasH.
 
-Application extensions:
+## Interaction and limits
 
-- Backward-Euler graph viscosity with three Jacobi sweeps (not the full Weiler
-  implicit viscosity solver).
-- Evolving plastic spring rest lengths, informed by
-  [Clavet et al. 2005](https://doi.org/10.2312/SCA/SCA05/219-228). Rest lengths change
-  under sufficiently large strain, faster in tool contact; bonds break when stretched.
-- Contact footprints for flat, round and fan brushes, rectangular and pointed knives.
-  Contact compresses the particles; pressure constraints redistribute them sideways.
-  Individual bristle depths modulate the actual contact geometry.
-- Adhesion captures a small subset of recently contacted particles. Raising the tool
-  pulls these particles and stretches their bonds until detachment. It does not add
-  a decorative peak or new paint. Tube emission is the sole mass source.
+The dock selects tube, flat/round/fan brushes, broad/pointed knives and orbit. Mouse,
+touch, pen pressure, undo/redo, clear, prepared background, color, material controls
+and camera reset are supported. The tube adds new material; prepared-background
+intentionally replaces the material with a fresh sample. Colors mix in linear RGB,
+not a spectral pigment chemistry model.
 
-These are interactive, normalized artistic material controls, not calibrated oil-paint
-measurements. Particle number/volume is conserved during spreading; reconstructed
-mesh volume is approximate. Pigment colors follow particles and are interpolated at
-the surface in linear RGB, not a spectral pigment chemistry model.
-
-## Surface and interaction
-
-A compact-support density field is reconstructed from all XYZ particle positions.
-Marching cubes creates a closed 3D mesh, supporting undersides, raised bridges and
-separated drops. It uses dynamic world bounds, 90³ desktop / 72³ mobile reconstruction
-grids, shadow maps and a rough oil material. Mesh resolution limits the finest real
-grooves. A separate, fixed-world bump map preserves sub-particle bristle marks; this
-only supplements the physical mesh. It is not the deformation solver.
-
-The bottom dock selects tube / flat brush / round brush / fan brush / broad knife /
-pointed knife / orbit. Mouse and touch drag, pen pressure, pointer cancellation,
-orbit/zoom, one-step undo/redo, clear, color and material controls are supported.
-
-The solver runs in a dedicated Web Worker with one outstanding simulation step.
-Snapshots use transferred buffers; rendering and menus stay on the main thread.
-Limits are 3,000 particles desktop / 1,800 mobile and are shown in the menu. At the
-limit, extrusion stops and the user can continue spreading or clear the board.
-The solver has a bounded settling period and sleeps when at rest. Re-entering and
-context-loss recovery dispose/terminate the previous worker and GPU resources.
-Work is local and is lost when the page is reloaded.
+Both solvers run in one Web Worker with at most one outstanding step. Film snapshots
+are transferred only when dirty. Empty particle reconstruction is skipped. Limits
+are 3,000 free particles desktop / 1,800 mobile; deposition frees particle capacity.
+The board is finite. Work is local and lost on reload. Context recovery starts a
+fresh prepared sample.
 
 ## Verification
 
-`node --test app/works/laboratory/impasto/core/PaintSolver.test.mjs`
+`node --test app/works/laboratory/impasto/core/PaintSolver.test.mjs app/works/laboratory/impasto/core/PaintFilm.test.mjs`
 
-Checks cover extrusion, mass preservation through spreading/lifting, changed height
-and footprint, distinct tools, undo/pigment restoration, particle limits and finite
-positions under repeated strong contact. Browser checks cover the worker bundle,
-mouse/touch controls, rendering, orbit, clear/undo and context recovery.
+Tests cover tool deformation/release, volume and pigment conservation across the
+representations, bank stability at board edges, empty strokes, deterministic sample,
+undo, finite positions and particle capacity. Browser checks cover the reference
+view, extrusion/spreading, mouse/touch, color, orbit, undo/clear, menu fit, worker
+loading and context-loss recovery.
