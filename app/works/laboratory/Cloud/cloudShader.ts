@@ -94,3 +94,6 @@ void main() {
   color = pow(color, vec3(0.92));
   fragColor = vec4(color, 1.0);
 }`;
+
+// Shared by Earth's one-time GPU volume bake.
+export const cloudNoiseGLSL = cloudFragment.slice(cloudFragment.indexOf("float hash31"), cloudFragment.indexOf("float densityAt"));

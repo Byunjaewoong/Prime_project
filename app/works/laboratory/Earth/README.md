@@ -1,0 +1,11 @@
+# Earth
+
+Combines Air's Eric Bruneton atmospheric scattering LUTs with Cloud's periodic volume-noise approach in one WebGL2 renderer. Existing Air and Cloud studies remain accessible.
+
+Lighting uses the same world-space sun for the atmosphere, surface, and clouds. Cloud density integrates Beer–Lambert extinction along the camera ray; a six-sample light ray estimates self-shadowing. A dual Henyey–Greenstein phase function provides forward scattering and a weaker backscattering lobe. Direct sunlight is attenuated using the atmosphere's transmittance LUT. Sky irradiance illuminates clouds; two attenuated scattering orders approximate cloud multiple scattering. Cloud shadows attenuate ground sunlight. Representative-depth aerial perspective adds atmospheric extinction and in-scattering between the camera and the clouds.
+
+This is an approximate real-time model, not a fully coupled atmosphere/cloud multiple-scattering solver. Clouds occupy a spherical shell at 1.8–7.5 km. Surface continents are procedural, not a geographic map. The atmosphere uses the original 6360 km model radius.
+
+Optimization: the shared Air LUT URLs use browser caching; a 64³ RGBA8 periodic cloud texture (about 1.14 MiB including mipmaps) is generated once on the GPU instead of evaluating Worley neighborhoods in every march sample. Distance-based mip selection filters subpixel cloud details in orbital views. Empty shell intervals are skipped, opaque rays terminate early, and balanced mode uses 36 view steps with a 480k-pixel cap (high: 64 / 950k). Animation is limited to 24 fps, stops in hidden tabs, and can be paused for rendering only on input/resize. Reduced-motion preference defaults to paused. GPU objects, animation callbacks, observers and fetches are cleaned up on navigation.
+
+Atmosphere shaders and LUTs: © Eric Bruneton, BSD 3-Clause, license preserved at `public/air/bruneton/LICENSE`. Noise approach: Sébastien Hillaire with weirdfoo, TileableVolumeNoise (MIT), Worley method credited upstream to Marc-André Loyer. Earth reuses Cloud's local GLSL noise adaptation and does not bundle new third-party assets.

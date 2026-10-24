@@ -1,0 +1,179 @@
+import { createProgram, fitCanvas } from "../core/fullscreenGL";
+import { earthFragment, noiseFragment } from "./earthShader";
+
+export type EarthView = {
+  mode: "orbit" | "sky";
+  altitude: number;
+  yaw: number;
+  pitch: number;
+  sunElevation: number;
+  sunAzimuth: number;
+  coverage: number;
+  density: number;
+  exposure: number;
+  animate: boolean;
+  quality: "balanced" | "high";
+};
+export const EARTH_DEFAULT: EarthView = { mode: "orbit", altitude: 10500, yaw: 0, pitch: 0.1,
+  sunElevation: 32, sunAzimuth: -65, coverage: 0.32, density: 1.3, exposure: 7, animate: true, quality: "balanced" };
+export const EARTH_PRESETS: { name: string; view: Partial<EarthView> }[] = [
+  { name: "Orbit", view: { mode: "orbit", altitude: 10500, yaw: 0, pitch: 0.1, sunElevation: 32, sunAzimuth: -65, exposure: 7, coverage: 0.32 } },
+  { name: "Cloudscape", view: { mode: "sky", altitude: 9, yaw: 0, pitch: -0.16, sunElevation: 24, sunAzimuth: -35, exposure: 7, coverage: 0.85 } },
+  { name: "Sunset", view: { mode: "sky", altitude: 0.6, yaw: 0, pitch: 0.15, sunElevation: 2, sunAzimuth: 8, exposure: 10, coverage: 0.85 } },
+];
+
+function normalize(v: number[]) { const length = Math.hypot(...v); return v.map(x => x / length); }
+function cross(a: number[], b: number[]) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+
+export class EarthRenderer {
+  private gl: WebGL2RenderingContext;
+  private program: WebGLProgram | null = null;
+  private vao: WebGLVertexArrayObject | null;
+  private textures: WebGLTexture[] = [];
+  private uniforms: Record<string, WebGLUniformLocation | null> = {};
+  private frame = 0;
+  private last = 0;
+  private time = 0;
+  private disposed = false;
+  private frames = 0;
+  private observer: ResizeObserver;
+  private view: EarthView;
+
+  constructor(private canvas: HTMLCanvasElement, view: EarthView) {
+    const gl = canvas.getContext("webgl2", { alpha: false, antialias: false });
+    if (!gl) throw new Error("WebGL2를 지원하는 브라우저가 필요합니다.");
+    this.gl = gl;
+    this.view = { ...view };
+    this.vao = gl.createVertexArray();
+    this.observer = new ResizeObserver(() => this.requestRender());
+    this.observer.observe(canvas);
+    document.addEventListener("visibilitychange", this.onVisibility);
+  }
+
+  async initialize(signal: AbortSignal) {
+    const names = ["atmosphere_shader.txt", "transmittance.dat", "scattering.dat", "irradiance.dat"];
+    const data = await Promise.all(names.map(async (name, index) => {
+      const response = await fetch(`/air/bruneton/${name}`, { signal });
+      if (!response.ok) throw new Error(`대기 데이터 로딩 실패: ${name} (${response.status})`);
+      return index === 0 ? response.text() : response.arrayBuffer();
+    }));
+    if (signal.aborted || this.disposed) return;
+    const gl = this.gl;
+    const source = (data[0] as string).trim().replace("#version 330", "#version 300 es\nprecision highp float;\nprecision highp sampler3D;");
+    this.program = createProgram(gl, source + "\n" + earthFragment);
+    gl.bindVertexArray(this.vao);
+    const dimensions = [[256,64,1],[256,128,32],[64,16,1]];
+    dimensions.forEach(([w,h,d], index) => {
+      const buffer = data[index+1] as ArrayBuffer;
+      if (buffer.byteLength !== w*h*d*16) throw new Error("대기 데이터 크기가 일치하지 않습니다.");
+      const texture = gl.createTexture();
+      if (!texture) throw new Error("대기 텍스처 생성 실패");
+      this.textures.push(texture);
+      const target = d > 1 ? gl.TEXTURE_3D : gl.TEXTURE_2D;
+      gl.activeTexture(gl.TEXTURE0 + index);
+      gl.bindTexture(target,texture);
+      gl.texParameteri(target,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+      gl.texParameteri(target,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+      gl.texParameteri(target,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+      gl.texParameteri(target,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+      if (d > 1) {
+        gl.texParameteri(target,gl.TEXTURE_WRAP_R,gl.CLAMP_TO_EDGE);
+        gl.texImage3D(target,0,gl.RGBA16F,w,h,d,0,gl.RGBA,gl.FLOAT,new Float32Array(buffer));
+      } else gl.texImage2D(target,0,gl.RGBA16F,w,h,0,gl.RGBA,gl.FLOAT,new Float32Array(buffer));
+    });
+    this.bakeNoise();
+    if (gl.getError() !== gl.NO_ERROR) throw new Error("Earth GPU 초기화 실패");
+    const namesUniform = ["uNoise","uResolution","uCamera","uForward","uRight","uUp","uSun","uCoverage","uDensity","uExposure","uTime","uSteps",
+      "transmittance_texture","scattering_texture","single_mie_scattering_texture","irradiance_texture"];
+    this.uniforms = Object.fromEntries(namesUniform.map(name => [name,gl.getUniformLocation(this.program!,name)]));
+    this.canvas.dataset.ready = "true";
+    this.requestRender();
+  }
+
+  private bakeNoise() {
+    const gl = this.gl;
+    const program = createProgram(gl,noiseFragment);
+    const framebuffer = gl.createFramebuffer();
+    const texture = gl.createTexture();
+    if (!framebuffer || !texture) throw new Error("구름 텍스처 생성 실패");
+    this.textures.push(texture);
+    try {
+      gl.activeTexture(gl.TEXTURE3);
+      gl.bindTexture(gl.TEXTURE_3D,texture);
+      gl.texStorage3D(gl.TEXTURE_3D,7,gl.RGBA8,64,64,64);
+      for (const axis of [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T,gl.TEXTURE_WRAP_R]) gl.texParameteri(gl.TEXTURE_3D,axis,gl.REPEAT);
+      gl.texParameteri(gl.TEXTURE_3D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_3D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+      gl.bindFramebuffer(gl.FRAMEBUFFER,framebuffer);
+      gl.viewport(0,0,64,64);
+      gl.useProgram(program);
+      const slice = gl.getUniformLocation(program,"uSlice");
+      for (let z = 0; z < 64; z++) {
+        gl.framebufferTextureLayer(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,texture,0,z);
+        if (z === 0 && gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error("구름 볼륨 생성 실패");
+        gl.uniform1f(slice,(z+0.5)/64);
+        gl.drawArrays(gl.TRIANGLES,0,3);
+      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+      gl.generateMipmap(gl.TEXTURE_3D);
+    } finally { gl.bindFramebuffer(gl.FRAMEBUFFER,null); gl.deleteFramebuffer(framebuffer); gl.deleteProgram(program); }
+  }
+
+  setView(view: EarthView) { this.view = { ...view }; this.requestRender(); }
+  private onVisibility = () => { this.last = 0; this.requestRender(); };
+  private requestRender() {
+    if (this.disposed || !this.program || this.frame || document.hidden) return;
+    this.frame = requestAnimationFrame(this.draw);
+  }
+  private draw = (now: number) => {
+    this.frame = 0;
+    if (this.disposed || !this.program || document.hidden) return;
+    const gl = this.gl, v = this.view, u = this.uniforms;
+    if (v.animate && this.last && now-this.last < 1000/24) { this.requestRender(); return; }
+    if (v.animate && this.last) this.time += Math.min(0.1,(now-this.last)/1000);
+    this.last = now;
+    fitCanvas(this.canvas,v.quality === "high" ? 950000 : 480000);
+    gl.viewport(0,0,this.canvas.width,this.canvas.height);
+    let camera: number[], forward: number[], right: number[], up: number[];
+    if (v.mode === "orbit") {
+      const normal = [Math.sin(v.yaw)*Math.cos(v.pitch),Math.sin(v.pitch),Math.cos(v.yaw)*Math.cos(v.pitch)];
+      camera = normal.map(x => x*(6360+v.altitude));
+      forward = normal.map(x => -x);
+      right = normalize(cross(forward,[0,1,0]));
+      up = cross(right,forward);
+    } else {
+      camera = [0,0,6360+v.altitude];
+      forward = [Math.sin(v.yaw)*Math.cos(v.pitch),Math.cos(v.yaw)*Math.cos(v.pitch),Math.sin(v.pitch)];
+      right = normalize(cross(forward,[0,0,1]));
+      up = cross(right,forward);
+    }
+    const elevation = v.sunElevation*Math.PI/180, azimuth = v.sunAzimuth*Math.PI/180;
+    gl.useProgram(this.program);
+    gl.bindVertexArray(this.vao);
+    gl.uniform1i(u.transmittance_texture,0);
+    gl.uniform1i(u.scattering_texture,1);
+    gl.uniform1i(u.single_mie_scattering_texture,1);
+    gl.uniform1i(u.irradiance_texture,2);
+    gl.uniform1i(u.uNoise,3);
+    gl.uniform2f(u.uResolution,this.canvas.width,this.canvas.height);
+    for (const [name,value] of [["uCamera",camera],["uForward",forward],["uRight",right],["uUp",up]] as const) gl.uniform3fv(u[name],value);
+    gl.uniform3f(u.uSun,Math.sin(azimuth)*Math.cos(elevation),Math.cos(azimuth)*Math.cos(elevation),Math.sin(elevation));
+    gl.uniform1f(u.uCoverage,v.coverage);
+    gl.uniform1f(u.uDensity,v.density);
+    gl.uniform1f(u.uExposure,v.exposure);
+    gl.uniform1f(u.uTime,this.time);
+    gl.uniform1i(u.uSteps,v.quality === "high" ? 64 : 36);
+    gl.drawArrays(gl.TRIANGLES,0,3);
+    this.canvas.dataset.frames = String(++this.frames);
+    if (v.animate) this.requestRender();
+  };
+  dispose() {
+    this.disposed = true;
+    cancelAnimationFrame(this.frame);
+    this.observer.disconnect();
+    document.removeEventListener("visibilitychange",this.onVisibility);
+    this.textures.forEach(texture => this.gl.deleteTexture(texture));
+    if (this.program) this.gl.deleteProgram(this.program);
+    this.gl.deleteVertexArray(this.vao);
+  }
+}
