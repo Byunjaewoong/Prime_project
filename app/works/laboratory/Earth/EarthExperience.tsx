@@ -63,9 +63,9 @@ export default function EarthExperience() {
   return <main className={styles.page}>
     <canvas ref={canvasRef} className={styles.canvas} aria-label="대기와 구름의 빛 산란을 함께 계산하는 Earth"
       onPointerDown={event => { if (drag.current || (event.pointerType === "mouse" && event.button !== 0)) return; drag.current = { id: event.pointerId,x:event.clientX,y:event.clientY,yaw:current.current.yaw,pitch:current.current.pitch }; event.currentTarget.setPointerCapture(event.pointerId); }}
-      onPointerMove={event => { const d=drag.current; if (!d || d.id !== event.pointerId) return; apply({ yaw:d.yaw-(event.clientX-d.x)*0.004,pitch:Math.max(-1.3,Math.min(1.3,d.pitch+(event.clientY-d.y)*0.004)) }); }}
+      onPointerMove={event => { const d=drag.current; if (!d || d.id !== event.pointerId) return; apply({ yaw:d.yaw-(event.clientX-d.x)*0.004,pitch:Math.max(current.current.mode === "orbit" ? 0.03 : -1.3,Math.min(current.current.mode === "orbit" ? 1.55 : 1.3,d.pitch+(event.clientY-d.y)*0.004)) }); }}
       onPointerUp={endDrag} onPointerCancel={endDrag}
-      onWheel={event => { const v=current.current; apply({ altitude:Math.max(v.mode === "orbit" ? 2500 : 0.2,Math.min(v.mode === "orbit" ? 24000 : 40,v.altitude*Math.exp(event.deltaY*0.001))) }); }} />
+      onWheel={event => { const v=current.current; apply({ altitude:Math.max(v.mode === "orbit" ? 100 : 0.2,Math.min(v.mode === "orbit" ? 12000 : 40,v.altitude*Math.exp(event.deltaY*0.001))) }); }} />
     {status === "loading" && <div className={styles.error} role="status" style={{ background:"rgba(8,14,24,.8)" }}>대기와 구름을 준비하고 있습니다…</div>}
     {status === "error" && <div className={styles.error} role="alert">{error}</div>}
     <div className={styles.bottom} style={{ justifyContent: "flex-end" }}><button type="button" onClick={() => setOpen(!open)} aria-label="CONTROLS" aria-expanded={open}><SlidersHorizontal size={18} aria-hidden="true" /></button></div>
@@ -77,7 +77,7 @@ export default function EarthExperience() {
       {slider("Cloud coverage", "coverage",0,1,0.01)}
       {slider("Cloud density", "density",0.2,3,0.05)}
       {slider("Exposure", "exposure",1,30,0.5)}
-      <label>Altitude<output>{view.altitude.toFixed(view.mode === "sky" ? 1 : 0)} km</output><input aria-label="Altitude" type="range" min={Math.log(view.mode === "sky" ? 0.2 : 2500)} max={Math.log(view.mode === "sky" ? 40 : 24000)} step="0.01" value={Math.log(view.altitude)} onChange={event => apply({ altitude: Math.exp(Number(event.target.value)) })} /></label>
+      <label>{view.mode === "orbit" ? "Viewing distance" : "Altitude"}<output>{view.altitude.toFixed(view.mode === "sky" ? 1 : 0)} km</output><input aria-label={view.mode === "orbit" ? "Viewing distance" : "Altitude"} type="range" min={Math.log(view.mode === "sky" ? 0.2 : 100)} max={Math.log(view.mode === "sky" ? 40 : 12000)} step="0.01" value={Math.log(view.altitude)} onChange={event => apply({ altitude: Math.exp(Number(event.target.value)) })} /></label>
       <div className={styles.modeRow}><button type="button" aria-pressed={view.quality === "balanced"} onClick={() => apply({quality:"balanced"})}>Balanced</button><button type="button" aria-pressed={view.quality === "high"} onClick={() => apply({quality:"high"})}>High</button><button type="button" aria-pressed={!view.animate} onClick={() => apply({animate:!view.animate})}>{view.animate ? "Pause" : "Play"}</button></div>
       <p className={styles.credit}>Atmosphere © Eric Bruneton · BSD 3-Clause · <a href="/air/bruneton/LICENSE" target="_blank" rel="noopener noreferrer">License</a><br />Cloud noise: Sébastien Hillaire, weirdfoo / Worley: Marc-André Loyer · <a href="https://github.com/sebh/TileableVolumeNoise" target="_blank" rel="noopener noreferrer">Source ↗</a></p>
     </aside>}

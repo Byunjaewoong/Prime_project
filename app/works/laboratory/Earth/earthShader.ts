@@ -17,7 +17,7 @@ export const earthFragment = `
 uniform sampler3D uNoise;
 uniform vec2 uResolution;
 uniform vec3 uCamera, uForward, uRight, uUp, uSun;
-uniform float uCoverage, uDensity, uExposure, uTime;
+uniform float uCoverage, uDensity, uExposure, uTime, uTanFov;
 uniform int uSteps;
 out vec4 color;
 const float EARTH = 6360.0;
@@ -34,7 +34,7 @@ float cloudDensity(vec3 p) {
   float h = (length(p) - CLOUD_BASE) / (CLOUD_TOP - CLOUD_BASE);
   if (h <= 0.0 || h >= 1.0 || uCoverage <= 0.001) return 0.0;
   vec3 wind = vec3(uTime * 0.7 + 73.0, uTime * 0.2 + 141.0, 97.0);
-  float footprint = length(p-uCamera) * 0.96 * max(1.0,uResolution.y/uResolution.x) / uResolution.y;
+  float footprint = length(p-uCamera) * 2.0 * uTanFov / uResolution.y;
   vec4 base = textureLod(uNoise, (p + wind) / 48.0, max(0.0,log2(footprint*64.0/48.0)));
   float weather = textureLod(uNoise, (p + wind * 0.4) / 3200.0 + vec3(0.31,0.47,0.13), max(0.0,log2(footprint*64.0/3200.0))).b;
   float detail = textureLod(uNoise, (p + wind) / 12.0, max(0.0,log2(footprint*64.0/12.0))).g;
@@ -66,35 +66,24 @@ float cloudShadow(vec3 p) {
 float phaseHG(float cosine, float g) {
   return (1.0 - g*g) / (4.0 * PI * pow(max(0.001, 1.0 + g*g - 2.0*g*cosine), 1.5));
 }
-vec3 surfaceAlbedo(vec3 p) {
-  vec3 n = normalize(p);
-  float continent = texture(uNoise, n * 0.6 + 0.23).b;
-  continent += texture(uNoise, n * 1.4).a * 0.1;
-  float land = smoothstep(0.51, 0.53, continent);
-  vec3 ground = mix(vec3(0.055,0.105,0.038), vec3(0.23,0.18,0.08), smoothstep(0.58,0.8,continent));
-  vec3 albedo = mix(vec3(0.007,0.022,0.045), ground, land);
-  float ice = smoothstep(0.84,0.97,abs(n.y) + (continent-0.5)*0.1);
-  return mix(albedo,vec3(0.7,0.77,0.8),ice);
-}
 void main() {
   vec2 screen = (gl_FragCoord.xy * 2.0 - uResolution) / uResolution.y;
-  float fov = 0.48 * max(1.0, uResolution.y / uResolution.x);
-  vec3 rd = normalize(uForward + (uRight * screen.x + uUp * screen.y) * fov);
+  vec3 rd = normalize(uForward + (uRight * screen.x + uUp * screen.y) * uTanFov);
   vec3 ro = uCamera;
   vec2 ground = sphereInterval(ro, rd, EARTH);
   float distanceToGround = ground.x > 0.0 ? ground.x : 1e7;
   vec3 transmittance;
-  vec3 background;
+  vec3 background = GetSkyRadiance(ro,rd,0.0,uSun,transmittance);
+  if (dot(rd,uSun) > cos(0.004675)) background += transmittance * GetSolarRadiance();
+  float discriminant = EARTH*EARTH - (dot(ro,ro)-dot(ro,rd)*dot(ro,rd));
+  float groundEdgeWidth = max(fwidth(discriminant),0.0001);
   if (distanceToGround < 1e6) {
     vec3 p = ro + rd * distanceToGround;
     vec3 skyLight;
     vec3 sunlight = GetSunAndSkyIrradiance(p, normalize(p), uSun, skyLight);
-    vec3 surface = surfaceAlbedo(p) / PI * (sunlight * cloudShadow(p + normalize(p)*0.01) + skyLight);
+    vec3 surface = vec3(0.0,0.0,0.04) / PI * (sunlight * cloudShadow(p + normalize(p)*0.01) + skyLight);
     vec3 air = GetSkyRadianceToPoint(ro,p,0.0,uSun,transmittance);
-    background = surface * transmittance + air;
-  } else {
-    background = GetSkyRadiance(ro,rd,0.0,uSun,transmittance);
-    if (dot(rd,uSun) > cos(0.004675)) background += transmittance * GetSolarRadiance();
+    background = mix(background,surface * transmittance + air,smoothstep(0.0,groundEdgeWidth*1.5,discriminant));
   }
   vec2 interval = cloudInterval(ro,rd,distanceToGround);
   vec3 cloudLight = vec3(0.0);

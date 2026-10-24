@@ -1,5 +1,6 @@
 import { createProgram, fitCanvas } from "../core/fullscreenGL";
 import { earthFragment, noiseFragment } from "./earthShader";
+import { AIR_PRESETS } from "../Air/AirRenderer";
 
 export type EarthView = {
   mode: "orbit" | "sky";
@@ -14,10 +15,18 @@ export type EarthView = {
   animate: boolean;
   quality: "balanced" | "high";
 };
-export const EARTH_DEFAULT: EarthView = { mode: "orbit", altitude: 10500, yaw: 0, pitch: 0.1,
-  sunElevation: 32, sunAzimuth: -65, coverage: 0.32, density: 1.3, exposure: 7, animate: true, quality: "balanced" };
+const airOrbit = AIR_PRESETS.find(preset => preset.name === "Orbit")!.view;
+const orbitView: Partial<EarthView> = {
+  mode: "orbit", altitude: airOrbit.viewDistanceMeters / 1000,
+  yaw: airOrbit.viewAzimuth, pitch: Math.PI / 2 - airOrbit.viewZenith,
+  sunElevation: 90 - airOrbit.sunZenith * 180 / Math.PI,
+  sunAzimuth: 90 - airOrbit.sunAzimuth * 180 / Math.PI,
+  exposure: airOrbit.exposure, coverage: 0.32,
+};
+export const EARTH_DEFAULT: EarthView = { mode: "orbit", altitude: 2700, yaw: 0, pitch: 0.76,
+  sunElevation: 0, sunAzimuth: 0, coverage: 0.32, density: 1.3, exposure: 10, animate: true, quality: "balanced", ...orbitView };
 export const EARTH_PRESETS: { name: string; view: Partial<EarthView> }[] = [
-  { name: "Orbit", view: { mode: "orbit", altitude: 10500, yaw: 0, pitch: 0.1, sunElevation: 32, sunAzimuth: -65, exposure: 7, coverage: 0.32 } },
+  { name: "Orbit", view: orbitView },
   { name: "Cloudscape", view: { mode: "sky", altitude: 9, yaw: 0, pitch: -0.16, sunElevation: 24, sunAzimuth: -35, exposure: 7, coverage: 0.85 } },
   { name: "Sunset", view: { mode: "sky", altitude: 0.6, yaw: 0, pitch: 0.15, sunElevation: 2, sunAzimuth: 8, exposure: 10, coverage: 0.85 } },
 ];
@@ -83,7 +92,7 @@ export class EarthRenderer {
     });
     this.bakeNoise();
     if (gl.getError() !== gl.NO_ERROR) throw new Error("Earth GPU 초기화 실패");
-    const namesUniform = ["uNoise","uResolution","uCamera","uForward","uRight","uUp","uSun","uCoverage","uDensity","uExposure","uTime","uSteps",
+    const namesUniform = ["uNoise","uResolution","uTanFov","uCamera","uForward","uRight","uUp","uSun","uCoverage","uDensity","uExposure","uTime","uSteps",
       "transmittance_texture","scattering_texture","single_mie_scattering_texture","irradiance_texture"];
     this.uniforms = Object.fromEntries(namesUniform.map(name => [name,gl.getUniformLocation(this.program!,name)]));
     this.canvas.dataset.ready = "true";
@@ -136,10 +145,13 @@ export class EarthRenderer {
     gl.viewport(0,0,this.canvas.width,this.canvas.height);
     let camera: number[], forward: number[], right: number[], up: number[];
     if (v.mode === "orbit") {
-      const normal = [Math.sin(v.yaw)*Math.cos(v.pitch),Math.sin(v.pitch),Math.cos(v.yaw)*Math.cos(v.pitch)];
-      camera = normal.map(x => x*(6360+v.altitude));
-      forward = normal.map(x => -x);
-      right = normalize(cross(forward,[0,1,0]));
+      // Air orbits a surface target, not the planet centre. Translate its camera
+      // by +6360 km on Z into the planet-centred coordinates used here.
+      const offset = [Math.cos(v.pitch)*Math.cos(v.yaw),Math.cos(v.pitch)*Math.sin(v.yaw),Math.sin(v.pitch)];
+      camera = offset.map(x => x*v.altitude);
+      camera[2] += 6360;
+      forward = offset.map(x => -x);
+      right = [-Math.sin(v.yaw),Math.cos(v.yaw),0];
       up = cross(right,forward);
     } else {
       camera = [0,0,6360+v.altitude];
@@ -156,6 +168,8 @@ export class EarthRenderer {
     gl.uniform1i(u.irradiance_texture,2);
     gl.uniform1i(u.uNoise,3);
     gl.uniform2f(u.uResolution,this.canvas.width,this.canvas.height);
+    const aspect = this.canvas.width/this.canvas.height;
+    gl.uniform1f(u.uTanFov,v.mode === "orbit" ? Math.tan(25*Math.PI/180)*Math.max(1,(16/9)/aspect) : 0.48*Math.max(1,1/aspect));
     for (const [name,value] of [["uCamera",camera],["uForward",forward],["uRight",right],["uUp",up]] as const) gl.uniform3fv(u[name],value);
     gl.uniform3f(u.uSun,Math.sin(azimuth)*Math.cos(elevation),Math.cos(azimuth)*Math.cos(elevation),Math.sin(elevation));
     gl.uniform1f(u.uCoverage,v.coverage);
