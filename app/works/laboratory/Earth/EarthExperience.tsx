@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { SlidersHorizontal } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { EARTH_DEFAULT, EARTH_PRESETS, EarthRenderer, type EarthView } from "./EarthRenderer";
 import styles from "../openSourceStudy.module.css";
@@ -66,10 +66,9 @@ export default function EarthExperience() {
       onPointerMove={event => { const d=drag.current; if (!d || d.id !== event.pointerId) return; apply({ yaw:d.yaw-(event.clientX-d.x)*0.004,pitch:Math.max(-1.3,Math.min(1.3,d.pitch+(event.clientY-d.y)*0.004)) }); }}
       onPointerUp={endDrag} onPointerCancel={endDrag}
       onWheel={event => { const v=current.current; apply({ altitude:Math.max(v.mode === "orbit" ? 2500 : 0.2,Math.min(v.mode === "orbit" ? 24000 : 40,v.altitude*Math.exp(event.deltaY*0.001))) }); }} />
-    <div className={styles.top}><Link href="/works/laboratory">← LABORATORY</Link><span>EARTH <i>/</i> AIR & CLOUD</span></div>
     {status === "loading" && <div className={styles.error} role="status" style={{ background:"rgba(8,14,24,.8)" }}>대기와 구름을 준비하고 있습니다…</div>}
     {status === "error" && <div className={styles.error} role="alert">{error}</div>}
-    <div className={styles.bottom}><span>DRAG TO EXPLORE · SCROLL TO ZOOM</span><button type="button" onClick={() => setOpen(!open)} aria-expanded={open}>CONTROLS {open ? "−" : "+"}</button></div>
+    <div className={styles.bottom} style={{ justifyContent: "flex-end" }}><button type="button" onClick={() => setOpen(!open)} aria-label="CONTROLS" aria-expanded={open}><SlidersHorizontal size={18} aria-hidden="true" /></button></div>
     {open && <aside className={styles.panel}>
       <h2>Earth</h2><p>대기에서 구름까지, 하나의 태양이 만드는 빛과 그림자.</p>
       <div className={styles.modeRow}>{EARTH_PRESETS.map(preset => <button type="button" key={preset.name} onClick={() => apply(preset.view)}>{preset.name}</button>)}</div>
