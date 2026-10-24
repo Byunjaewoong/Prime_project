@@ -1,5 +1,7 @@
 # Earth
 
+Cloud patterns combine domain-warped weather at three scales, independently rotated detail volumes with different periods, and larger cloud clusters. These vary cloud boundaries, density, and height without changing the field between Orbit and local views. Distance-based mip filtering remains active; empty weather regions skip detail lookups.
+
 Combines Air's Eric Bruneton atmospheric scattering LUTs with Cloud's periodic volume-noise approach in one WebGL2 renderer. Existing Air and Cloud studies remain accessible.
 
 Lighting uses the same world-space sun for the atmosphere, surface, and clouds. Cloud density integrates Beer–Lambert extinction along the camera ray; a six-sample light ray estimates self-shadowing. A dual Henyey–Greenstein phase function provides forward scattering and a weaker backscattering lobe. Direct sunlight is attenuated using the atmosphere's transmittance LUT. Sky irradiance illuminates clouds; two attenuated scattering orders approximate cloud multiple scattering. Cloud shadows attenuate ground sunlight. Representative-depth aerial perspective adds atmospheric extinction and in-scattering between the camera and the clouds.

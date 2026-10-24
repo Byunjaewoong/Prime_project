@@ -30,18 +30,35 @@ vec2 sphereInterval(vec3 ro, vec3 rd, float radius) {
   if (d < 0.0) return vec2(-1.0);
   return vec2(-b - sqrt(d), -b + sqrt(d));
 }
+// Rotate each scale independently so the repeating volume's axes do not line up.
+const mat3 CLOUD_ROTATION = mat3(0.36,0.48,-0.8, -0.8,0.6,0.0, 0.48,0.64,0.6);
+vec4 cloudNoise(vec3 p, float scale, float footprint) {
+  return textureLod(uNoise,p/scale,max(0.0,log2(max(0.001,footprint)*64.0/scale)));
+}
 float cloudDensity(vec3 p) {
   float h = (length(p) - CLOUD_BASE) / (CLOUD_TOP - CLOUD_BASE);
   if (h <= 0.0 || h >= 1.0 || uCoverage <= 0.001) return 0.0;
   vec3 wind = vec3(uTime * 0.7 + 73.0, uTime * 0.2 + 141.0, 97.0);
   float footprint = length(p-uCamera) * 2.0 * uTanFov / uResolution.y;
-  vec4 base = textureLod(uNoise, (p + wind) / 48.0, max(0.0,log2(footprint*64.0/48.0)));
-  float weather = textureLod(uNoise, (p + wind * 0.4) / 3200.0 + vec3(0.31,0.47,0.13), max(0.0,log2(footprint*64.0/3200.0))).b;
-  float detail = textureLod(uNoise, (p + wind) / 12.0, max(0.0,log2(footprint*64.0/12.0))).g;
-  float cloudHeight = mix(0.42,1.0,smoothstep(0.3,0.65,base.r));
+  vec3 region = CLOUD_ROTATION * (p + wind * 0.4) + vec3(837.0,1519.0,421.0);
+  vec3 warp = cloudNoise(region,7300.0,footprint).abr - vec3(0.5,0.5,0.45);
+  region += warp * 1850.0;
+  float weather = cloudNoise(region,4100.0,footprint).b * 0.52
+    + cloudNoise(CLOUD_ROTATION*region+913.0,1373.0,footprint).a * 0.30
+    + cloudNoise(CLOUD_ROTATION*region.yzx-571.0,467.0,footprint).a * 0.18;
+  weather = 0.5 + (weather-0.5)*1.6;
+  float weatherMask = smoothstep(0.34,0.61,weather + uCoverage - 0.5);
+  if (weatherMask < 0.001) return 0.0;
+  // Different periods and a slowly warped coordinate remove the 48 km grid.
+  vec3 local = p + wind + warp * 190.0;
+  float base = cloudNoise(local,48.0,footprint).r * 0.62
+    + cloudNoise(CLOUD_ROTATION*local+37.0,83.7,footprint).r * 0.38;
+  float clusters = cloudNoise(CLOUD_ROTATION*local-183.0,613.0,footprint).a;
+  base = mix(base, clusters, 0.35);
+  float detail = cloudNoise(CLOUD_ROTATION*local.zxy,17.3,footprint).g;
+  float cloudHeight = mix(0.42,1.0,smoothstep(0.3,0.65,base));
   float profile = smoothstep(0.0, 0.14, h) * (1.0 - smoothstep(cloudHeight-0.2,cloudHeight,h));
-  float weatherMask = smoothstep(0.42,0.66,weather + uCoverage - 0.5);
-  return max(0.0, base.r - 0.32 - (1.0 - detail) * 0.065) * weatherMask * profile * uDensity * 9.0;
+  return max(0.0, base - 0.32 - (1.0 - detail) * 0.065) * weatherMask * profile * uDensity * 9.0;
 }
 // Shell intervals skip the empty space between ground and the cloud base.
 vec2 cloudInterval(vec3 ro, vec3 rd, float limit) {
