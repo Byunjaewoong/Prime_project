@@ -93,12 +93,12 @@ export default function PathtracingExperience() {
   return <main className={styles.page}>
     <canvas ref={canvasRef} className={styles.canvas} aria-label="누적 렌더링되는 Cornell box 경로 추적 장면"
       onPointerDown={event => { drag.current = { x: event.clientX, y: event.clientY, yaw: view.current.yaw, pitch: view.current.pitch }; event.currentTarget.setPointerCapture(event.pointerId); }}
-      onPointerMove={event => { if (!drag.current) return; updateView({ ...view.current, yaw: Math.max(-0.45, Math.min(0.45, drag.current.yaw + (event.clientX - drag.current.x) * 0.002)), pitch: Math.max(-0.35, Math.min(0.35, drag.current.pitch + (event.clientY - drag.current.y) * 0.002)) }); }}
+      onPointerMove={event => { if (!drag.current) return; updateView({ ...view.current, yaw: Math.max(-0.45, Math.min(0.45, drag.current.yaw - (event.clientX - drag.current.x) * 0.002)), pitch: Math.max(-0.35, Math.min(0.35, drag.current.pitch + (event.clientY - drag.current.y) * 0.002)) }); }}
       onPointerUp={event => { drag.current = null; if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }}
       onWheel={event => { updateView({ ...view.current, zoom: Math.max(3.5, Math.min(8, view.current.zoom + event.deltaY * 0.005)) }); }} />
     <div className={styles.top}><Link href="/works/laboratory">← LABORATORY</Link><span>PATHTRACING <i>/</i> LIGHT STUDY</span></div>
     {error && <div className={styles.error} role="alert">{error}</div>}
-    <div className={styles.bottom}><span>{samples} SAMPLES · DRAG TO LOOK</span><button type="button" onClick={() => setOpen(!open)} aria-expanded={open}>CONTROLS {open ? "−" : "+"}</button></div>
+    <div className={styles.bottom}><span>{samples} SAMPLES · DRAG TO ORBIT</span><button type="button" onClick={() => setOpen(!open)} aria-expanded={open}>CONTROLS {open ? "−" : "+"}</button></div>
     {open && <aside className={styles.panel}>
       <h2>Pathtracing</h2>
       <p>빛의 경로를 무작위로 추적하고 샘플을 누적해 간접 조명과 부드러운 그림자를 만듭니다. 드래그하거나 휠로 시점을 변경하면 누적을 다시 시작합니다.</p>
