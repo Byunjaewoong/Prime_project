@@ -1,0 +1,25 @@
+.page { position: relative; width: 100%; height: 100svh; overflow: hidden; background: #080e18; color: #f6f1e8; font-family: var(--font-courier), monospace; }
+.canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+.canvas:active { cursor: grabbing; }
+.top, .bottom { position: absolute; z-index: 2; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 25px clamp(20px, 4vw, 62px); pointer-events: none; font-size: 11px; letter-spacing: .16em; text-shadow: 0 1px 8px rgba(0,0,0,.55); }
+.top { top: 0; }
+.bottom { bottom: 0; padding-bottom: max(25px, env(safe-area-inset-bottom)); }
+.top a, .bottom button { color: inherit; pointer-events: auto; text-decoration: none; }
+.top i { font-style: normal; opacity: .5; }
+.bottom span { opacity: .8; }
+.bottom button { border: 1px solid rgba(255,255,255,.5); border-radius: 2px; background: rgba(12,19,30,.4); padding: 10px 14px; font: inherit; letter-spacing: inherit; cursor: pointer; backdrop-filter: blur(10px); }
+.panel { position: absolute; z-index: 3; right: clamp(20px, 4vw, 62px); bottom: 92px; width: min(330px, calc(100vw - 40px)); max-height: calc(100svh - 170px); overflow-y: auto; padding: 24px; border: 1px solid rgba(255,255,255,.26); background: rgba(9,17,29,.82); box-shadow: 0 10px 55px rgba(0,0,0,.2); backdrop-filter: blur(20px); }
+.panel h2 { margin: 0 0 13px; font-size: 18px; font-weight: 400; letter-spacing: .05em; }
+.panel p { margin: 0 0 21px; color: rgba(255,255,255,.68); font-size: 11px; line-height: 1.65; }
+.panel label { display: grid; grid-template-columns: 1fr auto; gap: 7px; margin: 18px 0; font-size: 11px; }
+.panel output { color: rgba(255,255,255,.65); }
+.panel input { grid-column: 1 / -1; width: 100%; accent-color: #e5c6a0; }
+.panel .credit { margin: 22px 0 0; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.2); font-size: 10px; }
+.credit a { color: #e7d3b7; }
+.modeRow { display: flex; gap: 8px; }
+.modeRow button, .reset { border: 1px solid rgba(255,255,255,.3); background: rgba(255,255,255,.08); padding: 9px 12px; color: #fff; font: 11px var(--font-courier), monospace; cursor: pointer; }
+.modeRow button[aria-pressed="true"] { background: rgba(255,255,255,.35); }
+.reset { margin-top: 10px; }
+.error { position: absolute; z-index: 4; top: 50%; left: 50%; max-width: min(500px, calc(100% - 30px)); transform: translate(-50%,-50%); padding: 20px; background: #291c20; color: white; font-size: 12px; overflow-wrap: anywhere; }
+.top a:focus-visible, .bottom button:focus-visible, .panel button:focus-visible, .panel input:focus-visible, .credit a:focus-visible { outline: 2px solid white; outline-offset: 4px; }
+@media (max-width: 600px) { .top, .bottom { font-size: 9px; letter-spacing: .1em; } .top { align-items: flex-start; } .top span { text-align: right; } .panel { bottom: 80px; } }

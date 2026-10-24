@@ -197,6 +197,18 @@ export default function LaboratoryPage() {
               <span style={{ fontSize: "0.75rem", opacity: 0.3, marginLeft: 12 }}>oil paint relief study</span>
             </Link>
           </li>
+          <li>
+            <Link href="/works/laboratory/Cloud" style={{ textDecoration: "none", color: "inherit", display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "1px dotted rgba(26,64,49,0.2)", paddingBottom: "6px" }}>
+              <span>22. Cloud</span>
+              <span style={{ fontSize: "0.75rem", opacity: 0.3, marginLeft: 12 }}>volume noise raymarching</span>
+            </Link>
+          </li>
+          <li>
+            <Link href="/works/laboratory/Pathtracing" style={{ textDecoration: "none", color: "inherit", display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "1px dotted rgba(26,64,49,0.2)", paddingBottom: "6px" }}>
+              <span>23. Pathtracing</span>
+              <span style={{ fontSize: "0.75rem", opacity: 0.3, marginLeft: 12 }}>progressive light transport</span>
+            </Link>
+          </li>
         </ul>
 
         {/* 하단 푸터 */}
