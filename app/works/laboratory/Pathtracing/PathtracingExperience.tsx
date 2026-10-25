@@ -15,7 +15,11 @@ export default function PathtracingExperience() {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"quality" | "speed">("quality");
   const modeRef = useRef(mode);
-  const updateView = (next: typeof view.current) => { view.current = next; reset.current++; };
+  const updateView = (next: typeof view.current) => {
+    if (next.yaw === view.current.yaw && next.pitch === view.current.pitch && next.zoom === view.current.zoom) return;
+    view.current = next;
+    reset.current++;
+  };
   const updateMode = (next: typeof mode) => { modeRef.current = next; setMode(next); reset.current++; };
 
   useEffect(() => {
@@ -89,12 +93,14 @@ export default function PathtracingExperience() {
     return () => { active = false; cancelAnimationFrame(frame); clearTargets(); gl.deleteProgram(trace); gl.deleteProgram(display); gl.deleteVertexArray(vao); };
   }, []);
 
-  const drag = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(null);
+  const drag = useRef<{ pointerId: number; x: number; y: number; yaw: number; pitch: number } | null>(null);
   return <main className={styles.page}>
     <canvas ref={canvasRef} className={styles.canvas} aria-label="누적 렌더링되는 Cornell box 경로 추적 장면"
-      onPointerDown={event => { drag.current = { x: event.clientX, y: event.clientY, yaw: view.current.yaw, pitch: view.current.pitch }; event.currentTarget.setPointerCapture(event.pointerId); }}
-      onPointerMove={event => { if (!drag.current) return; updateView({ ...view.current, yaw: Math.max(-0.45, Math.min(0.45, drag.current.yaw - (event.clientX - drag.current.x) * 0.002)), pitch: Math.max(-0.35, Math.min(0.35, drag.current.pitch + (event.clientY - drag.current.y) * 0.002)) }); }}
-      onPointerUp={event => { drag.current = null; if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }}
+      onPointerDown={event => { if (!event.isPrimary || drag.current) return; drag.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, yaw: view.current.yaw, pitch: view.current.pitch }; event.currentTarget.setPointerCapture(event.pointerId); }}
+      onPointerMove={event => { if (!drag.current || drag.current.pointerId !== event.pointerId) return; updateView({ ...view.current, yaw: Math.max(-0.45, Math.min(0.45, drag.current.yaw - (event.clientX - drag.current.x) * 0.002)), pitch: Math.max(-0.35, Math.min(0.35, drag.current.pitch + (event.clientY - drag.current.y) * 0.002)) }); }}
+      onPointerUp={event => { if (drag.current?.pointerId === event.pointerId) drag.current = null; if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }}
+      onPointerCancel={event => { if (drag.current?.pointerId === event.pointerId) drag.current = null; }}
+      onLostPointerCapture={event => { if (drag.current?.pointerId === event.pointerId) drag.current = null; }}
       onWheel={event => { updateView({ ...view.current, zoom: Math.max(3.5, Math.min(8, view.current.zoom + event.deltaY * 0.005)) }); }} />
     <div className={styles.top}><Link href="/works/laboratory">← LABORATORY</Link><span>PATHTRACING <i>/</i> LIGHT STUDY</span></div>
     {error && <div className={styles.error} role="alert">{error}</div>}

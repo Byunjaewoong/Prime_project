@@ -5,15 +5,19 @@
  */
 export const pathFragment = `#version 300 es
 precision highp float;
+// ES fragment shaders otherwise default to mediump integers and lowp samplers.
+// The RNG needs all 32 bits; progressive HDR radiance must survive texture reads.
+precision highp int;
+precision highp sampler2D;
 out vec4 fragColor;
 uniform vec2 uResolution;
-uniform sampler2D uPrevious;
+uniform highp sampler2D uPrevious;
 uniform int uSample;
 uniform float uYaw;
 uniform float uPitch;
 uniform float uZoom;
 
-uint seed;
+highp uint seed;
 float random() { seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5; return float(seed) * (1.0 / 4294967296.0); }
 struct Hit { float t; vec3 n; vec3 color; int material; };
 void offer(inout Hit hit, float t, vec3 n, vec3 color, int material) {
@@ -35,7 +39,7 @@ Hit scene(vec3 ro, vec3 rd) {
   if (rd.x < -0.0001) { t = (-2.0 - ro.x) / rd.x; p = ro + rd * t; if (abs(p.y) < 1.5 && p.z > 0.0 && p.z < 4.0) offer(h,t,vec3(1,0,0),vec3(0.78,0.12,0.10),0); }
   if (rd.x > 0.0001) { t = (2.0 - ro.x) / rd.x; p = ro + rd * t; if (abs(p.y) < 1.5 && p.z > 0.0 && p.z < 4.0) offer(h,t,vec3(-1,0,0),vec3(0.11,0.50,0.22),0); }
   if (rd.y < -0.0001) { t = (-1.5 - ro.y) / rd.y; p = ro + rd * t; if (abs(p.x) < 2.0 && p.z > 0.0 && p.z < 4.0) offer(h,t,vec3(0,1,0),vec3(0.76),0); }
-  if (rd.y > 0.0001) { t = (1.5 - ro.y) / rd.y; p = ro + rd * t; if (abs(p.x) < 2.0 && p.z > 0.0 && p.z < 4.0) offer(h,t,vec3(0,-1,0),vec3(0.72),0); }
+  if (rd.y > 0.0001) { t = (1.5 - ro.y) / rd.y; p = ro + rd * t; if (abs(p.x) < 2.0 && p.z > 0.0 && p.z < 4.0) offer(h,t,vec3(0,-1,0),vec3(0.72),abs(p.x) < 0.63 && p.z > 1.35 && p.z < 2.65 ? 2 : 0); }
   if (rd.z > 0.0001) { t = (4.0 - ro.z) / rd.z; p = ro + rd * t; if (abs(p.x) < 2.0 && abs(p.y) < 1.5) offer(h,t,vec3(0,0,-1),vec3(0.72),0); }
   sphere(h,ro,rd,vec3(-0.8,-0.72,2.5),0.78,vec3(0.92,0.83,0.65),1);
   sphere(h,ro,rd,vec3(0.85,-0.94,1.8),0.56,vec3(0.83,0.80,0.74),0);
@@ -54,7 +58,7 @@ vec3 radiance(vec3 ro, vec3 rd) {
     if (h.t > 1e5) { result += throughput * vec3(0.012,0.016,0.022); break; }
     vec3 p = ro + rd * h.t;
     // The ceiling rectangle emits into the box.
-    if (h.n.y < -0.5 && abs(p.x) < 0.63 && p.z > 1.35 && p.z < 2.65) {
+    if (h.material == 2) {
       result += throughput * vec3(13.0,11.5,9.5);
       break;
     }
@@ -101,8 +105,10 @@ void main() {
 
 export const displayFragment = `#version 300 es
 precision highp float;
+precision highp int;
+precision highp sampler2D;
 out vec4 fragColor;
-uniform sampler2D uImage;
+uniform highp sampler2D uImage;
 uniform vec2 uResolution;
 void main() {
   vec3 color = texture(uImage, gl_FragCoord.xy / uResolution).rgb;
