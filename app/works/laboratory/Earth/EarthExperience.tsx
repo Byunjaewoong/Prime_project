@@ -74,6 +74,9 @@ export default function EarthExperience() {
       <div className={styles.modeRow}>{EARTH_PRESETS.map(preset => <button type="button" key={preset.name} onClick={() => apply(preset.view)}>{preset.name}</button>)}</div>
       {slider("Sun elevation", "sunElevation",-10,90,1)}
       {slider("Sun direction", "sunAzimuth",-180,180,1)}
+      <div className={styles.modeRow} role="group" aria-label="Light spectrum"><button type="button" aria-pressed={view.lightMode === "sunlight"} onClick={() => apply({lightMode:"sunlight"})}>Sunlight</button><button type="button" aria-pressed={view.lightMode === "wavelength"} onClick={() => apply({lightMode:"wavelength"})}>Single wavelength</button></div>
+      {view.lightMode === "wavelength" && <label>Wavelength<output>{view.wavelength} nm</output><input aria-label="Wavelength" type="range" min="440" max="680" step="5" value={view.wavelength} onChange={event => apply({wavelength:Number(event.target.value)})} /></label>}
+      <p>파장 조절은 태양광의 색을 RGB 3채널로 근사합니다. 대기의 산란 계수와 투과율은 고정되어 있습니다.</p>
       {slider("Cloud coverage", "coverage",0,1,0.01)}
       {slider("Cloud density", "density",0.2,3,0.05)}
       {slider("Exposure", "exposure",1,30,0.5)}

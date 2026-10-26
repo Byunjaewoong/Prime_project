@@ -18,6 +18,7 @@ uniform sampler3D uNoise;
 uniform vec2 uResolution;
 uniform vec3 uCamera, uForward, uRight, uUp, uSun;
 uniform float uCoverage, uDensity, uExposure, uTime, uTanFov;
+uniform vec3 uLightSpectrum;
 uniform int uSteps;
 out vec4 color;
 const float EARTH = 6360.0;
@@ -138,5 +139,5 @@ void main() {
     vec3 air = GetSkyRadianceToPoint(ro,p,0.0,uSun,transmittance);
     radiance = background * visibility + cloudLight * transmittance + air * (1.0-visibility);
   }
-  color = vec4(pow(1.0-exp(-max(radiance,vec3(0.0))*uExposure),vec3(1.0/2.2)),1.0);
+  color = vec4(pow(1.0-exp(-max(radiance * uLightSpectrum,vec3(0.0))*uExposure),vec3(1.0/2.2)),1.0);
 }`;

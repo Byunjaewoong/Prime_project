@@ -1,5 +1,7 @@
 # Earth
 
+The Light spectrum control switches between the original solar spectrum and a narrow RGB approximation centred on 440–680 nm. It weights linear radiance from the atmosphere, ground, and clouds before exposure, so all three respond together. It changes incident light, not the atmosphere's scattering or extinction coefficients; changing those requires regenerating Bruneton's lookup tables. The original Sunlight setting uses weights (1,1,1) and preserves the Air appearance.
+
 Cloud patterns combine domain-warped weather at three scales, independently rotated detail volumes with different periods, and larger cloud clusters. These vary cloud boundaries, density, and height without changing the field between Orbit and local views. Distance-based mip filtering remains active; empty weather regions skip detail lookups.
 
 Combines Air's Eric Bruneton atmospheric scattering LUTs with Cloud's periodic volume-noise approach in one WebGL2 renderer. Existing Air and Cloud studies remain accessible.

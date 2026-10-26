@@ -28,6 +28,15 @@ try {
   await page.waitForTimeout(700);
   assert.equal(await canvas.getAttribute('data-frames'),firstFrames,'Paused Earth keeps rendering');
   await page.getByRole('button',{name:/CONTROLS/}).click();
+  await page.getByRole('button',{name:'Single wavelength',exact:true}).click();
+  await page.getByRole('slider',{name:'Wavelength',exact:true}).fill('440');
+  await page.waitForTimeout(300);
+  const blueLight=await shot({path:'artifacts/earth/wavelength-440.png'});
+  await page.getByRole('slider',{name:'Wavelength',exact:true}).fill('680');
+  await page.waitForTimeout(300);
+  const redLight=await shot({path:'artifacts/earth/wavelength-680.png'});
+  assert.notEqual(redLight.toString('base64'),blueLight.toString('base64'),'Wavelength did not change rendered pixels');
+  await page.getByRole('button',{name:'Sunlight',exact:true}).click();
   await page.getByRole('slider',{name:'Cloud coverage',exact:true}).fill('0');
   await page.waitForTimeout(300);
   await shot({path:'artifacts/earth/orbit-clear.png'});

@@ -11,6 +11,8 @@ export type EarthView = {
   sunAzimuth: number;
   coverage: number;
   density: number;
+  lightMode: "sunlight" | "wavelength";
+  wavelength: number;
   exposure: number;
   animate: boolean;
   quality: "balanced" | "high";
@@ -24,7 +26,8 @@ const orbitView: Partial<EarthView> = {
   exposure: airOrbit.exposure, coverage: 0.32,
 };
 export const EARTH_DEFAULT: EarthView = { mode: "orbit", altitude: 2700, yaw: 0, pitch: 0.76,
-  sunElevation: 0, sunAzimuth: 0, coverage: 0.32, density: 1.3, exposure: 10, animate: true, quality: "balanced", ...orbitView };
+  sunElevation: 0, sunAzimuth: 0, coverage: 0.32, density: 1.3, lightMode: "sunlight", wavelength: 550,
+  exposure: 10, animate: true, quality: "balanced", ...orbitView };
 export const EARTH_PRESETS: { name: string; view: Partial<EarthView> }[] = [
   { name: "Orbit", view: orbitView },
   { name: "Cloudscape", view: { mode: "sky", altitude: 9, yaw: 0, pitch: -0.16, sunElevation: 24, sunAzimuth: -35, exposure: 7, coverage: 0.85 } },
@@ -33,6 +36,15 @@ export const EARTH_PRESETS: { name: string; view: Partial<EarthView> }[] = [
 
 function normalize(v: number[]) { const length = Math.hypot(...v); return v.map(x => x / length); }
 function cross(a: number[], b: number[]) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
+
+// Bruneton's precomputed RGB channels represent fixed wavelengths. Changing
+// their source weights is linear; changing atmospheric extinction needs new LUTs.
+function lightSpectrum(view: EarthView): [number, number, number] {
+  if (view.lightMode === "sunlight") return [1,1,1];
+  const channels = [680,550,440].map(center => Math.exp(-0.5 * ((view.wavelength-center)/36)**2));
+  const peak = Math.max(...channels);
+  return channels.map(value => value / peak) as [number, number, number];
+}
 
 export class EarthRenderer {
   private gl: WebGL2RenderingContext;
@@ -92,7 +104,7 @@ export class EarthRenderer {
     });
     this.bakeNoise();
     if (gl.getError() !== gl.NO_ERROR) throw new Error("Earth GPU 초기화 실패");
-    const namesUniform = ["uNoise","uResolution","uTanFov","uCamera","uForward","uRight","uUp","uSun","uCoverage","uDensity","uExposure","uTime","uSteps",
+    const namesUniform = ["uNoise","uResolution","uTanFov","uCamera","uForward","uRight","uUp","uSun","uCoverage","uDensity","uLightSpectrum","uExposure","uTime","uSteps",
       "transmittance_texture","scattering_texture","single_mie_scattering_texture","irradiance_texture"];
     this.uniforms = Object.fromEntries(namesUniform.map(name => [name,gl.getUniformLocation(this.program!,name)]));
     this.canvas.dataset.ready = "true";
@@ -174,6 +186,7 @@ export class EarthRenderer {
     gl.uniform3f(u.uSun,Math.sin(azimuth)*Math.cos(elevation),Math.cos(azimuth)*Math.cos(elevation),Math.sin(elevation));
     gl.uniform1f(u.uCoverage,v.coverage);
     gl.uniform1f(u.uDensity,v.density);
+    gl.uniform3fv(u.uLightSpectrum,lightSpectrum(v));
     gl.uniform1f(u.uExposure,v.exposure);
     gl.uniform1f(u.uTime,this.time);
     gl.uniform1i(u.uSteps,v.quality === "high" ? 64 : 36);
