@@ -12,6 +12,7 @@ export default function EarthExperience() {
   const [view,setView] = useState<EarthView>({ ...EARTH_DEFAULT });
   const [status,setStatus] = useState("loading");
   const [error,setError] = useState("");
+  const [atmosphereStatus,setAtmosphereStatus] = useState("");
   const [open,setOpen] = useState(false);
   const drag = useRef<{ id: number; x: number; y: number; yaw: number; pitch: number } | null>(null);
   const apply = (patch: Partial<EarthView>) => {
@@ -39,7 +40,7 @@ export default function EarthExperience() {
           current.current = { ...current.current, animate: false };
           setView(current.current);
         }
-        renderer = new EarthRenderer(canvas,current.current);
+        renderer = new EarthRenderer(canvas,current.current,setAtmosphereStatus);
         rendererRef.current = renderer;
         await renderer.initialize(controller.signal);
         if (!controller.signal.aborted) setStatus("ready");
@@ -57,7 +58,7 @@ export default function EarthExperience() {
     drag.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
-  const slider = (name: string, key: "coverage" | "density" | "sunElevation" | "sunAzimuth" | "exposure", min: number, max: number, step: number) =>
+  const slider = (name: string, key: "coverage" | "density" | "sunElevation" | "sunAzimuth" | "exposure" | "rayleigh" | "mie", min: number, max: number, step: number) =>
     <label>{name}<output>{view[key].toFixed(step < 1 ? 2 : 0)}</output><input aria-label={name} type="range" min={min} max={max} step={step} value={view[key]} onChange={event => apply({ [key]: Number(event.target.value) })} /></label>;
 
   return <main className={styles.page}>
@@ -74,9 +75,10 @@ export default function EarthExperience() {
       <div className={styles.modeRow}>{EARTH_PRESETS.map(preset => <button type="button" key={preset.name} onClick={() => apply(preset.view)}>{preset.name}</button>)}</div>
       {slider("Sun elevation", "sunElevation",-10,90,1)}
       {slider("Sun direction", "sunAzimuth",-180,180,1)}
-      <div className={styles.modeRow} role="group" aria-label="Light spectrum"><button type="button" aria-pressed={view.lightMode === "sunlight"} onClick={() => apply({lightMode:"sunlight"})}>Sunlight</button><button type="button" aria-pressed={view.lightMode === "wavelength"} onClick={() => apply({lightMode:"wavelength"})}>Single wavelength</button></div>
-      {view.lightMode === "wavelength" && <label>Wavelength<output>{view.wavelength} nm</output><input aria-label="Wavelength" type="range" min="440" max="680" step="5" value={view.wavelength} onChange={event => apply({wavelength:Number(event.target.value)})} /></label>}
-      <p>파장 조절은 태양광의 색을 RGB 3채널로 근사합니다. 대기의 산란 계수와 투과율은 고정되어 있습니다.</p>
+      {slider("Rayleigh scattering", "rayleigh",0.2,3,0.1)}
+      {slider("Mie scattering", "mie",0.2,3,0.1)}
+      <p>대기의 산란·소광 계수를 조절합니다. 1.00이 원래 값이며, 변경 시 투과율과 단일 산란 데이터를 다시 계산합니다.</p>
+      {atmosphereStatus && <p role="status">{atmosphereStatus}</p>}
       {slider("Cloud coverage", "coverage",0,1,0.01)}
       {slider("Cloud density", "density",0.2,3,0.05)}
       {slider("Exposure", "exposure",1,30,0.5)}

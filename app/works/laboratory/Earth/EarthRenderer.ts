@@ -1,6 +1,7 @@
 import { createProgram, fitCanvas } from "../core/fullscreenGL";
 import { earthFragment, noiseFragment } from "./earthShader";
 import { AIR_PRESETS } from "../Air/AirRenderer";
+import { atmosphereSource, precomputeAtmosphere } from "./atmospherePrecompute";
 
 export type EarthView = {
   mode: "orbit" | "sky";
@@ -11,8 +12,8 @@ export type EarthView = {
   sunAzimuth: number;
   coverage: number;
   density: number;
-  lightMode: "sunlight" | "wavelength";
-  wavelength: number;
+  rayleigh: number;
+  mie: number;
   exposure: number;
   animate: boolean;
   quality: "balanced" | "high";
@@ -26,7 +27,7 @@ const orbitView: Partial<EarthView> = {
   exposure: airOrbit.exposure, coverage: 0.32,
 };
 export const EARTH_DEFAULT: EarthView = { mode: "orbit", altitude: 2700, yaw: 0, pitch: 0.76,
-  sunElevation: 0, sunAzimuth: 0, coverage: 0.32, density: 1.3, lightMode: "sunlight", wavelength: 550,
+  sunElevation: 0, sunAzimuth: 0, coverage: 0.32, density: 1.3, rayleigh: 1, mie: 1,
   exposure: 10, animate: true, quality: "balanced", ...orbitView };
 export const EARTH_PRESETS: { name: string; view: Partial<EarthView> }[] = [
   { name: "Orbit", view: orbitView },
@@ -37,18 +38,19 @@ export const EARTH_PRESETS: { name: string; view: Partial<EarthView> }[] = [
 function normalize(v: number[]) { const length = Math.hypot(...v); return v.map(x => x / length); }
 function cross(a: number[], b: number[]) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
 
-// Bruneton's precomputed RGB channels represent fixed wavelengths. Changing
-// their source weights is linear; changing atmospheric extinction needs new LUTs.
-function lightSpectrum(view: EarthView): [number, number, number] {
-  if (view.lightMode === "sunlight") return [1,1,1];
-  const channels = [680,550,440].map(center => Math.exp(-0.5 * ((view.wavelength-center)/36)**2));
-  const peak = Math.max(...channels);
-  return channels.map(value => value / peak) as [number, number, number];
-}
+const UNIFORM_NAMES = ["uNoise","uResolution","uTanFov","uCamera","uForward","uRight","uUp","uSun","uCoverage","uDensity","uExposure","uTime","uSteps",
+  "transmittance_texture","scattering_texture","single_mie_scattering_texture","irradiance_texture"];
 
 export class EarthRenderer {
   private gl: WebGL2RenderingContext;
   private program: WebGLProgram | null = null;
+  private baseProgram: WebGLProgram | null = null;
+  private dynamicProgram: WebGLProgram | null = null;
+  private atmosphereShader = "";
+  private activeAtmosphere: WebGLTexture[] = [];
+  private dynamicAtmosphere: WebGLTexture[] = [];
+  private atmosphereRevision = 0;
+  private atmosphereTimer = 0;
   private vao: WebGLVertexArrayObject | null;
   private textures: WebGLTexture[] = [];
   private uniforms: Record<string, WebGLUniformLocation | null> = {};
@@ -60,7 +62,7 @@ export class EarthRenderer {
   private observer: ResizeObserver;
   private view: EarthView;
 
-  constructor(private canvas: HTMLCanvasElement, view: EarthView) {
+  constructor(private canvas: HTMLCanvasElement, view: EarthView, private onAtmosphereStatus?: (message: string) => void) {
     const gl = canvas.getContext("webgl2", { alpha: false, antialias: false });
     if (!gl) throw new Error("WebGL2를 지원하는 브라우저가 필요합니다.");
     this.gl = gl;
@@ -81,7 +83,9 @@ export class EarthRenderer {
     if (signal.aborted || this.disposed) return;
     const gl = this.gl;
     const source = (data[0] as string).trim().replace("#version 330", "#version 300 es\nprecision highp float;\nprecision highp sampler3D;");
-    this.program = createProgram(gl, source + "\n" + earthFragment);
+    this.atmosphereShader = source;
+    this.baseProgram = createProgram(gl, source + "\n" + earthFragment);
+    this.program = this.baseProgram;
     gl.bindVertexArray(this.vao);
     const dimensions = [[256,64,1],[256,128,32],[64,16,1]];
     dimensions.forEach(([w,h,d], index) => {
@@ -103,12 +107,13 @@ export class EarthRenderer {
       } else gl.texImage2D(target,0,gl.RGBA16F,w,h,0,gl.RGBA,gl.FLOAT,new Float32Array(buffer));
     });
     this.bakeNoise();
+    this.activeAtmosphere = this.textures.slice(0,3);
     if (gl.getError() !== gl.NO_ERROR) throw new Error("Earth GPU 초기화 실패");
-    const namesUniform = ["uNoise","uResolution","uTanFov","uCamera","uForward","uRight","uUp","uSun","uCoverage","uDensity","uLightSpectrum","uExposure","uTime","uSteps",
-      "transmittance_texture","scattering_texture","single_mie_scattering_texture","irradiance_texture"];
-    this.uniforms = Object.fromEntries(namesUniform.map(name => [name,gl.getUniformLocation(this.program!,name)]));
+    this.uniforms = Object.fromEntries(UNIFORM_NAMES.map(name => [name,gl.getUniformLocation(this.program!,name)]));
     this.canvas.dataset.ready = "true";
+    this.canvas.dataset.atmosphere = "1,1";
     this.requestRender();
+    if (this.view.rayleigh !== 1 || this.view.mie !== 1) this.scheduleAtmosphere();
   }
 
   private bakeNoise() {
@@ -140,7 +145,56 @@ export class EarthRenderer {
     } finally { gl.bindFramebuffer(gl.FRAMEBUFFER,null); gl.deleteFramebuffer(framebuffer); gl.deleteProgram(program); }
   }
 
-  setView(view: EarthView) { this.view = { ...view }; this.requestRender(); }
+  setView(view: EarthView) {
+    const coefficientsChanged = view.rayleigh !== this.view.rayleigh || view.mie !== this.view.mie;
+    this.view = { ...view };
+    if (coefficientsChanged && this.atmosphereShader) this.scheduleAtmosphere();
+    this.requestRender();
+  }
+  private scheduleAtmosphere() {
+    const revision = ++this.atmosphereRevision;
+    clearTimeout(this.atmosphereTimer);
+    if (this.view.rayleigh === 1 && this.view.mie === 1) {
+      this.program = this.baseProgram;
+      this.activeAtmosphere = this.textures.slice(0,3);
+      this.canvas.dataset.atmosphere = "1,1";
+      this.uniforms = Object.fromEntries(UNIFORM_NAMES.map(name => [name,this.gl.getUniformLocation(this.program!,name)]));
+      this.onAtmosphereStatus?.("");
+      this.requestRender();
+      return;
+    }
+    this.onAtmosphereStatus?.("대기 산란 LUT를 계산하는 중…");
+    this.atmosphereTimer = window.setTimeout(() => void this.rebuildAtmosphere(revision),350);
+  }
+  private async rebuildAtmosphere(revision: number) {
+    const gl = this.gl;
+    const coefficients = `${this.view.rayleigh},${this.view.mie}`;
+    let program: WebGLProgram | null = null;
+    let textures: WebGLTexture[] | null = null;
+    try {
+      const source = atmosphereSource(this.atmosphereShader,this.view.rayleigh,this.view.mie);
+      program = createProgram(gl,source + "\n" + earthFragment);
+      textures = await precomputeAtmosphere(gl,source,() => !this.disposed && revision === this.atmosphereRevision);
+      if (!textures || this.disposed || revision !== this.atmosphereRevision) return;
+      this.dynamicAtmosphere.forEach(texture => gl.deleteTexture(texture));
+      if (this.dynamicProgram) gl.deleteProgram(this.dynamicProgram);
+      this.dynamicAtmosphere = textures;
+      this.dynamicProgram = program;
+      this.activeAtmosphere = textures;
+      this.program = program;
+      this.canvas.dataset.atmosphere = coefficients;
+      this.uniforms = Object.fromEntries(UNIFORM_NAMES.map(name => [name,gl.getUniformLocation(program!,name)]));
+      textures = null;
+      program = null;
+      this.onAtmosphereStatus?.("");
+      this.requestRender();
+    } catch (error) {
+      if (revision === this.atmosphereRevision && !this.disposed) this.onAtmosphereStatus?.(error instanceof Error ? error.message : String(error));
+    } finally {
+      textures?.forEach(texture => gl.deleteTexture(texture));
+      if (program) gl.deleteProgram(program);
+    }
+  }
   private onVisibility = () => { this.last = 0; this.requestRender(); };
   private requestRender() {
     if (this.disposed || !this.program || this.frame || document.hidden) return;
@@ -155,6 +209,11 @@ export class EarthRenderer {
     this.last = now;
     fitCanvas(this.canvas,v.quality === "high" ? 950000 : 480000);
     gl.viewport(0,0,this.canvas.width,this.canvas.height);
+    gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+    for (let index = 0; index < 3; index++) {
+      gl.activeTexture(gl.TEXTURE0 + index);
+      gl.bindTexture(index === 1 ? gl.TEXTURE_3D : gl.TEXTURE_2D,this.activeAtmosphere[index]);
+    }
     let camera: number[], forward: number[], right: number[], up: number[];
     if (v.mode === "orbit") {
       // Air orbits a surface target, not the planet centre. Translate its camera
@@ -186,7 +245,6 @@ export class EarthRenderer {
     gl.uniform3f(u.uSun,Math.sin(azimuth)*Math.cos(elevation),Math.cos(azimuth)*Math.cos(elevation),Math.sin(elevation));
     gl.uniform1f(u.uCoverage,v.coverage);
     gl.uniform1f(u.uDensity,v.density);
-    gl.uniform3fv(u.uLightSpectrum,lightSpectrum(v));
     gl.uniform1f(u.uExposure,v.exposure);
     gl.uniform1f(u.uTime,this.time);
     gl.uniform1i(u.uSteps,v.quality === "high" ? 64 : 36);
@@ -196,11 +254,15 @@ export class EarthRenderer {
   };
   dispose() {
     this.disposed = true;
+    this.atmosphereRevision++;
+    clearTimeout(this.atmosphereTimer);
     cancelAnimationFrame(this.frame);
     this.observer.disconnect();
     document.removeEventListener("visibilitychange",this.onVisibility);
     this.textures.forEach(texture => this.gl.deleteTexture(texture));
-    if (this.program) this.gl.deleteProgram(this.program);
+    this.dynamicAtmosphere.forEach(texture => this.gl.deleteTexture(texture));
+    if (this.dynamicProgram) this.gl.deleteProgram(this.dynamicProgram);
+    if (this.baseProgram) this.gl.deleteProgram(this.baseProgram);
     this.gl.deleteVertexArray(this.vao);
   }
 }
