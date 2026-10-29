@@ -52,6 +52,7 @@ const UNIFORM_NAMES = ["uNoise","uResolution","uTanFov","uCamera","uForward","uR
   "transmittance_texture","scattering_texture","single_mie_scattering_texture","irradiance_texture"];
 
 export class EarthRenderer {
+  get isDisposed() { return this.disposed; }
   private gl: WebGL2RenderingContext;
   private program: WebGLProgram | null = null;
   private baseProgram: WebGLProgram | null = null;
@@ -293,6 +294,7 @@ export class EarthRenderer {
     if (v.animate) this.requestRender();
   };
   dispose() {
+    if (this.disposed) return;
     this.disposed = true;
     this.atmosphereRevision++;
     clearTimeout(this.atmosphereTimer);

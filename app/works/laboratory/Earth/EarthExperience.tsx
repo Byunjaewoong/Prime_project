@@ -11,6 +11,7 @@ import RealTimeControls from "./RealTimeControls";
 export default function EarthExperience() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<EarthRenderer | null>(null);
+  const recoveryControllerRef = useRef<AbortController | null>(null);
   const current = useRef<EarthView>({ ...EARTH_DEFAULT });
   const realTimeAltitude = useRef(SUWON.elevation/1000);
   const [view,setView] = useState<EarthView>({ ...EARTH_DEFAULT });
@@ -26,10 +27,32 @@ export default function EarthExperience() {
     const timer = window.setInterval(() => {
       if (document.hidden) return;
       setClock(Date.now());
+      if (!rendererRef.current || rendererRef.current.isDisposed) {
+        const canvas = canvasRef.current;
+        if (canvas && !recoveryControllerRef.current) {
+          const controller = new AbortController();
+          recoveryControllerRef.current = controller;
+          const renderer = new EarthRenderer(canvas,current.current,setAtmosphereStatus);
+          rendererRef.current = renderer;
+          void renderer.initialize(controller.signal).then(() => {
+            if (!controller.signal.aborted) setStatus("ready");
+          }).catch(cause => {
+            if (controller.signal.aborted) return;
+            renderer.dispose();
+            setError(cause instanceof Error ? cause.message : String(cause));
+            setStatus("error");
+          });
+        }
+      }
       rendererRef.current?.setView(current.current);
     },1000);
     return () => clearInterval(timer);
   },[view.realTime]);
+  useEffect(() => () => {
+    recoveryControllerRef.current?.abort();
+    rendererRef.current?.dispose();
+    rendererRef.current = null;
+  },[]);
   const drag = useRef<{ id: number; x: number; y: number; yaw: number; pitch: number } | null>(null);
   const apply = (patch: Partial<EarthView>) => {
     if (current.current.realTime && patch.altitude !== undefined) realTimeAltitude.current = patch.altitude;
