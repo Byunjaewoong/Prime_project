@@ -1,0 +1,104 @@
+import {createRequire} from 'node:module';
+import path from 'node:path';
+import fs from 'node:fs/promises';
+import assert from 'node:assert/strict';
+import {Body,Equator,Horizon,Observer} from 'astronomy-engine';
+import {calculateSky,SUWON,koreaDateInput,parseKoreaDate} from '../app/works/laboratory/Earth/celestial.ts';
+
+// Independent coordinate path verifies the local east/north/up convention.
+for(const date of ['2026-01-03T13:00:00Z','2026-06-21T03:30:00Z','2026-10-29T13:00:00Z']) {
+  const time=new Date(date), sky=calculateSky(time), observer=new Observer(SUWON.latitude,SUWON.longitude,SUWON.elevation);
+  for(const body of [Body.Sun,Body.Moon]) {
+    const eq=Equator(body,time,observer,true,true), horizon=Horizon(time,observer,eq.ra,eq.dec);
+    const result=body===Body.Sun ? sky.sun : sky.moon;
+    assert(Math.abs(result.altitude-horizon.altitude)<0.001);
+    assert(Math.abs(result.azimuth-horizon.azimuth)<0.001);
+  }
+  assert.equal(parseKoreaDate(koreaDateInput(time.getTime())),time.getTime());
+  const m=sky.localToEquatorial;
+  for(let i=0;i<3;i++) assert(Math.abs(Math.hypot(...m.slice(i*3,i*3+3))-1)<1e-10);
+  const geometricPhase=(1-sky.moonDirection.reduce((sum,value,i)=>sum+value*sky.moonSunDirection[i],0))/2;
+  assert(Math.abs(geometricPhase-sky.moonFraction)<0.01,'Rendered lunar phase disagrees with ephemeris');
+}
+assert(calculateSky(new Date('2026-06-21T03:30:00Z')).sun.altitude>75);
+assert(calculateSky(new Date('2026-01-03T13:00:00Z')).moonFraction>0.99);
+assert.equal(parseKoreaDate('invalid'),null);
+
+const {chromium}=createRequire(path.resolve(process.argv[2]))('playwright');
+const browser=await chromium.launch({channel:'chrome',headless:true});
+await fs.mkdir('artifacts/earth-realtime',{recursive:true});
+try {
+  const page=await browser.newPage({viewport:{width:1200,height:800},reducedMotion:'reduce'});
+  const errors=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  page.on('console',m=>{if(m.type()==='error') errors.push(m.text());});
+  await page.goto(`${process.argv[3] || 'http://127.0.0.1:3000'}/works/laboratory/Earth`);
+  await page.waitForFunction(()=>document.querySelector('canvas')?.dataset.frames || document.querySelector('main [role="alert"]'),null,{timeout:60000});
+  assert.equal(await page.locator('main [role="alert"]').count(),0,await page.locator('main [role="alert"]').allTextContents());
+  await page.getByRole('button',{name:'CONTROLS',exact:true}).click();
+  await page.getByRole('button',{name:'Real time',exact:true}).click();
+  assert.equal(await page.getByLabel('Latitude',{exact:true}).inputValue(),'37.2636');
+  assert.equal(await page.getByLabel('Longitude',{exact:true}).inputValue(),'127.0286');
+  await page.waitForFunction(()=>document.querySelector('canvas')?.dataset.skyTime);
+  const firstTime=await page.locator('canvas').getAttribute('data-sky-time');
+  await page.waitForFunction(t=>document.querySelector('canvas')?.dataset.skyTime!==t,firstTime);
+  const shot=async name=>{
+    await page.locator('aside').evaluate(e=>e.style.visibility='hidden');
+    const buffer=await page.locator('canvas').screenshot({path:`artifacts/earth-realtime/${name}.png`});
+    await page.locator('aside').evaluate(e=>e.style.visibility='');
+    return buffer;
+  };
+  const date=async value=>{
+    await page.getByLabel('Observation date KST').fill(value);
+    const expected=new Date(`${value}+09:00`).toISOString();
+    await page.waitForFunction(t=>document.querySelector('canvas')?.dataset.skyTime===t,expected);
+    await page.waitForTimeout(150);
+  };
+  await page.getByRole('slider',{name:'Cloud coverage',exact:true}).fill('0');
+  await date('2026-01-03T22:00');
+  const night=await shot('night');
+  await page.getByRole('button',{name:'별자리 선',exact:true}).click();
+  const lines=await shot('constellations');
+  assert.notEqual(night.toString('base64'),lines.toString('base64'),'Night constellation lines are invisible');
+  await date('2026-01-03T23:00');
+  const later=await shot('one-hour-later');
+  assert.notEqual(later.toString('base64'),lines.toString('base64'),'Stars did not rotate with time');
+  await date('2026-01-03T22:00');
+  await page.getByRole('slider',{name:'Cloud coverage',exact:true}).fill('1');
+  const cloudy=await shot('cloud-occlusion');
+  assert.notEqual(cloudy.toString('base64'),lines.toString('base64'),'Clouds did not attenuate the stars');
+  await page.getByRole('slider',{name:'Cloud coverage',exact:true}).fill('0');
+  await page.getByRole('button',{name:'달 보기',exact:true}).click();
+  await page.getByRole('slider',{name:'Field of view',exact:true}).fill('15');
+  await shot('full-moon');
+  await date('2026-01-23T18:00');
+  await page.getByRole('button',{name:'달 보기',exact:true}).click();
+  await shot('crescent');
+  await date('2026-06-21T12:30');
+  await page.getByRole('button',{name:'태양 보기',exact:true}).click();
+  await page.getByRole('slider',{name:'Field of view',exact:true}).fill('55');
+  const dayLines=await shot('day');
+  await page.getByRole('button',{name:'별자리 선',exact:true}).click();
+  const day=await shot('day-no-lines');
+  assert.equal(day.toString('base64'),dayLines.toString('base64'),'Stars/constellations should be washed out in daylight');
+  await page.getByRole('button',{name:'지금',exact:true}).click();
+  await page.waitForTimeout(1200);
+  assert(Math.abs(Date.now()-Date.parse(await page.locator('canvas').getAttribute('data-sky-time')))<3000);
+  await page.setViewportSize({width:390,height:844});
+  await page.screenshot({path:'artifacts/earth-realtime/mobile-menu.png'});
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  const mobile=await browser.newPage({viewport:{width:390,height:844},reducedMotion:'reduce'});
+  mobile.on('pageerror',e=>errors.push(e.message));
+  await mobile.goto(`${process.argv[3] || 'http://127.0.0.1:3000'}/works/laboratory/Earth`);
+  await mobile.waitForFunction(()=>document.querySelector('canvas')?.dataset.frames,null,{timeout:60000});
+  await mobile.getByRole('button',{name:'CONTROLS',exact:true}).click();
+  await mobile.getByRole('button',{name:'Real time',exact:true}).click();
+  await mobile.getByLabel('Observation date KST').fill('2026-01-03T22:00');
+  await mobile.getByRole('slider',{name:'Cloud coverage',exact:true}).fill('0');
+  await mobile.getByRole('button',{name:'별자리 선',exact:true}).click();
+  await mobile.getByRole('button',{name:'CONTROLS',exact:true}).click();
+  await mobile.screenshot({path:'artifacts/earth-realtime/mobile-night.png'});
+  await mobile.close();
+  assert.deepEqual(errors,[]);
+  console.log('Real time: ephemeris coordinates, KST, live clock, star visibility, constellation lines, lunar phases, mobile and browser errors verified.');
+} finally {await browser.close();}

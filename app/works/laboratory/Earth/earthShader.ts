@@ -19,6 +19,11 @@ uniform vec2 uResolution;
 uniform vec3 uCamera, uForward, uRight, uUp, uSun;
 uniform float uCoverage, uDensity, uExposure, uTime, uTanFov;
 uniform int uSteps;
+uniform int uRealTime;
+uniform sampler2D uStars;
+uniform mat3 uLocalToEquatorial;
+uniform vec3 uMoon, uMoonSun;
+uniform float uMoonRadius, uSunRadius, uSolarScale, uConstellations;
 out vec4 color;
 const float EARTH = 6360.0;
 const float CLOUD_BASE = 6361.8;
@@ -83,6 +88,30 @@ float cloudShadow(vec3 p) {
 float phaseHG(float cosine, float g) {
   return (1.0 - g*g) / (4.0 * PI * pow(max(0.001, 1.0 + g*g - 2.0*g*cosine), 1.5));
 }
+vec4 celestialRadiance(vec3 rd, vec3 sky) {
+  if (uRealTime == 0) return vec4(0.0);
+  vec3 eq = normalize(uLocalToEquatorial * rd);
+  vec2 uv = vec2(fract(atan(eq.y,eq.x)/(2.0*PI)),acos(clamp(eq.z,-1.0,1.0))/PI);
+  vec4 stars = texture(uStars,uv);
+  float night = 1.0-smoothstep(-0.20,0.02,uSun.z);
+  float skyBrightness = dot(max(sky,vec3(0.0)),vec3(0.2126,0.7152,0.0722));
+  vec3 light = (stars.rgb*0.06 + vec3(0.12,0.26,0.4)*stars.a*uConstellations*0.004)
+    * night / (1.0+skyBrightness*500.0) / uSolarScale;
+  // Resolve the small lunar sphere in angular coordinates to avoid cancellation
+  // at its actual 350,000–410,000 km distance. Its surface normal sets the phase.
+  float facing = dot(rd,uMoon);
+  vec3 tangent = (rd-uMoon*facing)/sin(uMoonRadius);
+  float radius = length(tangent);
+  float edge = max(fwidth(radius),0.001);
+  float mask = facing > 0.0 ? 1.0-smoothstep(1.0-edge,1.0+edge,radius) : 0.0;
+  if (mask > 0.0) {
+    vec3 normal = normalize(tangent-uMoon*sqrt(max(0.0,1.0-radius*radius)));
+    float lighting = max(0.0,dot(normal,uMoonSun));
+    float maria = 0.8 + 0.12*sin(normal.x*19.0+sin(normal.y*13.0))*sin(normal.z*23.0);
+    light = mix(light,vec3(0.16,0.155,0.145)*lighting*maria,mask);
+  }
+  return vec4(light,mask);
+}
 void main() {
   vec2 screen = (gl_FragCoord.xy * 2.0 - uResolution) / uResolution.y;
   vec3 rd = normalize(uForward + (uRight * screen.x + uUp * screen.y) * uTanFov);
@@ -91,7 +120,9 @@ void main() {
   float distanceToGround = ground.x > 0.0 ? ground.x : 1e7;
   vec3 transmittance;
   vec3 background = GetSkyRadiance(ro,rd,0.0,uSun,transmittance);
-  if (dot(rd,uSun) > cos(0.004675)) background += transmittance * GetSolarRadiance();
+  vec4 celestial = celestialRadiance(rd,background);
+  background += transmittance*celestial.rgb;
+  if (dot(rd,uSun) > cos(uSunRadius)) background += transmittance * GetSolarRadiance()*(1.0-celestial.a)*pow(0.004675/uSunRadius,2.0);
   float discriminant = EARTH*EARTH - (dot(ro,ro)-dot(ro,rd)*dot(ro,rd));
   float groundEdgeWidth = max(fwidth(discriminant),0.0001);
   if (distanceToGround < 1e6) {
@@ -138,5 +169,5 @@ void main() {
     vec3 air = GetSkyRadianceToPoint(ro,p,0.0,uSun,transmittance);
     radiance = background * visibility + cloudLight * transmittance + air * (1.0-visibility);
   }
-  color = vec4(pow(1.0-exp(-max(radiance,vec3(0.0))*uExposure),vec3(1.0/2.2)),1.0);
+  color = vec4(pow(1.0-exp(-max(radiance,vec3(0.0))*uExposure*uSolarScale),vec3(1.0/2.2)),1.0);
 }`;

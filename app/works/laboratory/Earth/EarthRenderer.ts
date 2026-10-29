@@ -2,9 +2,17 @@ import { createProgram, fitCanvas } from "../core/fullscreenGL";
 import { earthFragment, noiseFragment } from "./earthShader";
 import { AIR_PRESETS } from "../Air/AirRenderer";
 import { atmosphereSource, precomputeAtmosphere } from "./atmospherePrecompute";
+import { calculateSky, SUWON, type SkyState } from "./celestial";
+import { createStarTexture } from "./starTexture";
 
 export type EarthView = {
   mode: "orbit" | "sky";
+  realTime: boolean;
+  observationTime: number | null;
+  latitude: number;
+  longitude: number;
+  constellations: boolean;
+  fov: number;
   altitude: number;
   yaw: number;
   pitch: number;
@@ -27,6 +35,7 @@ const orbitView: Partial<EarthView> = {
   exposure: airOrbit.exposure, coverage: 0.32,
 };
 export const EARTH_DEFAULT: EarthView = { mode: "orbit", altitude: 2700, yaw: 0, pitch: 0.76,
+  realTime: false, observationTime: null, latitude: SUWON.latitude, longitude: SUWON.longitude, constellations: false, fov: 55,
   sunElevation: 0, sunAzimuth: 0, coverage: 0.32, density: 1.3, rayleigh: 1, mie: 1,
   exposure: 10, animate: true, quality: "balanced", ...orbitView };
 export const EARTH_PRESETS: { name: string; view: Partial<EarthView> }[] = [
@@ -39,6 +48,7 @@ function normalize(v: number[]) { const length = Math.hypot(...v); return v.map(
 function cross(a: number[], b: number[]) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
 
 const UNIFORM_NAMES = ["uNoise","uResolution","uTanFov","uCamera","uForward","uRight","uUp","uSun","uCoverage","uDensity","uExposure","uTime","uSteps",
+  "uRealTime","uStars","uLocalToEquatorial","uMoon","uMoonSun","uMoonRadius","uSunRadius","uSolarScale","uConstellations",
   "transmittance_texture","scattering_texture","single_mie_scattering_texture","irradiance_texture"];
 
 export class EarthRenderer {
@@ -61,6 +71,8 @@ export class EarthRenderer {
   private frames = 0;
   private observer: ResizeObserver;
   private view: EarthView;
+  private sky: SkyState | null = null;
+  private skyKey = "";
 
   constructor(private canvas: HTMLCanvasElement, view: EarthView, private onAtmosphereStatus?: (message: string) => void) {
     const gl = canvas.getContext("webgl2", { alpha: false, antialias: false });
@@ -107,6 +119,9 @@ export class EarthRenderer {
       } else gl.texImage2D(target,0,gl.RGBA16F,w,h,0,gl.RGBA,gl.FLOAT,new Float32Array(buffer));
     });
     this.bakeNoise();
+    const stars = await createStarTexture(gl,signal);
+    if (!stars || signal.aborted || this.disposed) { if(stars)gl.deleteTexture(stars); return; }
+    this.textures.push(stars);
     this.activeAtmosphere = this.textures.slice(0,3);
     if (gl.getError() !== gl.NO_ERROR) throw new Error("Earth GPU 초기화 실패");
     this.uniforms = Object.fromEntries(UNIFORM_NAMES.map(name => [name,gl.getUniformLocation(this.program!,name)]));
@@ -214,6 +229,16 @@ export class EarthRenderer {
       gl.activeTexture(gl.TEXTURE0 + index);
       gl.bindTexture(index === 1 ? gl.TEXTURE_3D : gl.TEXTURE_2D,this.activeAtmosphere[index]);
     }
+    gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_3D,this.textures[3]);
+    gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D,this.textures[4]);
+    if (v.realTime) {
+      const timestamp = v.observationTime ?? Date.now();
+      const key = `${Math.floor(timestamp/1000)},${v.latitude},${v.longitude}`;
+      if (key !== this.skyKey) {
+        this.sky = calculateSky(new Date(timestamp),v.latitude,v.longitude);
+        this.skyKey = key;
+      }
+    }
     let camera: number[], forward: number[], right: number[], up: number[];
     if (v.mode === "orbit") {
       // Air orbits a surface target, not the planet centre. Translate its camera
@@ -225,7 +250,7 @@ export class EarthRenderer {
       right = [-Math.sin(v.yaw),Math.cos(v.yaw),0];
       up = cross(right,forward);
     } else {
-      camera = [0,0,6360+v.altitude];
+      camera = [0,0,6360+(v.realTime ? SUWON.elevation/1000 : v.altitude)];
       forward = [Math.sin(v.yaw)*Math.cos(v.pitch),Math.cos(v.yaw)*Math.cos(v.pitch),Math.sin(v.pitch)];
       right = normalize(cross(forward,[0,0,1]));
       up = cross(right,forward);
@@ -238,11 +263,26 @@ export class EarthRenderer {
     gl.uniform1i(u.single_mie_scattering_texture,1);
     gl.uniform1i(u.irradiance_texture,2);
     gl.uniform1i(u.uNoise,3);
+    gl.uniform1i(u.uStars,4);
     gl.uniform2f(u.uResolution,this.canvas.width,this.canvas.height);
     const aspect = this.canvas.width/this.canvas.height;
-    gl.uniform1f(u.uTanFov,v.mode === "orbit" ? Math.tan(25*Math.PI/180)*Math.max(1,(16/9)/aspect) : 0.48*Math.max(1,1/aspect));
+    gl.uniform1f(u.uTanFov,v.realTime ? Math.tan(v.fov*Math.PI/360)*Math.max(1,1/aspect) : v.mode === "orbit" ? Math.tan(25*Math.PI/180)*Math.max(1,(16/9)/aspect) : 0.48*Math.max(1,1/aspect));
     for (const [name,value] of [["uCamera",camera],["uForward",forward],["uRight",right],["uUp",up]] as const) gl.uniform3fv(u[name],value);
-    gl.uniform3f(u.uSun,Math.sin(azimuth)*Math.cos(elevation),Math.cos(azimuth)*Math.cos(elevation),Math.sin(elevation));
+    const sky = v.realTime ? this.sky : null;
+    gl.uniform1i(u.uRealTime,sky ? 1 : 0);
+    gl.uniform1f(u.uSunRadius,sky?.sunRadius ?? 0.004675);
+    gl.uniform1f(u.uSolarScale,sky?.solarScale ?? 1);
+    gl.uniform1f(u.uConstellations,v.constellations ? 1 : 0);
+    if (sky) {
+      gl.uniform3fv(u.uSun,sky.sunDirection);
+      gl.uniform3fv(u.uMoon,sky.moonDirection);
+      gl.uniform3fv(u.uMoonSun,sky.moonSunDirection);
+      gl.uniform1f(u.uMoonRadius,sky.moonRadius);
+      gl.uniformMatrix3fv(u.uLocalToEquatorial,false,sky.localToEquatorial);
+      this.canvas.dataset.skyTime = sky.date.toISOString();
+      this.canvas.dataset.sunAltitude = String(sky.sun.altitude);
+      this.canvas.dataset.moonFraction = String(sky.moonFraction);
+    } else gl.uniform3f(u.uSun,Math.sin(azimuth)*Math.cos(elevation),Math.cos(azimuth)*Math.cos(elevation),Math.sin(elevation));
     gl.uniform1f(u.uCoverage,v.coverage);
     gl.uniform1f(u.uDensity,v.density);
     gl.uniform1f(u.uExposure,v.exposure);
