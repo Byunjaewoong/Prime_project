@@ -34,10 +34,10 @@ const orbitView: Partial<EarthView> = {
   sunAzimuth: 90 - airOrbit.sunAzimuth * 180 / Math.PI,
   exposure: airOrbit.exposure, coverage: 0.32,
 };
-export const EARTH_DEFAULT: EarthView = { mode: "orbit", altitude: 2700, yaw: 0, pitch: 0.76,
-  realTime: false, observationTime: null, latitude: SUWON.latitude, longitude: SUWON.longitude, constellations: false, fov: 55,
+export const EARTH_DEFAULT: EarthView = { mode: "sky", altitude: SUWON.elevation/1000, yaw: Math.PI, pitch: 0.35,
+  realTime: true, observationTime: null, latitude: SUWON.latitude, longitude: SUWON.longitude, constellations: false, fov: 55,
   sunElevation: 0, sunAzimuth: 0, coverage: 0.32, density: 1.3, rayleigh: 1, mie: 1,
-  exposure: 10, animate: true, quality: "balanced", ...orbitView };
+  exposure: 10, animate: true, quality: "balanced" };
 export const EARTH_PRESETS: { name: string; view: Partial<EarthView> }[] = [
   { name: "Orbit", view: orbitView },
   { name: "Cloudscape", view: { mode: "sky", altitude: 9, yaw: 0, pitch: -0.16, sunElevation: 24, sunAzimuth: -35, exposure: 7, coverage: 0.85 } },

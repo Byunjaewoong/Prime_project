@@ -23,11 +23,12 @@ try {
     return image;
   };
   console.log('Earth initialization ms:',Date.now()-started);
+  await page.getByRole('button',{name:/CONTROLS/}).click();
+  await page.getByRole('button',{name:'Orbit',exact:true}).click();
   const originalOrbit=await shot({path:'artifacts/earth/orbit.png'});
   const firstFrames=await canvas.getAttribute('data-frames');
   await page.waitForTimeout(700);
   assert.equal(await canvas.getAttribute('data-frames'),firstFrames,'Paused Earth keeps rendering');
-  await page.getByRole('button',{name:/CONTROLS/}).click();
   await page.getByRole('slider',{name:'Rayleigh scattering',exact:true}).fill('2');
   await page.waitForFunction(() => document.querySelector('canvas')?.dataset.atmosphere === '2,1',null,{timeout:90000});
   const moreRayleigh=await shot({path:'artifacts/earth/rayleigh-2.png'});

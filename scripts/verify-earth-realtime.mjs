@@ -42,8 +42,9 @@ try {
   await page.goto(`${process.argv[3] || 'http://127.0.0.1:3000'}/works/laboratory/Earth`);
   await page.waitForFunction(()=>document.querySelector('canvas')?.dataset.frames || document.querySelector('main [role="alert"]'),null,{timeout:60000});
   assert.equal(await page.locator('main [role="alert"]').count(),0,await page.locator('main [role="alert"]').allTextContents());
+  await page.waitForFunction(()=>document.querySelector('canvas')?.dataset.skyTime);
   await page.getByRole('button',{name:'CONTROLS',exact:true}).click();
-  await page.getByRole('button',{name:'Real time',exact:true}).click();
+  assert.equal(await page.getByRole('button',{name:'Real time',exact:true}).getAttribute('aria-pressed'),'true');
   assert.equal(await page.getByLabel('Latitude',{exact:true}).inputValue(),'37.2636');
   assert.equal(await page.getByLabel('Longitude',{exact:true}).inputValue(),'127.0286');
   assert.match(await page.getByLabel('실시간 관측 정보').innerText(),/해발 40 m/);
@@ -113,7 +114,7 @@ try {
   await mobile.goto(`${process.argv[3] || 'http://127.0.0.1:3000'}/works/laboratory/Earth`);
   await mobile.waitForFunction(()=>document.querySelector('canvas')?.dataset.frames,null,{timeout:60000});
   await mobile.getByRole('button',{name:'CONTROLS',exact:true}).click();
-  await mobile.getByRole('button',{name:'Real time',exact:true}).click();
+  assert.equal(await mobile.getByRole('button',{name:'Real time',exact:true}).getAttribute('aria-pressed'),'true');
   await mobile.getByLabel('Observation date KST').fill('2026-01-03T22:00');
   await mobile.getByRole('slider',{name:'Cloud coverage',exact:true}).fill('0');
   await mobile.getByRole('button',{name:'별자리 선',exact:true}).click();
