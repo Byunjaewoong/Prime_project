@@ -5,21 +5,22 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { EARTH_DEFAULT, EARTH_PRESETS, EarthRenderer, type EarthView } from "./EarthRenderer";
 import styles from "../openSourceStudy.module.css";
 import skyStyles from "./earthSky.module.css";
-import { calculateSky } from "./celestial";
+import { calculateSky, SUWON } from "./celestial";
 import RealTimeControls from "./RealTimeControls";
 
 export default function EarthExperience() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<EarthRenderer | null>(null);
   const current = useRef<EarthView>({ ...EARTH_DEFAULT });
+  const realTimeAltitude = useRef(SUWON.elevation/1000);
   const [view,setView] = useState<EarthView>({ ...EARTH_DEFAULT });
   const [status,setStatus] = useState("loading");
   const [error,setError] = useState("");
   const [atmosphereStatus,setAtmosphereStatus] = useState("");
   const [open,setOpen] = useState(false);
   const [clock,setClock] = useState(() => Date.now());
-  const sky = useMemo(() => view.realTime ? calculateSky(new Date(view.observationTime ?? clock),view.latitude,view.longitude) : null,
-    [view.realTime,view.observationTime,view.latitude,view.longitude,clock]);
+  const sky = useMemo(() => view.realTime ? calculateSky(new Date(view.observationTime ?? clock),view.latitude,view.longitude,view.altitude*1000) : null,
+    [view.realTime,view.observationTime,view.latitude,view.longitude,view.altitude,clock]);
   useEffect(() => {
     if (!view.realTime) return;
     const timer = window.setInterval(() => {
@@ -31,6 +32,7 @@ export default function EarthExperience() {
   },[view.realTime]);
   const drag = useRef<{ id: number; x: number; y: number; yaw: number; pitch: number } | null>(null);
   const apply = (patch: Partial<EarthView>) => {
+    if (current.current.realTime && patch.altitude !== undefined) realTimeAltitude.current = patch.altitude;
     current.current = { ...current.current, ...patch };
     setView(current.current);
     rendererRef.current?.setView(current.current);
@@ -88,7 +90,7 @@ export default function EarthExperience() {
     {open && <aside className={styles.panel}>
       <h2>Earth</h2><p>대기에서 구름까지, 하나의 태양이 만드는 빛과 그림자.</p>
       <div className={styles.modeRow}>{EARTH_PRESETS.map(preset => <button type="button" key={preset.name} onClick={() => apply({...preset.view,realTime:false})}>{preset.name}</button>)}</div>
-      <div className={skyStyles.mode}><button className={styles.reset} type="button" aria-pressed={view.realTime} onClick={() => apply(view.realTime ? {realTime:false,altitude:Math.max(0.2,view.altitude),sunElevation:Math.max(-10,sky?.sun.altitude ?? 0),sunAzimuth:((sky?.sun.azimuth ?? 0)+180)%360-180} : {realTime:true,mode:"sky",altitude:0.04,yaw:Math.PI,pitch:0.35,observationTime:null})}>Real time</button></div>
+      <div className={skyStyles.mode}><button className={styles.reset} type="button" aria-pressed={view.realTime} onClick={() => apply(view.realTime ? {realTime:false,altitude:Math.max(0.2,Math.min(40,view.altitude)),sunElevation:Math.max(-10,sky?.sun.altitude ?? 0),sunAzimuth:((sky?.sun.azimuth ?? 0)+180)%360-180} : {realTime:true,mode:"sky",altitude:realTimeAltitude.current,yaw:Math.PI,pitch:0.35,observationTime:null})}>Real time</button></div>
       {sky ? <RealTimeControls view={view} sky={sky} clock={clock} apply={apply} /> : <>{slider("Sun elevation", "sunElevation",-10,90,1)}{slider("Sun direction", "sunAzimuth",-180,180,1)}</>}
       {slider("Rayleigh scattering", "rayleigh",0.2,3,0.1)}
       {slider("Mie scattering", "mie",0.2,3,0.1)}

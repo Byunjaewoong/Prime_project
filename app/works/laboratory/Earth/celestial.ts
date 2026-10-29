@@ -13,9 +13,9 @@ function angles(vector: Direction) {
   return { altitude: Math.asin(vector[2])*degrees, azimuth: (Math.atan2(vector[0],vector[1])*degrees+360)%360 };
 }
 
-export function calculateSky(date: Date, latitude = SUWON.latitude, longitude = SUWON.longitude) {
+export function calculateSky(date: Date, latitude = SUWON.latitude, longitude = SUWON.longitude, elevationMeters = SUWON.elevation) {
   const time = MakeTime(date);
-  const observer = new Observer(latitude,longitude,SUWON.elevation);
+  const observer = new Observer(latitude,longitude,elevationMeters);
   const horizontal = Rotation_EQJ_HOR(time,observer);
   const equatorial = Rotation_HOR_EQJ(time,observer);
   const sun = Equator(Body.Sun,time,observer,false,true);

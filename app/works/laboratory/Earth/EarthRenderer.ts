@@ -233,9 +233,9 @@ export class EarthRenderer {
     gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D,this.textures[4]);
     if (v.realTime) {
       const timestamp = v.observationTime ?? Date.now();
-      const key = `${Math.floor(timestamp/1000)},${v.latitude},${v.longitude}`;
+      const key = `${Math.floor(timestamp/1000)},${v.latitude},${v.longitude},${v.altitude}`;
       if (key !== this.skyKey) {
-        this.sky = calculateSky(new Date(timestamp),v.latitude,v.longitude);
+        this.sky = calculateSky(new Date(timestamp),v.latitude,v.longitude,v.altitude*1000);
         this.skyKey = key;
       }
     }
@@ -250,7 +250,7 @@ export class EarthRenderer {
       right = [-Math.sin(v.yaw),Math.cos(v.yaw),0];
       up = cross(right,forward);
     } else {
-      camera = [0,0,6360+(v.realTime ? SUWON.elevation/1000 : v.altitude)];
+      camera = [0,0,6360+v.altitude];
       forward = [Math.sin(v.yaw)*Math.cos(v.pitch),Math.cos(v.yaw)*Math.cos(v.pitch),Math.sin(v.pitch)];
       right = normalize(cross(forward,[0,0,1]));
       up = cross(right,forward);

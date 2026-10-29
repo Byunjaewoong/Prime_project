@@ -22,6 +22,13 @@ for(const date of ['2026-01-03T13:00:00Z','2026-06-21T03:30:00Z','2026-10-29T13:
 }
 assert(calculateSky(new Date('2026-06-21T03:30:00Z')).sun.altitude>75);
 assert(calculateSky(new Date('2026-01-03T13:00:00Z')).moonFraction>0.99);
+const highObserver=new Observer(SUWON.latitude,SUWON.longitude,10000);
+const highDate=new Date('2026-06-21T03:30:00Z');
+const highSky=calculateSky(highDate,SUWON.latitude,SUWON.longitude,10000);
+const highMoon=Equator(Body.Moon,highDate,highObserver,true,true);
+const highHorizon=Horizon(highDate,highObserver,highMoon.ra,highMoon.dec);
+assert(Math.abs(highSky.moon.altitude-highHorizon.altitude)<0.001,'Observer elevation was not applied to the Moon');
+assert.notEqual(highSky.moon.altitude,calculateSky(highDate).moon.altitude,'Observer elevation did not change the Moon position');
 assert.equal(parseKoreaDate('invalid'),null);
 
 const {chromium}=createRequire(path.resolve(process.argv[2]))('playwright');
@@ -39,6 +46,7 @@ try {
   await page.getByRole('button',{name:'Real time',exact:true}).click();
   assert.equal(await page.getByLabel('Latitude',{exact:true}).inputValue(),'37.2636');
   assert.equal(await page.getByLabel('Longitude',{exact:true}).inputValue(),'127.0286');
+  assert.match(await page.getByLabel('실시간 관측 정보').innerText(),/해발 40 m/);
   await page.waitForFunction(()=>document.querySelector('canvas')?.dataset.skyTime);
   const firstTime=await page.locator('canvas').getAttribute('data-sky-time');
   await page.waitForFunction(t=>document.querySelector('canvas')?.dataset.skyTime!==t,firstTime);
@@ -81,6 +89,14 @@ try {
   await page.getByRole('button',{name:'별자리 선',exact:true}).click();
   const day=await shot('day-no-lines');
   assert.equal(day.toString('base64'),dayLines.toString('base64'),'Stars/constellations should be washed out in daylight');
+  await page.getByRole('slider',{name:'Observer altitude',exact:true}).fill('0.8');
+  await page.waitForTimeout(250);
+  assert.match(await page.getByLabel('실시간 관측 정보').innerText(),/해발 10\.00 km/);
+  const highDay=await shot('day-at-10km');
+  assert.notEqual(highDay.toString('base64'),day.toString('base64'),'Observer altitude did not change the camera view');
+  await page.getByRole('button',{name:'Real time',exact:true}).click();
+  await page.getByRole('button',{name:'Real time',exact:true}).click();
+  assert.match(await page.getByLabel('실시간 관측 정보').innerText(),/해발 10\.00 km/,'Observer altitude was lost after toggling Real time');
   await page.getByRole('button',{name:'지금',exact:true}).click();
   await page.waitForTimeout(1200);
   assert(Math.abs(Date.now()-Date.parse(await page.locator('canvas').getAttribute('data-sky-time')))<3000);
