@@ -22,6 +22,7 @@ for(const date of ['2026-01-03T13:00:00Z','2026-06-21T03:30:00Z','2026-10-29T13:
 }
 assert(calculateSky(new Date('2026-06-21T03:30:00Z')).sun.altitude>75);
 assert(calculateSky(new Date('2026-01-03T13:00:00Z')).moonFraction>0.99);
+assert(calculateSky(new Date('2026-01-23T09:00:00Z')).moonFraction<0.25);
 const highObserver=new Observer(SUWON.latitude,SUWON.longitude,10000);
 const highDate=new Date('2026-06-21T03:30:00Z');
 const highSky=calculateSky(highDate,SUWON.latitude,SUWON.longitude,10000);
@@ -57,6 +58,14 @@ try {
     await page.locator('aside').evaluate(e=>e.style.visibility='');
     return buffer;
   };
+  const lunarBrightPixels=async buffer=>page.evaluate(async src=>{
+    const image=new Image();image.src=src;await image.decode();
+    const canvas=document.createElement('canvas');canvas.width=image.width;canvas.height=image.height;
+    const context=canvas.getContext('2d');context.drawImage(image,0,0);
+    const pixels=context.getImageData(image.width/2-45,image.height/2-45,90,90).data;
+    let count=0;for(let i=0;i<pixels.length;i+=4)if(pixels[i]>200&&pixels[i+1]>200&&pixels[i+2]>200)count++;
+    return count;
+  },`data:image/png;base64,${buffer.toString('base64')}`);
   const date=async value=>{
     await page.getByLabel('Observation date KST').fill(value);
     const expected=new Date(`${value}+09:00`).toISOString();
@@ -79,7 +88,7 @@ try {
   await page.getByRole('slider',{name:'Cloud coverage',exact:true}).fill('0');
   await page.getByRole('button',{name:'달 보기',exact:true}).click();
   await page.getByRole('slider',{name:'Field of view',exact:true}).fill('15');
-  await shot('full-moon');
+  const fullMoon=await shot('full-moon');
   await page.getByRole('slider',{name:'Field of view',exact:true}).fill('55');
   await page.getByRole('slider',{name:'Cloud coverage',exact:true}).fill('0.4');
   await shot('full-moon-clouds');
@@ -87,7 +96,9 @@ try {
   await page.getByRole('slider',{name:'Field of view',exact:true}).fill('15');
   await date('2026-01-23T18:00');
   await page.getByRole('button',{name:'달 보기',exact:true}).click();
-  await shot('crescent');
+  const crescent=await shot('crescent');
+  assert((await lunarBrightPixels(fullMoon))>1000,'The displayed Moon is too small');
+  assert((await lunarBrightPixels(fullMoon))>3*(await lunarBrightPixels(crescent)),'The lunar phase is not visible');
   await date('2026-06-21T12:30');
   await page.getByRole('button',{name:'태양 보기',exact:true}).click();
   await page.getByRole('slider',{name:'Field of view',exact:true}).fill('55');

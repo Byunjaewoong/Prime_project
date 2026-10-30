@@ -103,14 +103,13 @@ vec4 celestialRadiance(vec3 rd, vec3 sky) {
   float skyBrightness = dot(max(sky,vec3(0.0)),vec3(0.2126,0.7152,0.0722));
   vec3 light = (stars.rgb*0.06 + vec3(0.12,0.26,0.4)*stars.a*uConstellations*0.004)
     * night / (1.0+skyBrightness*500.0) / uSolarScale;
-  // Resolve the small lunar sphere in angular coordinates to avoid cancellation
-  // at its actual 350,000–410,000 km distance. Its surface normal sets the phase.
+  // Keep the real lunar direction and Sun-relative phase, with a larger display disk.
   float facing = dot(rd,uMoon);
   float moonAngle = acos(clamp(facing,-1.0,1.0));
-  float halo = 0.038*exp(-pow(moonAngle/0.018,2.0))
-    + 0.0035*exp(-pow(moonAngle/0.11,2.0));
+  float halo = 0.030*exp(-pow(moonAngle/0.030,2.0))
+    + 0.0045*exp(-moonAngle/0.12);
   light += vec3(0.58,0.68,0.86)*halo*moonlightStrength();
-  vec3 tangent = (rd-uMoon*facing)/sin(uMoonRadius);
+  vec3 tangent = (rd-uMoon*facing)/sin(uMoonRadius*2.0);
   float radius = length(tangent);
   float edge = max(fwidth(radius),0.001);
   float mask = facing > 0.0 ? 1.0-smoothstep(1.0-edge,1.0+edge,radius) : 0.0;
@@ -152,6 +151,7 @@ void main() {
     float phase = 0.85 * phaseHG(dot(rd,uSun),0.72) + 0.15 * phaseHG(dot(rd,uSun),-0.25);
     float moonStrength = moonlightStrength();
     float moonPhase = 0.85 * phaseHG(dot(rd,uMoon),0.76) + 0.15 * phaseHG(dot(rd,uMoon),-0.2);
+    float moonCloudFalloff = pow(max(dot(rd,uMoon),0.0),6.0);
     for (int i = 0; i < 64; i++) {
       if (i >= uSteps || visibility < 0.008) break;
       float t = interval.x + (float(i)+jitter) * stepLength;
@@ -166,11 +166,11 @@ void main() {
       // Two attenuated scattering orders approximate cloud multiple scattering.
       float multiple = 0.3 * pow(shadow,0.5) + 0.12 * pow(shadow,0.25);
       vec3 source = direct * (phase * shadow + multiple / (4.0*PI)) + ambient * (0.35 / PI);
-      if (moonStrength > 0.01 && dot(rd,uMoon) > 0.7) {
+      if (moonStrength > 0.01 && moonCloudFalloff > 0.001) {
         float moonShadow = cloudShadow(p,uMoon);
         vec3 moonIrradiance = vec3(0.024,0.031,0.047) * moonStrength
           * smoothstep(-0.06,0.10,dot(normalize(p),uMoon));
-        source += moonIrradiance * (moonPhase*moonShadow + 0.3/(4.0*PI));
+        source += moonIrradiance * (moonPhase*moonShadow + 0.3/(4.0*PI)) * moonCloudFalloff;
       }
       float alpha = 1.0 - exp(-density * stepLength * 0.85);
       float weight = visibility * alpha;
