@@ -23,7 +23,7 @@ uniform int uRealTime;
 uniform sampler2D uStars;
 uniform mat3 uLocalToEquatorial;
 uniform vec3 uMoon, uMoonSun;
-uniform float uMoonRadius, uSunRadius, uSolarScale, uConstellations;
+uniform float uMoonRadius, uMoonFraction, uSunRadius, uSolarScale, uConstellations;
 out vec4 color;
 const float EARTH = 6360.0;
 const float CLOUD_BASE = 6361.8;
@@ -60,10 +60,12 @@ float cloudDensity(vec3 p) {
     + cloudNoise(CLOUD_ROTATION*local+37.0,83.7,footprint).r * 0.38;
   float clusters = cloudNoise(CLOUD_ROTATION*local-183.0,613.0,footprint).a;
   base = mix(base, clusters, 0.35);
-  float detail = cloudNoise(CLOUD_ROTATION*local.zxy,17.3,footprint).g;
+  bool groundSky = uRealTime == 1 && length(uCamera) < CLOUD_BASE;
+  float detail = cloudNoise(CLOUD_ROTATION*local.zxy,groundSky ? 5.5 : 17.3,footprint).g;
   float cloudHeight = mix(0.42,1.0,smoothstep(0.3,0.65,base));
   float profile = smoothstep(0.0, 0.14, h) * (1.0 - smoothstep(cloudHeight-0.2,cloudHeight,h));
-  return max(0.0, base - 0.32 - (1.0 - detail) * 0.065) * weatherMask * profile * uDensity * 9.0;
+  return max(0.0, base - 0.32 - (1.0 - detail) * (groundSky ? 0.18 : 0.065))
+    * weatherMask * profile * uDensity * 9.0;
 }
 // Shell intervals skip the empty space between ground and the cloud base.
 vec2 cloudInterval(vec3 ro, vec3 rd, float limit) {
@@ -75,18 +77,22 @@ vec2 cloudInterval(vec3 ro, vec3 rd, float limit) {
   else if (inner.x > enter) leave = min(leave, inner.x);
   return vec2(enter, max(enter, leave));
 }
-float cloudShadow(vec3 p) {
+float cloudShadow(vec3 p, vec3 lightDirection) {
   if (uCoverage <= 0.001) return 1.0;
-  vec2 interval = cloudInterval(p, uSun, 240.0);
+  vec2 interval = cloudInterval(p, lightDirection, 240.0);
   float stepLength = min(8.0, (interval.y - interval.x) / 6.0);
   float optical = 0.0;
   for (int i = 0; i < 6; i++) {
-    optical += cloudDensity(p + uSun * (interval.x + (float(i)+0.5)*stepLength)) * stepLength;
+    optical += cloudDensity(p + lightDirection * (interval.x + (float(i)+0.5)*stepLength)) * stepLength;
   }
   return exp(-optical * 0.85);
 }
 float phaseHG(float cosine, float g) {
   return (1.0 - g*g) / (4.0 * PI * pow(max(0.001, 1.0 + g*g - 2.0*g*cosine), 1.5));
+}
+float moonlightStrength() {
+  return uRealTime == 1 ? uMoonFraction * smoothstep(-0.06,0.08,uMoon.z)
+    * (1.0-smoothstep(-0.10,0.08,uSun.z)) : 0.0;
 }
 vec4 celestialRadiance(vec3 rd, vec3 sky) {
   if (uRealTime == 0) return vec4(0.0);
@@ -100,6 +106,10 @@ vec4 celestialRadiance(vec3 rd, vec3 sky) {
   // Resolve the small lunar sphere in angular coordinates to avoid cancellation
   // at its actual 350,000–410,000 km distance. Its surface normal sets the phase.
   float facing = dot(rd,uMoon);
+  float moonAngle = acos(clamp(facing,-1.0,1.0));
+  float halo = 0.038*exp(-pow(moonAngle/0.018,2.0))
+    + 0.0035*exp(-pow(moonAngle/0.11,2.0));
+  light += vec3(0.58,0.68,0.86)*halo*moonlightStrength();
   vec3 tangent = (rd-uMoon*facing)/sin(uMoonRadius);
   float radius = length(tangent);
   float edge = max(fwidth(radius),0.001);
@@ -108,7 +118,7 @@ vec4 celestialRadiance(vec3 rd, vec3 sky) {
     vec3 normal = normalize(tangent-uMoon*sqrt(max(0.0,1.0-radius*radius)));
     float lighting = max(0.0,dot(normal,uMoonSun));
     float maria = 0.8 + 0.12*sin(normal.x*19.0+sin(normal.y*13.0))*sin(normal.z*23.0);
-    light = mix(light,vec3(0.16,0.155,0.145)*lighting*maria,mask);
+    light = mix(light,vec3(0.45,0.46,0.48)*lighting*maria,mask);
   }
   return vec4(light,mask);
 }
@@ -129,7 +139,7 @@ void main() {
     vec3 p = ro + rd * distanceToGround;
     vec3 skyLight;
     vec3 sunlight = GetSunAndSkyIrradiance(p, normalize(p), uSun, skyLight);
-    vec3 surface = vec3(0.0,0.0,0.04) / PI * (sunlight * cloudShadow(p + normalize(p)*0.01) + skyLight);
+    vec3 surface = vec3(0.0,0.0,0.04) / PI * (sunlight * cloudShadow(p + normalize(p)*0.01,uSun) + skyLight);
     vec3 air = GetSkyRadianceToPoint(ro,p,0.0,uSun,transmittance);
     background = mix(background,surface * transmittance + air,smoothstep(0.0,groundEdgeWidth*1.5,discriminant));
   }
@@ -140,13 +150,15 @@ void main() {
     float stepLength = (interval.y - interval.x) / float(uSteps);
     float jitter = mix(0.5,fract(52.9829189 * fract(dot(gl_FragCoord.xy,vec2(0.06711056,0.00583715)))),0.6);
     float phase = 0.85 * phaseHG(dot(rd,uSun),0.72) + 0.15 * phaseHG(dot(rd,uSun),-0.25);
+    float moonStrength = moonlightStrength();
+    float moonPhase = 0.85 * phaseHG(dot(rd,uMoon),0.76) + 0.15 * phaseHG(dot(rd,uMoon),-0.2);
     for (int i = 0; i < 64; i++) {
       if (i >= uSteps || visibility < 0.008) break;
       float t = interval.x + (float(i)+jitter) * stepLength;
       vec3 p = ro + rd*t;
       float density = cloudDensity(p);
       if (density < 0.001) continue;
-      float shadow = cloudShadow(p);
+      float shadow = cloudShadow(p,uSun);
       float r = length(p);
       vec3 direct = ATMOSPHERE.solar_irradiance * GetTransmittanceToSun(ATMOSPHERE, transmittance_texture, r, dot(p,uSun)/r);
       vec3 ambient;
@@ -154,6 +166,12 @@ void main() {
       // Two attenuated scattering orders approximate cloud multiple scattering.
       float multiple = 0.3 * pow(shadow,0.5) + 0.12 * pow(shadow,0.25);
       vec3 source = direct * (phase * shadow + multiple / (4.0*PI)) + ambient * (0.35 / PI);
+      if (moonStrength > 0.01 && dot(rd,uMoon) > 0.7) {
+        float moonShadow = cloudShadow(p,uMoon);
+        vec3 moonIrradiance = vec3(0.024,0.031,0.047) * moonStrength
+          * smoothstep(-0.06,0.10,dot(normalize(p),uMoon));
+        source += moonIrradiance * (moonPhase*moonShadow + 0.3/(4.0*PI));
+      }
       float alpha = 1.0 - exp(-density * stepLength * 0.85);
       float weight = visibility * alpha;
       cloudLight += weight * source;

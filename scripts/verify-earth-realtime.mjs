@@ -80,6 +80,11 @@ try {
   await page.getByRole('button',{name:'달 보기',exact:true}).click();
   await page.getByRole('slider',{name:'Field of view',exact:true}).fill('15');
   await shot('full-moon');
+  await page.getByRole('slider',{name:'Field of view',exact:true}).fill('55');
+  await page.getByRole('slider',{name:'Cloud coverage',exact:true}).fill('0.4');
+  await shot('full-moon-clouds');
+  await page.getByRole('slider',{name:'Cloud coverage',exact:true}).fill('0');
+  await page.getByRole('slider',{name:'Field of view',exact:true}).fill('15');
   await date('2026-01-23T18:00');
   await page.getByRole('button',{name:'달 보기',exact:true}).click();
   await shot('crescent');

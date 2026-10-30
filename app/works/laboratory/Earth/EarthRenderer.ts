@@ -48,7 +48,7 @@ function normalize(v: number[]) { const length = Math.hypot(...v); return v.map(
 function cross(a: number[], b: number[]) { return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; }
 
 const UNIFORM_NAMES = ["uNoise","uResolution","uTanFov","uCamera","uForward","uRight","uUp","uSun","uCoverage","uDensity","uExposure","uTime","uSteps",
-  "uRealTime","uStars","uLocalToEquatorial","uMoon","uMoonSun","uMoonRadius","uSunRadius","uSolarScale","uConstellations",
+  "uRealTime","uStars","uLocalToEquatorial","uMoon","uMoonSun","uMoonRadius","uMoonFraction","uSunRadius","uSolarScale","uConstellations",
   "transmittance_texture","scattering_texture","single_mie_scattering_texture","irradiance_texture"];
 
 export class EarthRenderer {
@@ -279,6 +279,7 @@ export class EarthRenderer {
       gl.uniform3fv(u.uMoon,sky.moonDirection);
       gl.uniform3fv(u.uMoonSun,sky.moonSunDirection);
       gl.uniform1f(u.uMoonRadius,sky.moonRadius);
+      gl.uniform1f(u.uMoonFraction,sky.moonFraction);
       gl.uniformMatrix3fv(u.uLocalToEquatorial,false,sky.localToEquatorial);
       this.canvas.dataset.skyTime = sky.date.toISOString();
       this.canvas.dataset.sunAltitude = String(sky.sun.altitude);
